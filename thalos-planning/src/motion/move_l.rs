@@ -64,8 +64,12 @@ impl SegmentPlanner for MoveLPlanner {
     ) -> PlanningResult {
         let target_pose = &goal.goal.pose;
 
+        let q_start = ctx.current_state.positions().ok_or_else(|| {
+            PlanningError::InvalidContext("Current state missing joint positions".into())
+        })?;
+
         let fk = ForwardKinematics::new(ctx.robot.clone());
-        let fk_result = fk.evaluate(ctx.current_state.as_slice());
+        let fk_result = fk.evaluate(&q_start);
         let start_pose = fk_result.ee_pose().ok_or_else(|| {
             PlanningError::InvalidGoal("End-effector pose not found in FK result".into())
         })?;
@@ -93,7 +97,7 @@ impl SegmentPlanner for MoveLPlanner {
             (total_time / time_step).ceil() as usize
         };
 
-        let mut q_current = ctx.current_state.as_slice().to_vec();
+        let mut q_current = q_start.clone();
         let mut trajectory = Trajectory::new(Vec::with_capacity(num_points + 1));
         // Distance (along the path) of the last EMITTED waypoint. Used to
         // detect sub-resolution waypoints at workspace-boundary dead zones.
@@ -120,7 +124,9 @@ impl SegmentPlanner for MoveLPlanner {
 
             if is_last {
                 // Use the validated resolved state — the resolver already paid IK + analysis
-                q_current = goal.goal.state.as_slice().to_vec();
+                q_current = goal.goal.state.positions().ok_or_else(|| {
+                    PlanningError::InvalidContext("Goal state missing joint positions".into())
+                })?;
             } else {
                 let progress = if distance > 1e-12 {
                     travelled / distance
@@ -209,8 +215,12 @@ impl MoveLPlanner {
     ) -> PlanningResult {
         let target = goal.goal.position;
 
+        let q_start = ctx.current_state.positions().ok_or_else(|| {
+            PlanningError::InvalidContext("Current state missing joint positions".into())
+        })?;
+
         let fk = ForwardKinematics::new(ctx.robot.clone());
-        let fk_result = fk.evaluate(ctx.current_state.as_slice());
+        let fk_result = fk.evaluate(&q_start);
         let start_pose = fk_result.ee_pose().ok_or_else(|| {
             PlanningError::InvalidGoal("End-effector pose not found in FK result".into())
         })?;
@@ -235,7 +245,7 @@ impl MoveLPlanner {
             (total_time / time_step).ceil() as usize
         };
 
-        let mut q_current = ctx.current_state.as_slice().to_vec();
+        let mut q_current = q_start.clone();
         let mut trajectory = Trajectory::new(Vec::with_capacity(num_points + 1));
         // Distance (along the path) of the last EMITTED waypoint. Used to
         // detect sub-resolution waypoints at workspace-boundary dead zones.
@@ -262,7 +272,9 @@ impl MoveLPlanner {
 
             if is_last {
                 // Use the validated resolved state — the resolver already paid IK + analysis
-                q_current = goal.goal.state.as_slice().to_vec();
+                q_current = goal.goal.state.positions().ok_or_else(|| {
+                    PlanningError::InvalidContext("Goal state missing joint positions".into())
+                })?;
             } else {
                 let position = start + unit * travelled;
 
@@ -340,7 +352,7 @@ mod tests {
         let goal = ValidatedGoal {
             goal: ResolvedPoseGoal {
                 pose: target_pose,
-                state: RobotState::new(vec![0.5, 0.3]),
+                state: RobotState::from_positions(vec![0.5, 0.3]),
             },
             metadata: GoalMetadata::default(),
             assessment: PlanningAssessment::accepted(),
@@ -380,7 +392,7 @@ mod tests {
             .expect("target IK must converge on SCARA")
             .q;
 
-        let state = RobotState::new(q_start.clone());
+        let state = RobotState::from_positions(q_start.clone());
         let ctx = PlanningContext {
             robot: &robot,
             current_state: &state,
@@ -391,7 +403,7 @@ mod tests {
         let goal = ValidatedGoal {
             goal: ResolvedPositionGoal {
                 position: target,
-                state: RobotState::new(q_end.clone()),
+                state: RobotState::from_positions(q_end.clone()),
             },
             metadata: GoalMetadata::default(),
             assessment: PlanningAssessment::accepted(),
@@ -463,7 +475,7 @@ mod tests {
         let goal = ValidatedGoal {
             goal: ResolvedPoseGoal {
                 pose: target_pose,
-                state: RobotState::new(vec![0.5, 0.3]),
+                state: RobotState::from_positions(vec![0.5, 0.3]),
             },
             metadata: GoalMetadata::default(),
             assessment: PlanningAssessment::accepted(),
@@ -514,7 +526,7 @@ mod tests {
         let goal = ValidatedGoal {
             goal: ResolvedPoseGoal {
                 pose: target_pose,
-                state: RobotState::new(vec![0.5, 0.3]),
+                state: RobotState::from_positions(vec![0.5, 0.3]),
             },
             metadata: GoalMetadata::default(),
             assessment: PlanningAssessment::accepted(),
@@ -564,7 +576,7 @@ mod tests {
             .expect("end IK must converge")
             .q;
 
-        let state = RobotState::new(q_start.clone());
+        let state = RobotState::from_positions(q_start.clone());
         let ctx = PlanningContext {
             robot: &robot,
             current_state: &state,
@@ -574,7 +586,7 @@ mod tests {
         let goal = ValidatedGoal {
             goal: ResolvedPositionGoal {
                 position: end,
-                state: RobotState::new(q_end),
+                state: RobotState::from_positions(q_end),
             },
             metadata: GoalMetadata::default(),
             assessment: PlanningAssessment::accepted(),

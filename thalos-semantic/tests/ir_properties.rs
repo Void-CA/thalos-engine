@@ -18,14 +18,14 @@ use thalos_core::execution::program::ProgramInstruction;
 use thalos_core::ids::OperationId;
 use thalos_core::motion::{MotionTarget, OutputValue};
 use thalos_semantic::{
+    ir::SemanticIr,
     knowledge::{GraspPlan, MockKnowledgeProvider},
     lowering::SemanticLowering,
     operation::{HomeOp, MoveToOp, PickOp, PlaceOp, SemanticOperation, WaitOp},
-    program::SemanticProgram,
     resource::{LocationId, ObjectId},
     test_support::{
-        FixedTargetIKSolver, build_provider, default_ctx, lower, make_origin,
-        pick_wait_place_home_with_wait, sample_pose,
+        build_provider, default_ctx, lower, make_origin,
+        pick_wait_place_home_ir_with_wait, sample_pose, FixedTargetIKSolver,
     },
 };
 
@@ -41,12 +41,12 @@ use thalos_semantic::{
 
 #[test]
 fn pick_produces_four_instructions() {
-    let program = SemanticProgram::new(vec![SemanticOperation::Pick(PickOp {
+    let program = SemanticIr::from_operations(vec![SemanticOperation::Pick(PickOp {
         origin: make_origin("op-pick"),
         object: ObjectId("bolt".into()),
         tool: None,
     })]);
-    let instructions = lower(program);
+    let instructions = lower(&program);
     assert_eq!(
         instructions.len(),
         4,
@@ -73,13 +73,13 @@ fn pick_produces_four_instructions() {
 
 #[test]
 fn place_produces_four_instructions() {
-    let program = SemanticProgram::new(vec![SemanticOperation::Place(PlaceOp {
+    let program = SemanticIr::from_operations(vec![SemanticOperation::Place(PlaceOp {
         origin: make_origin("op-place"),
         object: ObjectId("bolt".into()),
         destination: LocationId("tray".into()),
         tool: None,
     })]);
-    let instructions = lower(program);
+    let instructions = lower(&program);
     assert_eq!(
         instructions.len(),
         4,
@@ -105,12 +105,12 @@ fn place_produces_four_instructions() {
 
 #[test]
 fn move_to_produces_one_instruction() {
-    let program = SemanticProgram::new(vec![SemanticOperation::MoveTo(MoveToOp {
+    let program = SemanticIr::from_operations(vec![SemanticOperation::MoveTo(MoveToOp {
         origin: make_origin("op-move"),
         destination: LocationId("station".into()),
         tool: None,
     })]);
-    let instructions = lower(program);
+    let instructions = lower(&program);
     assert_eq!(
         instructions.len(),
         1,
@@ -124,11 +124,11 @@ fn move_to_produces_one_instruction() {
 
 #[test]
 fn wait_produces_one_delay() {
-    let program = SemanticProgram::new(vec![SemanticOperation::Wait(WaitOp {
+    let program = SemanticIr::from_operations(vec![SemanticOperation::Wait(WaitOp {
         origin: make_origin("op-wait"),
         duration: Duration::from_millis(500),
     })]);
-    let instructions = lower(program);
+    let instructions = lower(&program);
     assert_eq!(
         instructions.len(),
         1,
@@ -142,10 +142,10 @@ fn wait_produces_one_delay() {
 
 #[test]
 fn home_produces_one_move_j() {
-    let program = SemanticProgram::new(vec![SemanticOperation::Home(HomeOp {
+    let program = SemanticIr::from_operations(vec![SemanticOperation::Home(HomeOp {
         origin: make_origin("op-home"),
     })]);
-    let instructions = lower(program);
+    let instructions = lower(&program);
     assert_eq!(
         instructions.len(),
         1,
@@ -164,12 +164,12 @@ fn home_produces_one_move_j() {
 #[test]
 fn pick_origin_propagates_to_all_instructions() {
     let origin = make_origin("pick-42");
-    let program = SemanticProgram::new(vec![SemanticOperation::Pick(PickOp {
+    let program = SemanticIr::from_operations(vec![SemanticOperation::Pick(PickOp {
         origin: origin.clone(),
         object: ObjectId("bolt".into()),
         tool: None,
     })]);
-    let instructions = lower(program);
+    let instructions = lower(&program);
     for (i, inst) in instructions.iter().enumerate() {
         let inst_origin = match inst {
             ProgramInstruction::MoveJ { origin, .. }
@@ -187,13 +187,13 @@ fn pick_origin_propagates_to_all_instructions() {
 #[test]
 fn place_origin_propagates_to_all_instructions() {
     let origin = make_origin("place-99");
-    let program = SemanticProgram::new(vec![SemanticOperation::Place(PlaceOp {
+    let program = SemanticIr::from_operations(vec![SemanticOperation::Place(PlaceOp {
         origin: origin.clone(),
         object: ObjectId("bolt".into()),
         destination: LocationId("tray".into()),
         tool: None,
     })]);
-    let instructions = lower(program);
+    let instructions = lower(&program);
     for (i, inst) in instructions.iter().enumerate() {
         let inst_origin = match inst {
             ProgramInstruction::MoveJ { origin, .. }
@@ -211,10 +211,10 @@ fn place_origin_propagates_to_all_instructions() {
 #[test]
 fn home_origin_propagates() {
     let origin = make_origin("home-7");
-    let program = SemanticProgram::new(vec![SemanticOperation::Home(HomeOp {
+    let program = SemanticIr::from_operations(vec![SemanticOperation::Home(HomeOp {
         origin: origin.clone(),
     })]);
-    let instructions = lower(program);
+    let instructions = lower(&program);
     assert_eq!(instructions.len(), 1);
     match &instructions[0] {
         ProgramInstruction::MoveJ { origin: o, .. } => {
@@ -230,7 +230,7 @@ fn home_origin_propagates() {
 
 #[test]
 fn lowering_is_deterministic() {
-    let program = SemanticProgram::new(vec![
+    let program = SemanticIr::from_operations(vec![
         SemanticOperation::Pick(PickOp {
             origin: make_origin("op-1"),
             object: ObjectId("bolt".into()),
@@ -266,7 +266,7 @@ fn lowering_is_deterministic() {
 
 #[test]
 fn operation_order_is_preserved() {
-    let program = SemanticProgram::new(vec![
+    let program = SemanticIr::from_operations(vec![
         SemanticOperation::Wait(WaitOp {
             origin: make_origin("op-1"),
             duration: Duration::from_millis(100),
@@ -281,7 +281,7 @@ fn operation_order_is_preserved() {
         }),
     ]);
 
-    let instructions = lower(program);
+    let instructions = lower(&program);
 
     // Wait → Delay
     assert!(
@@ -316,9 +316,9 @@ fn operation_order_is_preserved() {
 
 #[test]
 fn pick_wait_place_home_full_pipeline() {
-    let program = pick_wait_place_home_with_wait(Duration::from_millis(500));
+    let program = pick_wait_place_home_ir_with_wait(Duration::from_millis(500));
 
-    let instructions = lower(program);
+    let instructions = lower(&program);
 
     // Total: Pick(4) + Wait(1) + Place(4) + Home(1) = 10
     assert_eq!(
@@ -498,7 +498,7 @@ fn pick_wait_place_home_full_pipeline() {
 // ── Two independent Pick operations ──
 #[test]
 fn two_picks_produce_eight_instructions() {
-    let program = SemanticProgram::new(vec![
+    let program = SemanticIr::from_operations(vec![
         SemanticOperation::Pick(PickOp {
             origin: make_origin("pick-1"),
             object: ObjectId("bolt".into()),
@@ -510,7 +510,7 @@ fn two_picks_produce_eight_instructions() {
             tool: None,
         }),
     ]);
-    let instructions = lower(program);
+    let instructions = lower(&program);
     assert_eq!(
         instructions.len(),
         8,
@@ -643,7 +643,7 @@ fn instruction_origin(inst: &ProgramInstruction) -> OperationId {
 /// 4. every `RuntimeEvent` (resolver output).
 #[allow(clippy::type_complexity)]
 fn run_pipeline(
-    program: SemanticProgram,
+    program: SemanticIr,
 ) -> (
     Vec<OperationId>,
     Vec<OperationId>,
@@ -709,7 +709,7 @@ fn run_pipeline(
 #[test]
 fn i2_operation_id_identity_across_full_pipeline() {
     let origin = make_origin("op-7");
-    let program = SemanticProgram::new(vec![
+    let program = SemanticIr::from_operations(vec![
         SemanticOperation::Pick(PickOp {
             origin: origin.clone(),
             object: ObjectId("bolt".into()),
@@ -766,7 +766,7 @@ fn i2_origin_identity_with_different_operations_and_origin() {
     // (MoveTo → MoveJ; Place → MoveJ, MoveL, SetOutput, MoveL) must survive
     // every stage unchanged.
     let origin = make_origin("op-99");
-    let program = SemanticProgram::new(vec![
+    let program = SemanticIr::from_operations(vec![
         SemanticOperation::MoveTo(MoveToOp {
             origin: origin.clone(),
             destination: LocationId("station".into()),

@@ -97,6 +97,9 @@ pub(super) fn validate_level2(
             SemanticOperation::Wait(_) => {
                 // Wait has no resource references — nothing to validate.
             }
+            SemanticOperation::Skill(_) => {
+                // Skill validation is handled during lowering/resolution.
+            }
         }
     }
 

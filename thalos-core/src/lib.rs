@@ -8,6 +8,8 @@ pub mod models;
 pub mod motion;
 pub mod operation;
 pub mod prelude;
+pub mod program;
 pub mod robot;
+pub mod skill;
 pub mod spatial;
 pub mod trajectory;

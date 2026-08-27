@@ -233,7 +233,7 @@ impl PlanCompiler {
         let mut current_joints = ctx.current_state.joints.clone();
 
         for (segment_index, segment) in segments.iter().enumerate() {
-            let segment_state = RobotState::new(current_joints.clone());
+            let segment_state = RobotState::new(0.0, current_joints.clone());
             let segment_ctx = SegmentPlanningContext {
                 robot: ctx.robot,
                 current_state: &segment_state,
@@ -264,7 +264,7 @@ impl PlanCompiler {
 
             // Advance current state to end of this segment
             if let Some(last) = trajectory.waypoints().last() {
-                current_joints = last.joints().to_vec();
+                current_joints = last.joints().iter().map(|&q| thalos_core::prelude::JointState::position(q)).collect();
             }
 
             let meta = metadata.get(segment_index);

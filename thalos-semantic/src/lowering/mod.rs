@@ -4,15 +4,15 @@ use thalos_core::execution::program::{ExecutionMetadata, ExecutionProgram, Progr
 use thalos_core::motion::MotionTarget;
 
 use crate::{
+    ir::SemanticIr,
     knowledge::{GraspPlan, LoweringError, PlacementPlan},
     operation::{HomeOp, MoveToOp, PickOp, PlaceOp, SemanticOperation, WaitOp},
-    program::SemanticProgram,
     resource::ToolId,
 };
 
 use self::context::LoweringContext;
 
-/// The lowering engine that converts a validated `SemanticProgram` into an
+/// The lowering engine that converts a `SemanticIr` into an
 /// `ExecutionProgram` by resolving semantic resource IDs through the
 /// `KnowledgeProvider`.
 ///
@@ -21,7 +21,7 @@ use self::context::LoweringContext;
 pub struct SemanticLowering;
 
 impl SemanticLowering {
-    /// Lower a validated `SemanticProgram` into an `ExecutionProgram`.
+    /// Lower a `SemanticIr` into an `ExecutionProgram`.
     ///
     /// Iterates each `SemanticOperation` and emits the corresponding
     /// `ProgramInstruction` sequence:
@@ -37,13 +37,118 @@ impl SemanticLowering {
     /// Returns `Err(LoweringError)` if the provider returns an error for any
     /// resource resolution. No partial `ExecutionProgram` is produced on error.
     pub fn lower(
-        program: &SemanticProgram,
+        ir: &SemanticIr,
         ctx: &LoweringContext,
     ) -> Result<ExecutionProgram, LoweringError> {
         let mut instructions = Vec::new();
 
-        for op in &program.operations {
+        for op in &ir.operations {
             match op {
+                SemanticOperation::Skill(skill_op) => {
+                    let skill_id = &skill_op.skill_call.skill;
+                    let skill_resolved = if let Some(registry) = ctx.skills {
+                        registry.get_for_robot(&ir.robot, skill_id)
+                    } else {
+                        None
+                    };
+
+                    let skill = skill_resolved.ok_or_else(|| LoweringError::UnknownSkill(skill_id.clone()))?;
+
+                    match &skill.implementation {
+                        thalos_core::skill::SkillImplementation::Program(fragment) => {
+                            for inst in &fragment.instructions {
+                                match inst {
+                                    thalos_core::program::Instruction::Motion(_m) => {
+                                        let pose = ctx.provider.home_pose()?;
+                                        instructions.push(ProgramInstruction::MoveJ {
+                                            origin: skill_op.origin.clone(),
+                                            target: MotionTarget::Pose(pose),
+                                            profile: ctx.default_profile.clone(),
+                                        });
+                                    }
+                                    thalos_core::program::Instruction::Control(c) => match c {
+                                        thalos_core::program::ControlInstruction::Wait { duration } => {
+                                            instructions.push(ProgramInstruction::Delay {
+                                                origin: skill_op.origin.clone(),
+                                                duration: *duration,
+                                            });
+                                        }
+                                        thalos_core::program::ControlInstruction::SetSignal { signal_id, value } => {
+                                            instructions.push(ProgramInstruction::SetOutput {
+                                                origin: skill_op.origin.clone(),
+                                                channel: thalos_core::motion::OutputChannel {
+                                                    name: signal_id.clone(),
+                                                    channel_type: "digital".into(),
+                                                },
+                                                value: thalos_core::motion::OutputValue::Bool(*value),
+                                            });
+                                        }
+                                        _ => {}
+                                    },
+                                    _ => {}
+                                }
+                            }
+                        }
+                        thalos_core::skill::SkillImplementation::Native(_) | thalos_core::skill::SkillImplementation::Planner(_) => {
+                            let skill_name = skill_id.as_str();
+                            if skill_name == "pick" {
+                                let object_id = skill_op
+                                    .skill_call
+                                    .arguments
+                                    .first()
+                                    .and_then(|arg| match arg {
+                                        thalos_core::program::Value::Target(t) => Some(crate::resource::ObjectId(t.as_str().to_string())),
+                                        thalos_core::program::Value::String(s) => Some(crate::resource::ObjectId(s.clone())),
+                                        _ => None,
+                                    })
+                                    .unwrap_or_else(|| crate::resource::ObjectId("default_object".to_string()));
+
+                                let pick = PickOp {
+                                    origin: skill_op.origin.clone(),
+                                    object: object_id,
+                                    tool: ctx.default_tool.clone(),
+                                };
+                                let plan = ctx.provider.grasp_plan(&pick.object)?;
+                                Self::emit_pick(&mut instructions, &pick, &plan, ctx.default_tool.clone(), ctx);
+                            } else if skill_name == "place" {
+                                let object_id = skill_op
+                                    .skill_call
+                                    .arguments
+                                    .first()
+                                    .and_then(|arg| match arg {
+                                        thalos_core::program::Value::Target(t) => Some(crate::resource::ObjectId(t.as_str().to_string())),
+                                        thalos_core::program::Value::String(s) => Some(crate::resource::ObjectId(s.clone())),
+                                        _ => None,
+                                    })
+                                    .unwrap_or_else(|| crate::resource::ObjectId("default_object".to_string()));
+
+                                let dest_id = skill_op
+                                    .skill_call
+                                    .arguments
+                                    .get(1)
+                                    .and_then(|arg| match arg {
+                                        thalos_core::program::Value::Target(t) => Some(crate::resource::LocationId(t.as_str().to_string())),
+                                        thalos_core::program::Value::String(s) => Some(crate::resource::LocationId(s.clone())),
+                                        _ => None,
+                                    })
+                                    .unwrap_or_else(|| crate::resource::LocationId("default_location".to_string()));
+
+                                let place = PlaceOp {
+                                    origin: skill_op.origin.clone(),
+                                    object: object_id,
+                                    destination: dest_id,
+                                    tool: ctx.default_tool.clone(),
+                                };
+                                let plan = ctx.provider.place_plan(&place.object, &place.destination)?;
+                                Self::emit_place(&mut instructions, &place, &plan, ctx.default_tool.clone(), ctx);
+                            } else {
+                                let pose = ctx.provider.home_pose()?;
+                                let home = HomeOp { origin: skill_op.origin.clone() };
+                                Self::emit_home(&mut instructions, &home, &pose, ctx);
+                            }
+                        }
+                    }
+                }
                 SemanticOperation::Pick(pick) => {
                     let plan = ctx.provider.grasp_plan(&pick.object)?;
                     let tool = pick.tool.clone().or_else(|| ctx.default_tool.clone());
@@ -248,6 +353,7 @@ mod tests {
     fn sample_ctx(provider: &MockKnowledgeProvider) -> LoweringContext {
         LoweringContext {
             provider,
+            skills: None,
             default_tool: None,
             default_profile: sample_profile(),
             default_cartesian_profile: None,
@@ -281,6 +387,7 @@ mod tests {
     fn split_profile_ctx(provider: &MockKnowledgeProvider) -> LoweringContext<'_> {
         LoweringContext {
             provider,
+            skills: None,
             default_tool: None,
             default_profile: joint_profile(),
             default_cartesian_profile: Some(cartesian_profile()),
@@ -294,7 +401,7 @@ mod tests {
             object: ObjectId("bolt-1".to_string()),
             tool: None,
         });
-        let program = SemanticProgram::new(vec![op]);
+        let program = SemanticIr::from_operations(vec![op]);
         let provider = sample_provider();
         let ctx = split_profile_ctx(&provider);
 
@@ -332,7 +439,7 @@ mod tests {
             destination: LocationId("tray-1".to_string()),
             tool: None,
         });
-        let program = SemanticProgram::new(vec![op]);
+        let program = SemanticIr::from_operations(vec![op]);
         let provider = sample_provider();
         let ctx = split_profile_ctx(&provider);
 
@@ -369,7 +476,7 @@ mod tests {
         let provider = sample_provider();
         let ctx = split_profile_ctx(&provider);
 
-        let program = SemanticProgram::new(vec![
+        let program = SemanticIr::from_operations(vec![
             SemanticOperation::MoveTo(MoveToOp {
                 origin: OperationId("move-1".to_string()),
                 destination: LocationId("shelf-a".to_string()),
@@ -401,7 +508,7 @@ mod tests {
             object: ObjectId("bolt-1".to_string()),
             tool: None,
         });
-        let program = SemanticProgram::new(vec![op]);
+        let program = SemanticIr::from_operations(vec![op]);
         let provider = sample_provider();
         let ctx = sample_ctx(&provider);
 
@@ -419,7 +526,7 @@ mod tests {
             destination: LocationId("tray-1".to_string()),
             tool: None,
         });
-        let program = SemanticProgram::new(vec![op]);
+        let program = SemanticIr::from_operations(vec![op]);
         let provider = sample_provider();
         let ctx = sample_ctx(&provider);
 
@@ -436,7 +543,7 @@ mod tests {
             destination: LocationId("shelf-a".to_string()),
             tool: None,
         });
-        let program = SemanticProgram::new(vec![op]);
+        let program = SemanticIr::from_operations(vec![op]);
         let provider = sample_provider();
         let ctx = sample_ctx(&provider);
 
@@ -452,7 +559,7 @@ mod tests {
             origin: OperationId("wait-1".to_string()),
             duration: Duration::from_secs(3),
         });
-        let program = SemanticProgram::new(vec![op]);
+        let program = SemanticIr::from_operations(vec![op]);
         let provider = sample_provider();
         let ctx = sample_ctx(&provider);
 
@@ -467,7 +574,7 @@ mod tests {
         let op = SemanticOperation::Home(HomeOp {
             origin: OperationId("home-1".to_string()),
         });
-        let program = SemanticProgram::new(vec![op]);
+        let program = SemanticIr::from_operations(vec![op]);
         let provider = sample_provider();
         let ctx = sample_ctx(&provider);
 
@@ -486,7 +593,7 @@ mod tests {
             object: ObjectId("bolt-1".to_string()),
             tool: None,
         });
-        let program = SemanticProgram::new(vec![op]);
+        let program = SemanticIr::from_operations(vec![op]);
         let provider = sample_provider();
         let ctx = sample_ctx(&provider);
 
@@ -524,7 +631,7 @@ mod tests {
             destination: LocationId("tray-1".to_string()),
             tool: None,
         });
-        let program = SemanticProgram::new(vec![op]);
+        let program = SemanticIr::from_operations(vec![op]);
         let provider = sample_provider();
         let ctx = sample_ctx(&provider);
 
@@ -557,7 +664,7 @@ mod tests {
             destination: LocationId("shelf-a".to_string()),
             tool: None,
         });
-        let program = SemanticProgram::new(vec![op]);
+        let program = SemanticIr::from_operations(vec![op]);
         let provider = sample_provider();
         let ctx = sample_ctx(&provider);
 
@@ -575,7 +682,7 @@ mod tests {
             origin: OperationId("wait-1".to_string()),
             duration: Duration::from_secs(5),
         });
-        let program = SemanticProgram::new(vec![op]);
+        let program = SemanticIr::from_operations(vec![op]);
         let provider = sample_provider();
         let ctx = sample_ctx(&provider);
 
@@ -594,7 +701,7 @@ mod tests {
         let op = SemanticOperation::Home(HomeOp {
             origin: OperationId("home-1".to_string()),
         });
-        let program = SemanticProgram::new(vec![op]);
+        let program = SemanticIr::from_operations(vec![op]);
         let provider = sample_provider();
         let ctx = sample_ctx(&provider);
 
@@ -616,7 +723,7 @@ mod tests {
             object: ObjectId("bolt-1".to_string()),
             tool: None,
         });
-        let program = SemanticProgram::new(vec![op]);
+        let program = SemanticIr::from_operations(vec![op]);
         let provider = sample_provider();
         let ctx = sample_ctx(&provider);
 
@@ -644,7 +751,7 @@ mod tests {
             destination: LocationId("tray-1".to_string()),
             tool: None,
         });
-        let program = SemanticProgram::new(vec![op]);
+        let program = SemanticIr::from_operations(vec![op]);
         let provider = sample_provider();
         let ctx = sample_ctx(&provider);
 
@@ -666,7 +773,7 @@ mod tests {
         let op = SemanticOperation::Home(HomeOp {
             origin: origin.clone(),
         });
-        let program = SemanticProgram::new(vec![op]);
+        let program = SemanticIr::from_operations(vec![op]);
         let provider = sample_provider();
         let ctx = sample_ctx(&provider);
 
@@ -693,6 +800,7 @@ mod tests {
             .with_home_pose(Ok(sample_pose(0.0, 0.0, 0.0)));
         let ctx = LoweringContext {
             provider: &provider,
+            skills: None,
             default_tool: None,
             default_profile: sample_profile(),
             default_cartesian_profile: None,
@@ -703,7 +811,7 @@ mod tests {
             object: unknown,
             tool: None,
         });
-        let program = SemanticProgram::new(vec![op]);
+        let program = SemanticIr::from_operations(vec![op]);
 
         let result = SemanticLowering::lower(&program, &ctx);
         assert!(result.is_err());
@@ -720,6 +828,7 @@ mod tests {
             .with_home_pose(Ok(sample_pose(0.0, 0.0, 0.0)));
         let ctx = LoweringContext {
             provider: &provider,
+            skills: None,
             default_tool: None,
             default_profile: sample_profile(),
             default_cartesian_profile: None,
@@ -730,7 +839,7 @@ mod tests {
             destination: unknown,
             tool: None,
         });
-        let program = SemanticProgram::new(vec![op]);
+        let program = SemanticIr::from_operations(vec![op]);
 
         let result = SemanticLowering::lower(&program, &ctx);
         assert!(result.is_err());
@@ -742,6 +851,7 @@ mod tests {
             MockKnowledgeProvider::new().with_home_pose(Err(LoweringError::MissingHomePose));
         let ctx = LoweringContext {
             provider: &provider,
+            skills: None,
             default_tool: None,
             default_profile: sample_profile(),
             default_cartesian_profile: None,
@@ -750,7 +860,7 @@ mod tests {
         let op = SemanticOperation::Home(HomeOp {
             origin: OperationId("home-1".to_string()),
         });
-        let program = SemanticProgram::new(vec![op]);
+        let program = SemanticIr::from_operations(vec![op]);
 
         let result = SemanticLowering::lower(&program, &ctx);
         assert!(result.is_err());
@@ -786,7 +896,7 @@ mod tests {
                 origin: OperationId("op-5".to_string()),
             }),
         ];
-        let program = SemanticProgram::new(ops);
+        let program = SemanticIr::from_operations(ops);
         let provider = sample_provider();
         let ctx = sample_ctx(&provider);
 
@@ -825,12 +935,162 @@ mod tests {
                 origin: OperationId("op-5".to_string()),
             }),
         ];
-        let program = SemanticProgram::new(ops);
+        let program = SemanticIr::from_operations(ops);
         let provider = sample_provider();
         let ctx = sample_ctx(&provider);
 
         let ep = SemanticLowering::lower(&program, &ctx).unwrap();
         // Pick(4) + Place(4) + MoveTo(1) + Wait(1) + Home(1) = 11
         assert_eq!(ep.instructions.len(), 11);
+    }
+
+    // ── SkillRegistry Resolution Vertical Slice Tests ──────────────────────
+
+    #[test]
+    fn registered_skill_resolves_and_lowers() {
+        use thalos_core::ids::{ProgramName, RobotId, SkillId};
+        use thalos_core::program::{Instruction, RobotProgram, SkillCall, Value};
+        use thalos_core::skill::{NativeSkillId, RobotSkill, SkillImplementation, SkillRegistry};
+
+        let mut registry = SkillRegistry::new();
+        let pick_skill = RobotSkill {
+            id: SkillId("pick".into()),
+            name: "Pick Object".into(),
+            parameters: vec![],
+            preconditions: vec![],
+            postconditions: vec![],
+            implementation: SkillImplementation::Native(NativeSkillId("pick_native".into())),
+        };
+        registry.register(pick_skill);
+
+        let program = RobotProgram {
+            name: ProgramName("SkillDemo".into()),
+            robot: RobotId("robot-1".into()),
+            targets: vec![],
+            body: vec![Instruction::Skill(SkillCall {
+                skill: SkillId("pick".into()),
+                arguments: vec![Value::String("bolt-1".into())],
+            })],
+        };
+
+        let ir = crate::ir::normalize(&program).unwrap();
+        let provider = sample_provider();
+        let mut ctx = sample_ctx(&provider);
+        ctx.skills = Some(&registry);
+
+        let lowered = SemanticLowering::lower(&ir, &ctx);
+        assert!(lowered.is_ok(), "Lowering registered skill should succeed: {:?}", lowered.err());
+    }
+
+    #[test]
+    fn unknown_skill_is_rejected() {
+        use thalos_core::ids::{ProgramName, RobotId, SkillId};
+        use thalos_core::program::{Instruction, RobotProgram, SkillCall};
+        use thalos_core::skill::SkillRegistry;
+
+        let registry = SkillRegistry::new(); // Empty registry
+
+        let program = RobotProgram {
+            name: ProgramName("UnknownSkillDemo".into()),
+            robot: RobotId("robot-1".into()),
+            targets: vec![],
+            body: vec![Instruction::Skill(SkillCall {
+                skill: SkillId("weld".into()),
+                arguments: vec![],
+            })],
+        };
+
+        let ir = crate::ir::normalize(&program).unwrap();
+        let provider = sample_provider();
+        let mut ctx = sample_ctx(&provider);
+        ctx.skills = Some(&registry);
+
+        let result = SemanticLowering::lower(&ir, &ctx);
+        assert_eq!(result.unwrap_err(), LoweringError::UnknownSkill(SkillId("weld".into())));
+    }
+
+    #[test]
+    fn extensibility_custom_skill_without_compiler_edits() {
+        use thalos_core::ids::{ProgramName, RobotId, SkillId, TargetId};
+        use thalos_core::program::{ControlInstruction, Instruction, MotionInstruction, RobotProgram, SkillCall};
+        use thalos_core::skill::{ProgramFragment, RobotSkill, SkillImplementation, SkillRegistry};
+
+        let mut registry = SkillRegistry::new();
+        let custom_skill = RobotSkill {
+            id: SkillId("inspect_surface".into()),
+            name: "Inspect Surface".into(),
+            parameters: vec![],
+            preconditions: vec![],
+            postconditions: vec![],
+            implementation: SkillImplementation::Program(ProgramFragment {
+                instructions: vec![
+                    Instruction::Motion(MotionInstruction::MoveJoint {
+                        target: TargetId("home".into()),
+                    }),
+                    Instruction::Control(ControlInstruction::Wait {
+                        duration: std::time::Duration::from_secs(3),
+                    }),
+                ],
+            }),
+        };
+        registry.register(custom_skill);
+
+        let program = RobotProgram {
+            name: ProgramName("CustomSkillExtensibilityDemo".into()),
+            robot: RobotId("robot-1".into()),
+            targets: vec![],
+            body: vec![Instruction::Skill(SkillCall {
+                skill: SkillId("inspect_surface".into()),
+                arguments: vec![],
+            })],
+        };
+
+        // Prove normalize works without compiler changes
+        let ir = crate::ir::normalize(&program).unwrap();
+        assert_eq!(ir.operations.len(), 1);
+
+        // Prove lowering expands ProgramFragment into instructions
+        let provider = sample_provider();
+        let mut ctx = sample_ctx(&provider);
+        ctx.skills = Some(&registry);
+
+        let lowered = SemanticLowering::lower(&ir, &ctx).unwrap();
+        assert_eq!(lowered.instructions.len(), 2, "Custom skill inspect_surface expanded into 2 instructions");
+    }
+
+    #[test]
+    fn robot_scoped_skill_resolution() {
+        use thalos_core::ids::{ProgramName, RobotId, SkillId};
+        use thalos_core::program::{Instruction, RobotProgram, SkillCall};
+        use thalos_core::skill::{NativeSkillId, RobotSkill, SkillImplementation, SkillRegistry};
+
+        let mut registry = SkillRegistry::new();
+        let scara_pick = RobotSkill {
+            id: SkillId("pick".into()),
+            name: "SCARA Pick".into(),
+            parameters: vec![],
+            preconditions: vec![],
+            postconditions: vec![],
+            implementation: SkillImplementation::Native(NativeSkillId("scara_pick_driver".into())),
+        };
+        registry.register_for_robot(RobotId("scara_1".into()), scara_pick);
+
+        let program = RobotProgram {
+            name: ProgramName("ScaraProgram".into()),
+            robot: RobotId("scara_1".into()),
+            targets: vec![],
+            body: vec![Instruction::Skill(SkillCall {
+                skill: SkillId("pick".into()),
+                arguments: vec![thalos_core::program::Value::String("bolt-1".into())],
+            })],
+        };
+
+        let ir = crate::ir::normalize(&program).unwrap();
+        let provider = sample_provider();
+        let mut ctx = sample_ctx(&provider);
+        ctx.skills = Some(&registry);
+
+        let lowered = SemanticLowering::lower(&ir, &ctx);
+        assert!(lowered.is_ok());
     }
 }

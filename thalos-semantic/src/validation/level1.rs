@@ -62,6 +62,9 @@ pub(super) fn validate_level1(program: &SemanticProgram) -> Vec<Observation> {
             SemanticOperation::MoveTo(_) => {
                 // No Level 1 rules apply to MoveTo.
             }
+            SemanticOperation::Skill(_) => {
+                // No Level 1 rules apply to generic Skill.
+            }
         }
     }
 

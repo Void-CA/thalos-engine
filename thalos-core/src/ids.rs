@@ -55,3 +55,12 @@ id_newtype!(SceneId);
 id_newtype!(SemanticProgramId);
 id_newtype!(MotionPlanId);
 id_newtype!(ExecutionSessionId);
+
+// ---------------------------------------------------------------------------
+// Robot Program & Skill domain identifiers (ADR-001)
+// ---------------------------------------------------------------------------
+
+id_newtype!(TargetId);
+id_newtype!(SkillId);
+id_newtype!(ProgramName);
+id_newtype!(TargetName);

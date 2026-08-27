@@ -9,7 +9,7 @@ pub use crate::robot::{
     link::Link,
     segment::Segment,
     serial_chain::SerialChain,
-    state::RobotState,
+    state::{JointState, RobotState, StateDeviation, StateRequirement, StateSatisfactionError},
 };
 
 pub use crate::spatial::{
@@ -46,8 +46,18 @@ pub use crate::collision::{
 };
 
 pub use crate::ids::{
-    ExecutionSessionId, LocationId, MotionPlanId, ObjectId, OperationId, RobotId, SceneId,
-    SemanticProgramId, TaskDocumentId, ToolId,
+    ExecutionSessionId, LocationId, MotionPlanId, ObjectId, OperationId, ProgramName, RobotId,
+    SceneId, SemanticProgramId, SkillId, TargetId, TargetName, TaskDocumentId, ToolId,
+};
+
+pub use crate::program::{
+    ControlInstruction, Instruction, JointPosition, MotionInstruction, RobotProgram, SkillCall,
+    Target, TargetReference, Value,
+};
+
+pub use crate::skill::{
+    Condition, NativeSkillId, Parameter, ProgramFragment, RobotSkill, SkillImplementation,
+    SkillPlanner, SkillRegistry,
 };
 
 pub use crate::operation::{
@@ -56,3 +66,4 @@ pub use crate::operation::{
 };
 
 pub use crate::trajectory::{Trajectory, TrajectoryPoint};
+

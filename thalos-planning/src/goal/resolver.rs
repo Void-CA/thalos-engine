@@ -50,9 +50,12 @@ impl GoalResolver {
         ctx: &PlanningContext,
         pose: &Pose,
     ) -> Result<ValidatedGoal<ResolvedPoseGoal>, PlanningError> {
+        let q_start = ctx.current_state.positions().ok_or_else(|| {
+            PlanningError::InvalidContext("Current state missing joint positions".into())
+        })?;
         let ik_result = ctx
             .ik_solver
-            .solve(ctx.current_state.as_slice(), IKGoal::Pose(pose.clone()))?;
+            .solve(&q_start, IKGoal::Pose(pose.clone()))?;
 
         match ik_result.status {
             IKStatus::Converged => {}
@@ -77,7 +80,7 @@ impl GoalResolver {
         Ok(ValidatedGoal {
             goal: ResolvedPoseGoal {
                 pose: pose.clone(),
-                state: RobotState::new(ik_result.q),
+                state: RobotState::from_positions(ik_result.q),
             },
             metadata,
             assessment,
@@ -93,9 +96,12 @@ impl GoalResolver {
         ctx: &PlanningContext,
         position: thalos_math::Vector3,
     ) -> Result<ValidatedGoal<ResolvedPositionGoal>, PlanningError> {
+        let q_start = ctx.current_state.positions().ok_or_else(|| {
+            PlanningError::InvalidContext("Current state missing joint positions".into())
+        })?;
         let ik_result = ctx
             .ik_solver
-            .solve(ctx.current_state.as_slice(), IKGoal::Position(position))?;
+            .solve(&q_start, IKGoal::Position(position))?;
 
         match ik_result.status {
             IKStatus::Converged => {}
@@ -120,7 +126,7 @@ impl GoalResolver {
         Ok(ValidatedGoal {
             goal: ResolvedPositionGoal {
                 position,
-                state: RobotState::new(ik_result.q),
+                state: RobotState::from_positions(ik_result.q),
             },
             metadata,
             assessment,
@@ -239,7 +245,7 @@ mod tests {
         let state = RobotState::zero(4);
         let fk = ForwardKinematics::new(robot.clone());
         let solver =
-            DampedLeastSquaresSolver::new(fk, robot.end_effector().clone(), 500, 1e-6, 0.1);
+            DampedLeastSquaresSolver::new(fk.clone(), robot.end_effector().clone(), 500, 1e-6, 0.1);
         let ctx = PlanningContext {
             robot: &robot,
             current_state: &state,
@@ -260,9 +266,9 @@ mod tests {
         let ResolvedPositionGoal { position, state } = &validated.goal;
         assert_eq!(position, &target);
 
-        let fk2 = ForwardKinematics::new(robot.clone());
-        let ee = fk2
-            .evaluate(state.as_slice())
+        let q_eval = state.positions().expect("valid state positions");
+        let ee = fk
+            .evaluate(&q_eval)
             .ee_pose()
             .unwrap()
             .translation();

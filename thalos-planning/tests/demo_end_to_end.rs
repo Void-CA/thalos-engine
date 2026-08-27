@@ -80,7 +80,7 @@ fn compile(
     program: &PlanningProgram,
 ) -> Result<Trajectory, String> {
     let solver = real_solver(chain);
-    let state = RobotState::new(start.to_vec());
+    let state = RobotState::from_positions(start.to_vec());
     let ctx = SegmentPlanningContext {
         robot: chain,
         current_state: &state,

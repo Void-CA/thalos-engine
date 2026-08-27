@@ -228,17 +228,21 @@ pub fn replan_suffix(
             source_project: "h6-replanned-alternate".into(),
         },
     };
+    let q_start = current_state.positions().ok_or_else(|| ResolutionError::IkFailed {
+        instruction_index: 0,
+        reason: "Current state missing joint positions".into(),
+    })?;
     let resolver = MotionResolver::new(
         context.ik_solver,
         &context.robot.frames,
-        current_state.as_slice(),
+        &q_start,
         context.robot.dof_count(),
     )?;
     let resolution = resolver.resolve(&program)?;
     let mut final_state = current_state.clone();
     for segment in &resolution.planning.segments {
         if let MotionSegment::MoveJ { target, .. } = segment {
-            final_state = RobotState::new(target.clone());
+            final_state = RobotState::from_positions(target.clone());
         }
     }
 
@@ -604,8 +608,8 @@ mod tests {
         let fk = ForwardKinematics::new(robot.clone());
         let solver =
             DampedLeastSquaresSolver::new(fk.clone(), *robot.end_effector(), 500, 1e-6, 0.1);
-        let current = RobotState::new(vec![0.0, -1.31, -0.1, 0.0]);
-        let alternate = RobotState::new(vec![0.2, -0.9, -0.1, 0.0]);
+        let current = RobotState::from_positions(vec![0.0, -1.31, -0.1, 0.0]);
+        let alternate = RobotState::from_positions(vec![0.2, -0.9, -0.1, 0.0]);
         let target = [0.5, 0.5, 0.25];
         let context = PlanningContext {
             robot: &robot,
@@ -650,7 +654,7 @@ mod tests {
         assert!((resolved.x - target[0]).abs() < 0.02);
         assert!((resolved.y - target[1]).abs() < 0.02);
         assert!((resolved.z - target[2]).abs() < 0.02);
-        assert_ne!(planned.final_state.as_slice(), current.as_slice());
+        assert_ne!(planned.final_state.positions().unwrap(), current.positions().unwrap());
     }
 
     #[test]

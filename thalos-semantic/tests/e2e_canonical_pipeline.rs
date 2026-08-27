@@ -46,7 +46,7 @@ use thalos_planning::{
 };
 use thalos_semantic::{
     lowering::SemanticLowering,
-    test_support::{self, pick_wait_place_home_program},
+    test_support::{self, pick_wait_place_home_ir},
 };
 
 /// The `OperationId` carried by an `ProgramInstruction` (all four variants).
@@ -72,7 +72,7 @@ struct PipelineArtifact {
 /// Run the canonical scenario through the entire compiler pipeline, including
 /// the `TimelineScheduler` step that the isolated unit tests never reach.
 fn run_canonical_pipeline() -> PipelineArtifact {
-    let program = pick_wait_place_home_program();
+    let program = pick_wait_place_home_ir();
 
     // ── IR-0 → IR-1: SemanticLowering → ExecutionProgram ────────────────
     let provider = test_support::build_provider();

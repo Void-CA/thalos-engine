@@ -17,6 +17,8 @@ pub struct LoweringContext<'a> {
     /// The knowledge provider for resolving semantic resource IDs into
     /// geometric frames and plans.
     pub provider: &'a dyn KnowledgeProvider,
+    /// The registry of available skills for skill resolution during lowering.
+    pub skills: Option<&'a thalos_core::skill::SkillRegistry>,
     /// The default tool to use when an operation specifies `tool: None`.
     pub default_tool: Option<ToolId>,
     /// The default motion profile for emitted JOINT-space instructions
@@ -46,6 +48,7 @@ impl Clone for LoweringContext<'_> {
     fn clone(&self) -> Self {
         LoweringContext {
             provider: self.provider,
+            skills: self.skills,
             default_tool: self.default_tool.clone(),
             default_profile: self.default_profile.clone(),
             default_cartesian_profile: self.default_cartesian_profile.clone(),
@@ -94,6 +97,7 @@ mod tests {
         let provider = sample_provider();
         let ctx = LoweringContext {
             provider: &provider,
+            skills: None,
             default_tool: None,
             default_profile: sample_profile(),
             default_cartesian_profile: None,
@@ -108,6 +112,7 @@ mod tests {
         let provider = sample_provider();
         let ctx = LoweringContext {
             provider: &provider,
+            skills: None,
             default_tool: Some(ToolId("gripper-1".to_string())),
             default_profile: sample_profile(),
             default_cartesian_profile: None,
@@ -120,6 +125,7 @@ mod tests {
         let provider = sample_provider();
         let ctx = LoweringContext {
             provider: &provider,
+            skills: None,
             default_tool: None,
             default_profile: sample_profile(),
             default_cartesian_profile: None,
@@ -133,6 +139,7 @@ mod tests {
         let profile = sample_profile();
         let ctx = LoweringContext {
             provider: &provider,
+            skills: None,
             default_tool: None,
             default_profile: profile.clone(),
             default_cartesian_profile: None,
@@ -151,6 +158,7 @@ mod tests {
         let profile = sample_profile();
         let ctx = LoweringContext {
             provider: &provider,
+            skills: None,
             default_tool: None,
             default_profile: profile.clone(),
             default_cartesian_profile: None,
@@ -171,6 +179,7 @@ mod tests {
         };
         let ctx = LoweringContext {
             provider: &provider,
+            skills: None,
             default_tool: None,
             default_profile: joint.clone(),
             default_cartesian_profile: Some(cartesian.clone()),
@@ -186,6 +195,7 @@ mod tests {
         let provider = sample_provider();
         let ctx = LoweringContext {
             provider: &provider,
+            skills: None,
             default_tool: None,
             default_profile: sample_profile(),
             default_cartesian_profile: None,
@@ -200,6 +210,7 @@ mod tests {
         let provider = sample_provider();
         let ctx = LoweringContext {
             provider: &provider,
+            skills: None,
             default_tool: None,
             default_profile: sample_profile(),
             default_cartesian_profile: None,

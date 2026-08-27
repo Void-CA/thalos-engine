@@ -37,19 +37,24 @@ pub struct WaitOp {
 }
 
 /// Parameters for a Home operation: return to home position.
-///
-/// No parameters beyond origin — Home is always a parameterless return to
-/// the configured home pose.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HomeOp {
     pub origin: OperationId,
 }
 
+/// Parameters for a generic SkillCall operation: invoke a skill with arguments.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SkillCallOp {
+    pub origin: OperationId,
+    pub skill_call: thalos_core::program::SkillCall,
+}
+
 /// A semantic operation in a task-level program.
 ///
-/// Exactly five variants exist in v1:
-/// - `Pick`: grasp an object
-/// - `Place`: release an object at a location
+/// Variants:
+/// - `Skill`: invoke a RobotSkill via SkillCall
+/// - `Pick`: grasp an object (legacy, mapped to skill)
+/// - `Place`: release an object at a location (legacy, mapped to skill)
 /// - `MoveTo`: navigate to a location
 /// - `Wait`: pause for a duration
 /// - `Home`: return to home position
@@ -59,6 +64,7 @@ pub struct HomeOp {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SemanticOperation {
+    Skill(SkillCallOp),
     Pick(PickOp),
     Place(PlaceOp),
     MoveTo(MoveToOp),

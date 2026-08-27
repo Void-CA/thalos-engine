@@ -21,25 +21,21 @@ use thalos_core::{
 };
 
 use crate::{
+    ir::SemanticIr,
     knowledge::{GraspPlan, MockKnowledgeProvider, PlacementPlan},
-    lowering::{SemanticLowering, context::LoweringContext},
+    lowering::{context::LoweringContext, SemanticLowering},
     operation::{HomeOp, PickOp, PlaceOp, SemanticOperation, WaitOp},
-    program::SemanticProgram,
     resource::{LocationId, ObjectId, ToolId},
 };
 
-/// The canonical `Pick → Wait → Place → Home` program with a 300 ms wait.
-pub fn pick_wait_place_home_program() -> SemanticProgram {
-    pick_wait_place_home_with_wait(Duration::from_millis(300))
+/// The canonical `Pick → Wait → Place → Home` IR with a 300 ms wait.
+pub fn pick_wait_place_home_ir() -> SemanticIr {
+    pick_wait_place_home_ir_with_wait(Duration::from_millis(300))
 }
 
-/// The canonical `Pick → Wait → Place → Home` program with a configurable wait.
-///
-/// The only variance between consumers is the `Wait` duration (the existing
-/// `pick_wait_place_home_full_pipeline` property test asserts 500 ms); every
-/// other field is identical, so construction lives here exactly once.
-pub fn pick_wait_place_home_with_wait(wait: Duration) -> SemanticProgram {
-    SemanticProgram::new(vec![
+/// The canonical `Pick → Wait → Place → Home` IR with a configurable wait.
+pub fn pick_wait_place_home_ir_with_wait(wait: Duration) -> SemanticIr {
+    SemanticIr::from_operations(vec![
         SemanticOperation::Pick(PickOp {
             origin: make_origin("op-pick"),
             object: ObjectId("bolt".into()),
@@ -114,10 +110,10 @@ pub fn default_ctx(provider: &MockKnowledgeProvider) -> LoweringContext<'_> {
 
 /// Lower a program with the canonical provider/context and return its
 /// instructions (IR-0 → IR-1).
-pub fn lower(program: SemanticProgram) -> Vec<ProgramInstruction> {
+pub fn lower(ir: &SemanticIr) -> Vec<ProgramInstruction> {
     let provider = build_provider();
     let ctx = default_ctx(&provider);
-    let mp = SemanticLowering::lower(&program, &ctx).expect("lowering should succeed");
+    let mp = SemanticLowering::lower(ir, &ctx).expect("lowering should succeed");
     mp.instructions
 }
 

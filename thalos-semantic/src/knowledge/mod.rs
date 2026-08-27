@@ -21,6 +21,9 @@ pub enum LoweringError {
     /// The home pose is not configured and cannot be resolved.
     #[error("missing home pose")]
     MissingHomePose,
+    /// The requested skill is not registered in the SkillRegistry.
+    #[error("unknown skill: '{0}'")]
+    UnknownSkill(thalos_core::ids::SkillId),
 }
 
 /// Create the conventional gripper output channel used by lowering for

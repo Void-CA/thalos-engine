@@ -154,7 +154,7 @@ impl PlanAdvisor {
                 None,
             );
         };
-        let state = RobotState::new(current_joints.to_vec());
+        let state = RobotState::from_positions(current_joints.to_vec());
         let ctx = SegmentPlanningContext {
             robot,
             current_state: &state,
@@ -481,7 +481,7 @@ impl PlanAdvisor {
 
         // 2. Compilar el programa editado desde el inicio del plan, con el
         //    MISMO TCP activo que preview/apply usan al recompilar.
-        let state = RobotState::new(current_joints.to_vec());
+        let state = RobotState::from_positions(current_joints.to_vec());
         let ctx = SegmentPlanningContext {
             robot,
             current_state: &state,
@@ -1164,7 +1164,7 @@ mod tests {
         }]);
         let home = vec![0.0, -1.31, -0.1, 0.0];
         let solver = real_solver(&robot);
-        let state = RobotState::new(home.clone());
+        let state = RobotState::from_positions(home.clone());
         let ctx = SegmentPlanningContext {
             robot: &robot,
             current_state: &state,
@@ -1361,7 +1361,7 @@ mod tests {
 
         // Precondition: the base program genuinely does not compile.
         let solver = real_solver(&robot);
-        let state = RobotState::new(start.clone());
+        let state = RobotState::from_positions(start.clone());
         let ctx = SegmentPlanningContext {
             robot: &robot,
             current_state: &state,
@@ -1418,7 +1418,7 @@ mod tests {
         ]);
         let start = vec![0.0, 0.0, 0.0];
         let solver = real_solver(&robot);
-        let state = RobotState::new(start.clone());
+        let state = RobotState::from_positions(start.clone());
         let ctx = SegmentPlanningContext {
             robot: &robot,
             current_state: &state,

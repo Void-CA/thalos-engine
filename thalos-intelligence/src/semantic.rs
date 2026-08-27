@@ -236,6 +236,9 @@ impl SemanticExpert {
                     }
                     last_place = None;
                 }
+                SemanticOperation::Skill(_skill) => {
+                    last_place = None;
+                }
             }
         }
 
@@ -278,6 +281,7 @@ fn op_origin(op: &SemanticOperation) -> OperationId {
         SemanticOperation::MoveTo(m) => m.origin.clone(),
         SemanticOperation::Wait(w) => w.origin.clone(),
         SemanticOperation::Home(h) => h.origin.clone(),
+        SemanticOperation::Skill(s) => s.origin.clone(),
     }
 }
 

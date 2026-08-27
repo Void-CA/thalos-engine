@@ -43,11 +43,13 @@ impl SegmentPlanner for MoveJPlanner {
     type Goal = ValidatedGoal<JointGoal>;
 
     fn plan(&self, ctx: &PlanningContext, goal: &ValidatedGoal<JointGoal>) -> PlanningResult {
-        let start = ctx.current_state.as_slice();
+        let q_start = ctx.current_state.positions().ok_or_else(|| {
+            crate::error::PlanningError::InvalidContext("Current state missing joint positions".into())
+        })?;
         let target = &goal.goal.as_slice();
 
         let waypoints = joint::trapezoidal_profile(
-            start,
+            &q_start,
             target,
             self.config.max_velocity,
             self.config.max_acceleration,
@@ -118,7 +120,8 @@ mod tests {
         let traj = planner.plan(&ctx, &goal).expect("plan should succeed");
         let first = &traj.waypoints()[0];
         let last = &traj.waypoints()[traj.len() - 1];
-        for (j, s) in first.joints().iter().zip(ctx.current_state.as_slice()) {
+        let start_positions = ctx.current_state.positions().unwrap();
+        for (j, s) in first.joints().iter().zip(start_positions.iter()) {
             assert!((j - s).abs() < 1e-10);
         }
         for (j, t) in last.joints().iter().zip(target.iter()) {
