@@ -51,4 +51,14 @@ pub use crate::collision::{
     CollisionMatrix, CollisionPair, CollisionResult, CollisionType, Cylinder, EntityId, Sphere,
 };
 
+pub use crate::ids::{
+    ExecutionSessionId, LocationId, MotionPlanId, ObjectId, OperationId, RobotId, SceneId,
+    SemanticProgramId, TaskDocumentId, ToolId,
+};
+
+pub use crate::operation::{
+    ConstraintQuery, MotionNode, MotionProvenance, MotionRole, Operation, OperationConstraints,
+    OperationType, PrecisionLevel, RangeConstraintQuery,
+};
+
 pub use crate::trajectory::{Trajectory, TrajectoryPoint};
