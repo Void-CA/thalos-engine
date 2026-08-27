@@ -1,9 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::robot::capability::{JointObservationCapability, RobotCapability};
-use crate::robot::observation::{ObservationAssessment, ObservationQuality};
-use crate::robot::policy::{ObservationResponsePolicy, PolicyDecision};
-use crate::robot::state::{JointState, RobotState, StateDeviation};
+use crate::robot::observation::ObservationQuality;
+use crate::robot::state::{JointState, RobotState};
 
 /// Physical calibration mapping raw driver readings to engineering units (radians / meters).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -204,6 +203,9 @@ mod tests {
     use super::*;
     use std::time::Duration;
     use crate::robot::capability::{JointObservationRequirement, ObservationConstraint, ObservationRequirement};
+    use crate::robot::observation::ObservationAssessment;
+    use crate::robot::policy::{DeviationThresholds, ObservationResponsePolicy, PolicyDecision};
+    use crate::robot::state::StateDeviation;
 
     struct MockEncoderHardware {
         ticks: f64,

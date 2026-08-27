@@ -136,8 +136,10 @@ fn evaluate_component(
         None => ObservationQuality::Valid, // Not required by the contract
         Some(constraint) => match value_opt {
             None => ObservationQuality::Missing,
-            Some(_) => {
-                if let Some(max_stale) = constraint.max_staleness {
+            Some(v) => {
+                if v.is_nan() {
+                    ObservationQuality::Invalid
+                } else if let Some(max_stale) = constraint.max_staleness {
                     if sample_age <= max_stale {
                         ObservationQuality::Valid
                     } else {

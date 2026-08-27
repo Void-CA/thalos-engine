@@ -20,6 +20,7 @@ pub use crate::robot::{
         EncoderCalibration, JointSourceBinding, JointStateBinding, ObservationSample,
         RobotHardwareBinding, SensorContract, SensorKind, StateAggregator, StateSource,
     },
+    io::{CommandSink, DeviceIOError, FakeRobotAdapter, FakeRobotScenario, ObservationSource},
     state::{JointState, RobotState, StateDeviation, StateRequirement, StateSatisfactionError},
 };
 
