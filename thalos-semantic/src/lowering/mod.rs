@@ -1,6 +1,6 @@
 pub mod context;
 
-use thalos_core::execution::program::{ExecutionMetadata, ExecutionProgram, ProgramInstruction};
+pub use thalos_core::execution::program::{ExecutionMetadata, ExecutionProgram, ProgramInstruction};
 use thalos_core::motion::MotionTarget;
 
 use crate::{
@@ -10,7 +10,7 @@ use crate::{
     resource::ToolId,
 };
 
-use self::context::LoweringContext;
+pub use self::context::LoweringContext;
 
 /// The lowering engine that converts a `SemanticIr` into an
 /// `ExecutionProgram` by resolving semantic resource IDs through the

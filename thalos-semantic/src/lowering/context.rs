@@ -32,7 +32,26 @@ pub struct LoweringContext<'a> {
     pub default_cartesian_profile: Option<MotionProfile>,
 }
 
-impl LoweringContext<'_> {
+impl<'a> LoweringContext<'a> {
+    pub fn new(provider: &'a dyn KnowledgeProvider) -> Self {
+        Self {
+            provider,
+            skills: None,
+            default_tool: None,
+            default_profile: MotionProfile {
+                max_velocity: 1.0,
+                max_acceleration: 1.0,
+                max_jerk: None,
+            },
+            default_cartesian_profile: None,
+        }
+    }
+
+    pub fn with_skills(mut self, skills: &'a thalos_core::skill::SkillRegistry) -> Self {
+        self.skills = Some(skills);
+        self
+    }
+
     /// The profile for cartesian (MoveL) instructions: the explicit cartesian
     /// profile when configured, otherwise the joint `default_profile`
     /// (backward-compatible fallback for callers that only set

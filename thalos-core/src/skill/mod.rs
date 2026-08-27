@@ -21,6 +21,10 @@ pub enum Condition {
     GripperClosed,
     ObjectAttached(ObjectId),
     AtTarget(TargetId),
+    /// Experimental escape hatch for non-standard or external domain conditions.
+    ///
+    /// Note: `Custom` is an extensibility mechanism, not a core semantic guarantee.
+    /// Standard compiler and evaluation workflows should prefer strongly-typed variants.
     Custom {
         identifier: String,
         expected_value: String,
@@ -147,6 +151,10 @@ impl RobotSkill {
             postconditions,
             implementation,
         }
+    }
+
+    pub fn contract(&self) -> SkillContract {
+        SkillContract::new(self.preconditions.clone(), self.postconditions.clone())
     }
 }
 
