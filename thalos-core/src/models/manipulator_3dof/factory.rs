@@ -1,4 +1,5 @@
 use crate::prelude::*;
+use thalos_math::*;
 
 pub fn create_manipulator_3dof(
     l1: f64,

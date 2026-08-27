@@ -8,6 +8,8 @@ use crate::kinematics::inverse::result::IKStatus;
 use crate::kinematics::inverse::solvers::JacobianTransposeSolver;
 use crate::prelude::*;
 use std::f64::consts::PI;
+use thalos_math::constants::*;
+use thalos_math::*;
 
 // ─── Helpers ───────────────────────────────────────────────────────────
 

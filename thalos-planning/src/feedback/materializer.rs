@@ -407,7 +407,8 @@ mod tests {
     use thalos_core::ids::OperationId;
     use thalos_core::kinematics::inverse::{IKGoal, IKResult, IKSolver, IkError};
     use thalos_core::motion::segment::MotionSegment;
-    use thalos_core::prelude::{FrameId, Pose, Transform3D};
+    use thalos_core::prelude::{FrameId, Pose};
+    use thalos_math::Transform3D;
 
     use crate::feedback::operator::ActionProposal;
 

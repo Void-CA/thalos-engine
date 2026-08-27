@@ -1,5 +1,7 @@
 use crate::models::scara::ScaraSpec;
 use crate::prelude::*;
+use thalos_math::constants::*;
+use thalos_math::*;
 
 // Helper para crear un robot SCARA y sus componentes
 fn setup_scara_robot() -> (

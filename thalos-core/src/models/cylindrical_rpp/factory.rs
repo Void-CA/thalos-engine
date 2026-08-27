@@ -1,4 +1,5 @@
 use crate::prelude::*;
+use thalos_math::*;
 
 /// Construye un robot cilíndrico RPP (R en Z, P en Z, P en X).
 ///

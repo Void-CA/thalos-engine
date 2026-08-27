@@ -228,8 +228,9 @@ fn fk_all_joints_non_zero() {
 fn scara_workspace_point_reachable() {
     use rand::SeedableRng;
     use rand::rngs::StdRng;
-    use thalos_core::prelude::{Reachability, Vector3, WorkspaceConfig, WorkspaceSampler};
+    use thalos_core::prelude::{Reachability, WorkspaceConfig, WorkspaceSampler};
     use thalos_core::robot::serial_chain::SerialChain;
+    use thalos_math::Vector3;
 
     let robot = load_robot();
     let chain: SerialChain = adapter::auto(&robot).unwrap();

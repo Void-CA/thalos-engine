@@ -71,7 +71,7 @@ mod tests {
     use super::*;
     use crate::models::scara::ScaraSpec;
     use crate::prelude::*;
-    use thalos_math::Transform3D;
+    use thalos_math::*;
 
     fn identity_translation_chain() -> SerialChain {
         // A valid chain (end effector defined) whose segments carry ONLY

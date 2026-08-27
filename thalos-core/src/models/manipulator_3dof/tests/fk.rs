@@ -1,5 +1,7 @@
 use crate::models::manipulator_3dof::Manipulator3DOFSpec;
 use crate::prelude::*;
+use thalos_math::constants::*;
+use thalos_math::*;
 
 fn ee_translation(fk: &ForwardKinematics, q: &[f64], ee: &FrameId) -> Vector3 {
     fk.evaluate(q)

@@ -300,8 +300,9 @@ mod unit_tests {
     use crate::operators::orientation_relaxation::*;
     use thalos_core::{
         analysis::region::RegionKind,
-        prelude::{PI, Trajectory, TrajectoryPoint},
+        prelude::{Trajectory, TrajectoryPoint},
     };
+    use thalos_math::constants::*;
 
     // ── 2.1 Struct + defaults ─────────────────────────────
 
@@ -892,6 +893,8 @@ mod integration_tests {
         analysis::region::{ProblemRegion, RegionId, RegionKind, RegionSeverity},
         prelude::*,
     };
+    use thalos_math::constants::*;
+    use thalos_math::*;
 
     fn ctx_6dof() -> OptimizationContext {
         ctx_with_limits(&[(-PI, PI); 6])

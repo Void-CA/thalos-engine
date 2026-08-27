@@ -1,4 +1,5 @@
 use crate::prelude::*;
+use thalos_math::*;
 
 /// Construye un robot SCARA a partir de geometría y límites.
 ///

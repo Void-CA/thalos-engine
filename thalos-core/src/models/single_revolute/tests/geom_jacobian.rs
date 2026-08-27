@@ -1,5 +1,7 @@
 use crate::models::single_revolute::SingleRevoluteSpec;
 use crate::prelude::*;
+use thalos_math::constants::*;
+use thalos_math::*;
 
 #[test]
 fn geometric_matches_numerical() {

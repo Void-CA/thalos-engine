@@ -1,5 +1,7 @@
 use crate::models::spherical_polar_rrp::SphericalPolarRRPSpec;
 use crate::prelude::*;
+use thalos_math::constants::*;
+use thalos_math::*;
 
 // ─── ADR-0001 Z-up regression tests ──────────────────────────
 

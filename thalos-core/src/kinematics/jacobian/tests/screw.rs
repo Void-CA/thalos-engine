@@ -2,6 +2,7 @@ use crate::kinematics::jacobian::screw::ScrewJacobian;
 use crate::models::planar_3r::Planar3RSpec;
 use crate::models::scara::ScaraSpec;
 use crate::prelude::*;
+use thalos_math::*;
 
 #[test]
 fn scara_dimensions() {

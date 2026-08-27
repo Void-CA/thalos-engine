@@ -276,6 +276,8 @@ pub(crate) mod test_helpers {
         robot::serial_chain::SerialChain,
         trajectory::{Trajectory, TrajectoryPoint},
     };
+    use thalos_math::constants::*;
+    use thalos_math::*;
 
     // Re-import the joint JointLimits (with `new` constructor) rather
     // than the context-level JointLimits (struct-literal only).
@@ -483,8 +485,9 @@ mod unit_tests {
         analysis::region::RegionKind,
         evaluation::{CollisionMetrics, JointSafetyMetrics, ManipulabilityMetrics, PlanMetrics},
         models::{RobotModel, RobotRegistry},
-        prelude::{PI, Trajectory, TrajectoryPoint},
+        prelude::{Trajectory, TrajectoryPoint},
     };
+    use thalos_math::constants::*;
 
     // ── 2.1 Struct + defaults ─────────────────────────────
 
@@ -987,6 +990,7 @@ mod unit_tests {
             models::{RobotModel, RobotRegistry},
             prelude::*,
         };
+        use thalos_math::constants::*;
 
         fn robot() -> SerialChain {
             RobotRegistry::create_default(RobotModel::Planar2R)

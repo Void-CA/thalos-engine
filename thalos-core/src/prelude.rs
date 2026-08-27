@@ -12,12 +12,6 @@ pub use crate::robot::{
     state::RobotState,
 };
 
-pub use thalos_math::{
-    DynamicMatrix, DynamicVector, Quaternion, Transform3D, UnitQuaternion, UnitVector3, Vector3,
-    algebra::vector_to_dynamic,
-    constants::{EPS, PI, PI_2},
-};
-
 pub use crate::spatial::{
     frame::{Frame, FrameId, FrameRegistry},
     pose::Pose,

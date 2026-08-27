@@ -1,4 +1,5 @@
 use crate::prelude::*;
+use thalos_math::*;
 
 pub fn create_single_revolute(l: f64, limits_j1: JointLimits) -> SerialChain {
     let mut builder = SerialChainBuilder::new();

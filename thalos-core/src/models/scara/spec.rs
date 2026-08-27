@@ -1,4 +1,5 @@
 use crate::prelude::*;
+use thalos_math::constants::*;
 
 /// Spec completa de un robot SCARA.
 #[derive(Debug, Clone, Copy, PartialEq)]

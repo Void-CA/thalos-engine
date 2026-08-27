@@ -1,5 +1,7 @@
 use crate::models::manipulator_3dof::Manipulator3DOFSpec;
 use crate::prelude::*;
+use thalos_math::constants::*;
+use thalos_math::*;
 
 fn fresh_pair() -> (GeometricJacobian, NumericalJacobian) {
     let robot = Manipulator3DOFSpec::ideal().build();

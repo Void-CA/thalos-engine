@@ -1,5 +1,7 @@
 use crate::models::planar_3r::Planar3RSpec;
 use crate::prelude::*;
+use thalos_math::constants::*;
+use thalos_math::*;
 
 // ─── ADR-0001 Z-up regression tests ──────────────────────────
 
