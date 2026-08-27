@@ -14,7 +14,7 @@
 use std::time::Duration;
 
 use thalos_core::{
-    execution::program::ExecutionInstruction,
+    execution::program::ProgramInstruction,
     ids::OperationId,
     kinematics::inverse::{IKGoal, IKResult, IKSolver, IkError},
     motion::{MotionPose, MotionProfile},
@@ -114,7 +114,7 @@ pub fn default_ctx(provider: &MockKnowledgeProvider) -> LoweringContext<'_> {
 
 /// Lower a program with the canonical provider/context and return its
 /// instructions (IR-0 → IR-1).
-pub fn lower(program: SemanticProgram) -> Vec<ExecutionInstruction> {
+pub fn lower(program: SemanticProgram) -> Vec<ProgramInstruction> {
     let provider = build_provider();
     let ctx = default_ctx(&provider);
     let mp = SemanticLowering::lower(&program, &ctx).expect("lowering should succeed");

@@ -96,7 +96,9 @@ impl ProgramEdit {
     pub fn apply(&self, program: &PlanningProgram) -> Result<PlanningProgram, EditError> {
         match self {
             ProgramEdit::ReplaceSegment {
-                index, replacement, original,
+                index,
+                replacement,
+                original,
             } => {
                 Self::check_index(program, *index)?;
                 // The edit replaces `original.len()` segments (default 1 when
@@ -104,11 +106,12 @@ impl ProgramEdit {
                 // target segment; the roundtrip inverse collapses the whole
                 // replaced range back (R3-002).
                 let replaced_len = original.as_ref().map_or(1, |o| o.len().max(1));
-                let end = index.checked_add(replaced_len - 1).ok_or_else(|| {
-                    EditError::InvalidRange {
-                        message: "segment index overflow".to_string(),
-                    }
-                })?;
+                let end =
+                    index
+                        .checked_add(replaced_len - 1)
+                        .ok_or_else(|| EditError::InvalidRange {
+                            message: "segment index overflow".to_string(),
+                        })?;
                 if end >= program.segments.len() {
                     return Err(EditError::IndexOutOfBounds {
                         index: end,

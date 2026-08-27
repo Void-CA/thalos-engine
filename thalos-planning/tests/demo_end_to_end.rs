@@ -19,8 +19,8 @@ use thalos_collision::NaiveCollisionChecker;
 use thalos_core::{
     analysis::{
         Aggregator,
-        aggregator::DefaultAggregator,
         action::ActionKind,
+        aggregator::DefaultAggregator,
         observation::{ArtifactRef, Observation, ObservationKind},
         scoring::DefaultScoringPolicy,
     },
@@ -151,22 +151,34 @@ fn demo_scara_crossing_extension_diagnosed_and_repaired() {
     println!("END-TO-END DEMO — SCARA: cruce de extensión → diagnóstico → reparación");
     println!("═══════════════════════════════════════════════════════════");
     println!("Robot: SCARA (R-R-P-R)");
-    println!("home  = [{}]  (elbow -1.31, codo doblado, NO singular)", fmt_joints(&home));
-    println!("target = [{}]  (elbow +0.6, CRUZA la extensión)", fmt_joints(&bad_target));
+    println!(
+        "home  = [{}]  (elbow -1.31, codo doblado, NO singular)",
+        fmt_joints(&home)
+    );
+    println!(
+        "target = [{}]  (elbow +0.6, CRUZA la extensión)",
+        fmt_joints(&bad_target)
+    );
 
     // 1. Compile + diagnose the bad plan.
     let trajectory = compile(&robot, &home, &program).expect("original plan must compile");
     let report = analyze(&robot, &trajectory);
     let errors_before = singular_errors(&report.observations);
     println!("\n[1] DIAGNÓSTICO (antes de reparar)");
-    println!("    health        = {:.2}  ({:?})", report.summary.quality_index, report.summary.grade);
+    println!(
+        "    health        = {:.2}  ({:?})",
+        report.summary.quality_index, report.summary.grade
+    );
     println!("    singularities = {errors_before}");
     println!("    waypoints     = {}", trajectory.len());
 
     // 2. Ask the advisor.
     let recommendations =
         PlanAdvisor.recommend(&report.observations, &program, &real_solver(&robot), &home);
-    println!("\n[2] RECOMENDACIÓN DEL ADVISOR ({})", recommendations.len());
+    println!(
+        "\n[2] RECOMENDACIÓN DEL ADVISOR ({})",
+        recommendations.len()
+    );
     for rec in &recommendations {
         print_recommendation(rec);
     }
@@ -206,7 +218,10 @@ fn demo_scara_crossing_extension_diagnosed_and_repaired() {
     println!("\n[3] APLICANDO la(s) recomendación(es) disponible(s)...");
     let mut edited = program.clone();
     for rec in &available {
-        edited = rec.edit.apply(&edited).expect("an available edit must apply");
+        edited = rec
+            .edit
+            .apply(&edited)
+            .expect("an available edit must apply");
     }
     let healed_trajectory = compile(&robot, &home, &edited)
         .unwrap_or_else(|e| panic!("the repaired program must recompile: {e}"));
@@ -215,14 +230,20 @@ fn demo_scara_crossing_extension_diagnosed_and_repaired() {
     let continuous = trajectory_continuity(&healed_trajectory);
 
     println!("\n[4] DESPUÉS DE REPARAR");
-    println!("    health        = {:.2}  ({:?})", healed.summary.quality_index, healed.summary.grade);
+    println!(
+        "    health        = {:.2}  ({:?})",
+        healed.summary.quality_index, healed.summary.grade
+    );
     println!("    singularities = {errors_after}");
     println!("    waypoints     = {}", healed_trajectory.len());
     println!("    continuidad   = {continuous}");
 
     println!("\n[5] VEREDICTO");
     println!("    singularities: {errors_before} → {errors_after}");
-    println!("    health:        {:.2} → {:.2}", report.summary.quality_index, healed.summary.quality_index);
+    println!(
+        "    health:        {:.2} → {:.2}",
+        report.summary.quality_index, healed.summary.quality_index
+    );
     println!("    continuidad:   {continuous}");
     println!("═══════════════════════════════════════════════════════════\n");
 

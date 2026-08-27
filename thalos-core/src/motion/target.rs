@@ -32,7 +32,7 @@ pub struct MotionPosition {
 /// `Pose` constrains position **and** orientation; `Position` constrains
 /// only the translation — the planner drives IK with `IKGoal::Position`.
 /// New variants (e.g. `JointConfiguration`, `ExternalAxis`) can be added
-/// without breaking `ExecutionInstruction`.
+/// without breaking execution instructions.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum MotionTarget {

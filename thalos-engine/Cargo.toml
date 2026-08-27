@@ -3,14 +3,19 @@ name = "thalos-engine"
 description = "Thalos Engine — reusable robotics platform (facade crate)"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
 readme = "../README.md"
 
 [dependencies]
-thalos_math = { path = "../thalos-math" }
-thalos_models = { path = "../thalos-models" }
-thalos_core = { path = "../thalos-core" }
+thalos-math = { path = "../thalos-math" }
+thalos-models = { path = "../thalos-models" }
+thalos-core = { path = "../thalos-core" }
 thalos-collision = { path = "../thalos-collision" }
 thalos-planning = { path = "../thalos-planning" }
 thalos-optimization = { path = "../thalos-optimization" }
-thalos_semantic = { path = "../thalos-semantic" }
+thalos-semantic = { path = "../thalos-semantic" }
 thalos-intelligence = { path = "../thalos-intelligence" }
+
+[features]
+test-support = ["thalos-semantic/test-support"]

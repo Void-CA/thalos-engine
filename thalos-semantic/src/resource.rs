@@ -4,7 +4,7 @@
 // Single source of truth — all crates use the exact same id types across
 // crate boundaries, eliminating conversion at every boundary.
 // ---------------------------------------------------------------------------
-pub use thalos_core::ids::{ObjectId, LocationId, ToolId, TaskDocumentId};
+pub use thalos_core::ids::{LocationId, ObjectId, TaskDocumentId, ToolId};
 
 #[cfg(test)]
 mod tests {

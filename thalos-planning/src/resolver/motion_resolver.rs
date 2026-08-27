@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use thalos_core::{
     execution::{
-        program::{ExecutionInstruction, ExecutionProgram},
+        program::{ExecutionProgram, ProgramInstruction},
         runtime::{RuntimeAction, RuntimeEvent, RuntimeProgram},
     },
     kinematics::inverse::{IKGoal, IKSolver, IKStatus},
@@ -93,7 +93,7 @@ impl<'a> MotionResolver<'a> {
 
         for (index, instruction) in program.instructions.iter().enumerate() {
             match instruction {
-                ExecutionInstruction::MoveJ {
+                ProgramInstruction::MoveJ {
                     origin,
                     target,
                     profile,
@@ -126,7 +126,7 @@ impl<'a> MotionResolver<'a> {
                     }
                 }
 
-                ExecutionInstruction::MoveL {
+                ProgramInstruction::MoveL {
                     origin,
                     target,
                     profile,
@@ -153,7 +153,7 @@ impl<'a> MotionResolver<'a> {
                     }
                 }
 
-                ExecutionInstruction::Delay { origin, duration } => {
+                ProgramInstruction::Delay { origin, duration } => {
                     runtime_events.push(RuntimeEvent {
                         // Logical event: no timing yet. The TimelineScheduler
                         // assigns absolute at_time from the CompiledPlan (IR-3).
@@ -163,7 +163,7 @@ impl<'a> MotionResolver<'a> {
                     });
                 }
 
-                ExecutionInstruction::SetOutput {
+                ProgramInstruction::SetOutput {
                     origin,
                     channel,
                     value,
@@ -186,7 +186,7 @@ impl<'a> MotionResolver<'a> {
             .filter(|instruction| {
                 matches!(
                     instruction,
-                    ExecutionInstruction::MoveJ { .. } | ExecutionInstruction::MoveL { .. }
+                    ProgramInstruction::MoveJ { .. } | ProgramInstruction::MoveL { .. }
                 )
             })
             .cloned()
@@ -409,12 +409,12 @@ mod tests {
 
         let program = ExecutionProgram {
             instructions: vec![
-                ExecutionInstruction::MoveJ {
+                ProgramInstruction::MoveJ {
                     origin: OperationId("1".to_string()),
                     target: MotionTarget::Pose(sample_pose()),
                     profile: default_profile(),
                 },
-                ExecutionInstruction::MoveL {
+                ProgramInstruction::MoveL {
                     origin: OperationId("2".to_string()),
                     target: MotionTarget::Pose(sample_pose()),
                     profile: default_profile(),
@@ -448,11 +448,11 @@ mod tests {
 
         let program = ExecutionProgram {
             instructions: vec![
-                ExecutionInstruction::Delay {
+                ProgramInstruction::Delay {
                     origin: OperationId("1".to_string()),
                     duration: Duration::from_secs(2),
                 },
-                ExecutionInstruction::SetOutput {
+                ProgramInstruction::SetOutput {
                     origin: OperationId("2".to_string()),
                     channel: OutputChannel {
                         name: "gripper".into(),
@@ -489,21 +489,21 @@ mod tests {
 
         let program = ExecutionProgram {
             instructions: vec![
-                ExecutionInstruction::MoveJ {
+                ProgramInstruction::MoveJ {
                     origin: OperationId("1".to_string()),
                     target: MotionTarget::Pose(sample_pose()),
                     profile: default_profile(),
                 },
-                ExecutionInstruction::Delay {
+                ProgramInstruction::Delay {
                     origin: OperationId("2".to_string()),
                     duration: Duration::from_secs(1),
                 },
-                ExecutionInstruction::MoveL {
+                ProgramInstruction::MoveL {
                     origin: OperationId("3".to_string()),
                     target: MotionTarget::Pose(sample_pose()),
                     profile: default_profile(),
                 },
-                ExecutionInstruction::SetOutput {
+                ProgramInstruction::SetOutput {
                     origin: OperationId("4".to_string()),
                     channel: OutputChannel {
                         name: "gripper".into(),
@@ -530,12 +530,12 @@ mod tests {
 
         let program = ExecutionProgram {
             instructions: vec![
-                ExecutionInstruction::MoveJ {
+                ProgramInstruction::MoveJ {
                     origin: OperationId("1".to_string()),
                     target: MotionTarget::Pose(sample_pose()),
                     profile: default_profile(),
                 },
-                ExecutionInstruction::Delay {
+                ProgramInstruction::Delay {
                     origin: OperationId("2".to_string()),
                     duration: Duration::from_secs(1),
                 },
@@ -571,12 +571,12 @@ mod tests {
 
         let program = ExecutionProgram {
             instructions: vec![
-                ExecutionInstruction::MoveL {
+                ProgramInstruction::MoveL {
                     origin: OperationId("1".to_string()),
                     target: MotionTarget::Pose(sample_pose()),
                     profile: default_profile(),
                 },
-                ExecutionInstruction::MoveJ {
+                ProgramInstruction::MoveJ {
                     origin: OperationId("2".to_string()),
                     target: MotionTarget::Pose(sample_pose()),
                     profile: default_profile(),
@@ -613,7 +613,7 @@ mod tests {
             ik_solver: &solver,
             tcp: None,
         };
-        let suffix = vec![ExecutionInstruction::MoveJ {
+        let suffix = vec![ProgramInstruction::MoveJ {
             origin: OperationId("op-goal".into()),
             target: MotionTarget::Position(thalos_core::motion::target::MotionPosition {
                 position: target,
@@ -628,8 +628,8 @@ mod tests {
             ik_solver: &solver,
             tcp: None,
         };
-        let original = replan_suffix(&current, &suffix, &original_context)
-            .expect("original suffix resolves");
+        let original =
+            replan_suffix(&current, &suffix, &original_context).expect("original suffix resolves");
         let planned = replan_suffix(&alternate, &suffix, &context).expect("suffix replans");
         assert_eq!(planned.planning.semantic_targets.as_ref(), Some(&suffix));
         let MotionSegment::MoveJ {
@@ -659,13 +659,7 @@ mod tests {
 
         let robot = RobotRegistry::create_default(RobotModel::Scara);
         let fk = ForwardKinematics::new(robot.clone());
-        let solver = DampedLeastSquaresSolver::new(
-            fk,
-            *robot.end_effector(),
-            500,
-            1e-6,
-            0.1,
-        );
+        let solver = DampedLeastSquaresSolver::new(fk, *robot.end_effector(), 500, 1e-6, 0.1);
         let state = RobotState::zero(robot.dof_count());
         let offset = Transform3D::from_translation(Vector3::new(0.0, 0.0, 0.1));
         let tcp = ToolFrame::with_offset(*robot.end_effector(), offset);
@@ -689,7 +683,7 @@ mod tests {
         let resolver = make_resolver(&ik, &registry, &[0.0, 0.0]);
 
         let program = ExecutionProgram {
-            instructions: vec![ExecutionInstruction::MoveJ {
+            instructions: vec![ProgramInstruction::MoveJ {
                 origin: OperationId("1".to_string()),
                 target: MotionTarget::Pose(sample_pose()),
                 profile: default_profile(),
@@ -735,12 +729,12 @@ mod tests {
 
         let program = ExecutionProgram {
             instructions: vec![
-                ExecutionInstruction::MoveJ {
+                ProgramInstruction::MoveJ {
                     origin: OperationId("1".to_string()),
                     target: MotionTarget::Pose(sample_pose()),
                     profile: default_profile(),
                 },
-                ExecutionInstruction::MoveJ {
+                ProgramInstruction::MoveJ {
                     origin: OperationId("2".to_string()),
                     target: MotionTarget::Pose(sample_pose()),
                     profile: default_profile(),
@@ -770,7 +764,7 @@ mod tests {
         let resolver = make_resolver(&ik, &registry, &[0.0, 0.0]);
 
         let program = ExecutionProgram {
-            instructions: vec![ExecutionInstruction::MoveJ {
+            instructions: vec![ProgramInstruction::MoveJ {
                 origin: OperationId("op-j".to_string()),
                 target: MotionTarget::Pose(sample_pose()),
                 profile: default_profile(),
@@ -795,7 +789,7 @@ mod tests {
         let resolver = make_resolver(&ik, &registry, &[0.0, 0.0]);
 
         let program = ExecutionProgram {
-            instructions: vec![ExecutionInstruction::MoveL {
+            instructions: vec![ProgramInstruction::MoveL {
                 origin: OperationId("op-l".to_string()),
                 target: MotionTarget::Pose(sample_pose()),
                 profile: default_profile(),
@@ -821,12 +815,12 @@ mod tests {
 
         let program = ExecutionProgram {
             instructions: vec![
-                ExecutionInstruction::MoveJ {
+                ProgramInstruction::MoveJ {
                     origin: OperationId("pick-1".to_string()),
                     target: MotionTarget::Pose(sample_pose()),
                     profile: default_profile(),
                 },
-                ExecutionInstruction::SetOutput {
+                ProgramInstruction::SetOutput {
                     origin: OperationId("pick-1".to_string()),
                     channel: OutputChannel {
                         name: "gripper".into(),
@@ -834,7 +828,7 @@ mod tests {
                     },
                     value: OutputValue::Bool(true),
                 },
-                ExecutionInstruction::MoveL {
+                ProgramInstruction::MoveL {
                     origin: OperationId("place-2".to_string()),
                     target: MotionTarget::Pose(sample_pose()),
                     profile: default_profile(),
@@ -915,7 +909,10 @@ mod tests {
         // PR3; core's tests use the same fixture). Reference it by sibling path
         // from CARGO_MANIFEST_DIR (crate root) — keeps the fixture owned by its
         // source crate rather than duplicating it in planning.
-        let urdf = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../thalos-core/tests/fixtures/icebot.urdf"));
+        let urdf = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../thalos-core/tests/fixtures/icebot.urdf"
+        ));
         let chain =
             thalos_core::robot::adapter::from_urdf(urdf).expect("icebot URDF must build a chain");
         assert_eq!(chain.dof_count(), 4, "icebot has 4 actuated DOF");

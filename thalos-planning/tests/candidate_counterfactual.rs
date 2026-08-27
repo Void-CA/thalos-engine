@@ -211,7 +211,8 @@ fn counterfactual_demo_middle_segment_crossing() {
     // With multi-start IK, the alternative may have the same risk as the seed
     // (different configuration, same trajectory). The key property is that
     // alternatives are GENERATED and ADMISSIBLE, not that they're necessarily better.
-    let any_admissible = generated_admissible.first()
+    let any_admissible = generated_admissible
+        .first()
         .expect("at least one admissible alternative");
     println!(
         "COUNTERFACTUAL: generated {:?} admissible with risk {:.4} (seed {:.4}) — PASS",
@@ -470,7 +471,9 @@ fn candidate_selection_preserves_task_and_improves_assessed_trajectory() {
         "the selected must have valid crisp risk: {selected_crisp:.4}"
     );
     assert!(
-        selected_assessment.risk == Risk::Low || selected_assessment.risk == Risk::Medium || selected_assessment.risk == Risk::High,
+        selected_assessment.risk == Risk::Low
+            || selected_assessment.risk == Risk::Medium
+            || selected_assessment.risk == Risk::High,
         "the selected verdict must be valid: {:?}",
         selected_assessment.risk
     );

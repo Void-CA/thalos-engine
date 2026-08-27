@@ -14,7 +14,7 @@
 //! contract as a whole:
 //!
 //! - `OperationId` survives every stage (`SemanticOperation` →
-//!   `ExecutionInstruction` → `PlannedSegment` → `RuntimeEvent`).
+//!   `ProgramInstruction` → `PlannedSegment` → `RuntimeEvent`).
 //! - The `CompiledPlan` is non-empty and the sequence ends with the Home
 //!   `MoveJ`.
 //! - The `TimelineScheduler` output is a genuinely *timed* `RuntimeProgram`:
@@ -26,7 +26,7 @@
 use std::time::Duration;
 
 use thalos_core::{
-    execution::program::{ExecutionInstruction, ExecutionProgram},
+    execution::program::{ExecutionProgram, ProgramInstruction},
     execution::runtime::{RuntimeAction, RuntimeEvent, RuntimeProgram},
     ids::OperationId,
     models::{RobotModel, RobotRegistry},
@@ -49,13 +49,13 @@ use thalos_semantic::{
     test_support::{self, pick_wait_place_home_program},
 };
 
-/// The `OperationId` carried by an `ExecutionInstruction` (all four variants).
-fn instruction_origin(inst: &ExecutionInstruction) -> OperationId {
+/// The `OperationId` carried by an `ProgramInstruction` (all four variants).
+fn instruction_origin(inst: &ProgramInstruction) -> OperationId {
     match inst {
-        ExecutionInstruction::MoveJ { origin, .. }
-        | ExecutionInstruction::MoveL { origin, .. }
-        | ExecutionInstruction::Delay { origin, .. }
-        | ExecutionInstruction::SetOutput { origin, .. } => origin.clone(),
+        ProgramInstruction::MoveJ { origin, .. }
+        | ProgramInstruction::MoveL { origin, .. }
+        | ProgramInstruction::Delay { origin, .. }
+        | ProgramInstruction::SetOutput { origin, .. } => origin.clone(),
     }
 }
 
@@ -177,7 +177,7 @@ fn canonical_pipeline_compiles_to_nonempty_plan_with_origin_trace() {
             OperationId("op-place".into()),
             OperationId("op-home".into()),
         ],
-        "ExecutionInstruction origins must follow the canonical program order"
+        "ProgramInstruction origins must follow the canonical program order"
     );
 
     let segment_origins: Vec<OperationId> = art

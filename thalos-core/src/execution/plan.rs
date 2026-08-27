@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 /// A single move instruction, preserved 1:1 from the source `MotionSegment`.
 /// The system MUST NOT merge, split, or reclassify segments.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum ExecutionInstruction {
+pub enum PlanInstruction {
     /// Joint-space move to a target configuration.
     MoveJ,
     /// Cartesian linear move to a target pose.
@@ -34,7 +34,7 @@ pub struct ExecutionSegment {
     /// segment identity from this, never by re-inferring structure.
     pub planned_segment_index: usize,
     /// The move instruction, derived from the source `MotionSegment`.
-    pub instruction: ExecutionInstruction,
+    pub instruction: PlanInstruction,
     /// Indices into `ExecutionPlan.waypoints` covered by this segment.
     pub waypoint_range: Range<usize>,
 }
@@ -97,7 +97,7 @@ mod tests {
             segments: vec![ExecutionSegment {
                 index: 0,
                 planned_segment_index: 0,
-                instruction: ExecutionInstruction::MoveJ,
+                instruction: PlanInstruction::MoveJ,
                 waypoint_range: 0..1,
             }],
             duration: 0.0,
@@ -110,7 +110,7 @@ mod tests {
         assert_eq!(plan.segments.len(), 1);
         assert_eq!(plan.segments[0].index, 0);
         assert_eq!(plan.segments[0].planned_segment_index, 0);
-        assert_eq!(plan.segments[0].instruction, ExecutionInstruction::MoveJ);
+        assert_eq!(plan.segments[0].instruction, PlanInstruction::MoveJ);
         assert_eq!(plan.segments[0].waypoint_range, 0..1);
         assert_eq!(plan.duration, 0.0);
 
@@ -126,6 +126,6 @@ mod tests {
         assert_send_sync::<ExecutionPlan>();
         assert_send_sync::<ExecutionSegment>();
         assert_send_sync::<ExecutionWaypoint>();
-        assert_send_sync::<ExecutionInstruction>();
+        assert_send_sync::<PlanInstruction>();
     }
 }

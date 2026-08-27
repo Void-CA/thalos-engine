@@ -5,7 +5,7 @@ use crate::ids::OperationId;
 use crate::motion::target::{MotionProfile, MotionTarget, OutputChannel, OutputValue};
 
 // ---------------------------------------------------------------------------
-// ExecutionInstruction — 4 variants forming the canonical IR-1 instruction set
+// ProgramInstruction — 4 variants forming the canonical IR-1 instruction set
 // ---------------------------------------------------------------------------
 
 /// A single instruction in an `ExecutionProgram`.
@@ -23,7 +23,7 @@ use crate::motion::target::{MotionProfile, MotionTarget, OutputChannel, OutputVa
 /// consistent JSON interchange across all consumers.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-pub enum ExecutionInstruction {
+pub enum ProgramInstruction {
     MoveJ {
         origin: OperationId,
         target: MotionTarget,
@@ -67,7 +67,7 @@ pub struct ExecutionMetadata {
 
 /// A complete execution program — the bytecode of the platform.
 ///
-/// Contains a linear `Vec<ExecutionInstruction>` and `ExecutionMetadata` for
+/// Contains a linear `Vec<ProgramInstruction>` and `ExecutionMetadata` for
 /// provenance. Instructions are self-contained (no implicit state from prior
 /// instructions). Order is preserved.
 ///
@@ -75,7 +75,7 @@ pub struct ExecutionMetadata {
 /// (backends). Any backend can consume it without depending on the compiler.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExecutionProgram {
-    pub instructions: Vec<ExecutionInstruction>,
+    pub instructions: Vec<ProgramInstruction>,
     pub metadata: ExecutionMetadata,
 }
 
@@ -90,9 +90,9 @@ mod tests {
     use std::time::Duration;
 
     /// Build a canonical 4-instruction sequence for order tests.
-    fn sample_instructions() -> Vec<ExecutionInstruction> {
+    fn sample_instructions() -> Vec<ProgramInstruction> {
         vec![
-            ExecutionInstruction::MoveJ {
+            ProgramInstruction::MoveJ {
                 origin: OperationId("1".to_string()),
                 target: MotionTarget::Pose(MotionPose {
                     position: [0.0, 0.0, 0.0],
@@ -105,7 +105,7 @@ mod tests {
                     max_jerk: None,
                 },
             },
-            ExecutionInstruction::MoveL {
+            ProgramInstruction::MoveL {
                 origin: OperationId("2".to_string()),
                 target: MotionTarget::Pose(MotionPose {
                     position: [1.0, 0.0, 0.0],
@@ -118,11 +118,11 @@ mod tests {
                     max_jerk: None,
                 },
             },
-            ExecutionInstruction::Delay {
+            ProgramInstruction::Delay {
                 origin: OperationId("3".to_string()),
                 duration: Duration::from_secs(2),
             },
-            ExecutionInstruction::SetOutput {
+            ProgramInstruction::SetOutput {
                 origin: OperationId("4".to_string()),
                 channel: OutputChannel {
                     name: "gripper".into(),
@@ -175,21 +175,21 @@ mod tests {
 
         assert_eq!(program.instructions.len(), 4);
         assert!(
-            matches!(program.instructions[0], ExecutionInstruction::MoveJ { .. }),
+            matches!(program.instructions[0], ProgramInstruction::MoveJ { .. }),
             "First instruction should be MoveJ"
         );
         assert!(
-            matches!(program.instructions[1], ExecutionInstruction::MoveL { .. }),
+            matches!(program.instructions[1], ProgramInstruction::MoveL { .. }),
             "Second instruction should be MoveL"
         );
         assert!(
-            matches!(program.instructions[2], ExecutionInstruction::Delay { .. }),
+            matches!(program.instructions[2], ProgramInstruction::Delay { .. }),
             "Third instruction should be Delay"
         );
         assert!(
             matches!(
                 program.instructions[3],
-                ExecutionInstruction::SetOutput { .. }
+                ProgramInstruction::SetOutput { .. }
             ),
             "Fourth instruction should be SetOutput"
         );
@@ -221,14 +221,14 @@ mod tests {
             max_jerk: None,
         };
 
-        let instr = ExecutionInstruction::MoveJ {
+        let instr = ProgramInstruction::MoveJ {
             origin,
             target: target.clone(),
             profile: profile.clone(),
         };
 
         match &instr {
-            ExecutionInstruction::MoveJ {
+            ProgramInstruction::MoveJ {
                 origin: o,
                 target: t,
                 profile: p,
@@ -255,14 +255,14 @@ mod tests {
             max_jerk: Some(750.0),
         };
 
-        let instr = ExecutionInstruction::MoveL {
+        let instr = ProgramInstruction::MoveL {
             origin,
             target: target.clone(),
             profile: profile.clone(),
         };
 
         match &instr {
-            ExecutionInstruction::MoveL {
+            ProgramInstruction::MoveL {
                 origin: o,
                 target: t,
                 profile: p,
@@ -280,10 +280,10 @@ mod tests {
         let origin = OperationId("3".to_string());
         let duration = Duration::from_millis(1500);
 
-        let instr = ExecutionInstruction::Delay { origin, duration };
+        let instr = ProgramInstruction::Delay { origin, duration };
 
         match &instr {
-            ExecutionInstruction::Delay {
+            ProgramInstruction::Delay {
                 origin: o,
                 duration: d,
             } => {
@@ -303,14 +303,14 @@ mod tests {
         };
         let value = OutputValue::Bool(true);
 
-        let instr = ExecutionInstruction::SetOutput {
+        let instr = ProgramInstruction::SetOutput {
             origin,
             channel: channel.clone(),
             value: value.clone(),
         };
 
         match &instr {
-            ExecutionInstruction::SetOutput {
+            ProgramInstruction::SetOutput {
                 origin: o,
                 channel: c,
                 value: v,
@@ -328,7 +328,7 @@ mod tests {
     #[test]
     fn instruction_serde_round_trip_all_variants() {
         let instructions = vec![
-            ExecutionInstruction::MoveJ {
+            ProgramInstruction::MoveJ {
                 origin: OperationId("1".to_string()),
                 target: MotionTarget::Pose(MotionPose {
                     position: [1.0, 0.0, 0.0],
@@ -341,7 +341,7 @@ mod tests {
                     max_jerk: None,
                 },
             },
-            ExecutionInstruction::MoveL {
+            ProgramInstruction::MoveL {
                 origin: OperationId("2".to_string()),
                 target: MotionTarget::Pose(MotionPose {
                     position: [2.0, 0.0, 0.0],
@@ -354,11 +354,11 @@ mod tests {
                     max_jerk: Some(900.0),
                 },
             },
-            ExecutionInstruction::Delay {
+            ProgramInstruction::Delay {
                 origin: OperationId("3".to_string()),
                 duration: Duration::from_secs(5),
             },
-            ExecutionInstruction::SetOutput {
+            ProgramInstruction::SetOutput {
                 origin: OperationId("4".to_string()),
                 channel: OutputChannel {
                     name: "vacuum".into(),
@@ -370,7 +370,7 @@ mod tests {
 
         for instr in &instructions {
             let json = serde_json::to_string(instr).expect("serialize");
-            let decoded: ExecutionInstruction = serde_json::from_str(&json).expect("deserialize");
+            let decoded: ProgramInstruction = serde_json::from_str(&json).expect("deserialize");
             assert_eq!(*instr, decoded, "round-trip failed for {instr:?}");
         }
     }
@@ -392,7 +392,7 @@ mod tests {
 
     #[test]
     fn serde_internally_tagged_type_tags() {
-        let move_j = ExecutionInstruction::MoveJ {
+        let move_j = ProgramInstruction::MoveJ {
             origin: OperationId("1".to_string()),
             target: MotionTarget::Pose(MotionPose {
                 position: [0.0, 0.0, 0.0],
@@ -411,7 +411,7 @@ mod tests {
             "Expected type tag 'move_j', got: {json}"
         );
 
-        let delay = ExecutionInstruction::Delay {
+        let delay = ProgramInstruction::Delay {
             origin: OperationId("2".to_string()),
             duration: Duration::from_secs(3),
         };
@@ -421,7 +421,7 @@ mod tests {
             "Expected type tag 'delay', got: {json}"
         );
 
-        let set_output = ExecutionInstruction::SetOutput {
+        let set_output = ProgramInstruction::SetOutput {
             origin: OperationId("3".to_string()),
             channel: OutputChannel {
                 name: "gripper".into(),
@@ -445,7 +445,7 @@ mod tests {
             "profile":{"max_velocity":100.0,"max_acceleration":200.0,"max_jerk":null},
             "unknown_field":"should_be_ignored"
         }"#;
-        let result: Result<ExecutionInstruction, _> = serde_json::from_str(json);
+        let result: Result<ProgramInstruction, _> = serde_json::from_str(json);
         assert!(
             result.is_ok(),
             "Should tolerate unknown fields for forward compatibility"
@@ -454,7 +454,7 @@ mod tests {
 
     #[test]
     fn clone_and_eq_after_round_trip() {
-        let original = ExecutionInstruction::MoveJ {
+        let original = ProgramInstruction::MoveJ {
             origin: OperationId("42".to_string()),
             target: MotionTarget::Pose(MotionPose {
                 position: [1.0, 2.0, 3.0],
@@ -474,7 +474,7 @@ mod tests {
 
         // Round-trip
         let json = serde_json::to_string(&original).expect("serialize");
-        let decoded: ExecutionInstruction = serde_json::from_str(&json).expect("deserialize");
+        let decoded: ProgramInstruction = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(original, decoded, "Round-trip should preserve equality");
 
         // Clone after round-trip

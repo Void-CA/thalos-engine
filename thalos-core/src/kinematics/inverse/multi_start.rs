@@ -9,9 +9,9 @@
 //! - Duplicate/equivalent solutions are filtered (configurable tolerance)
 //! - Only converged solutions within joint limits are returned
 
+use super::result::IKResult;
+use super::seed_generator::SeedConfig;
 use super::solver::{IKGoal, IKSolver};
-use super::result::{IKResult, IKStatus};
-use super::seed_generator::{SeedConfig, SeedPolicy, ElbowAlternate};
 
 /// A multi-start IK solver that tries multiple seeds and collects valid solutions.
 pub struct MultiStartIKSolver<'a> {
@@ -36,6 +36,11 @@ impl<'a> MultiStartIKSolver<'a> {
         Self::new(base_solver, SeedConfig::default())
     }
 
+    /// Access the seed configuration.
+    pub fn seed_config(&self) -> &SeedConfig {
+        &self.seed_config
+    }
+
     /// Set the duplicate tolerance (radians).
     pub fn with_duplicate_tolerance(mut self, tol: f64) -> Self {
         self.duplicate_tolerance = tol;
@@ -46,7 +51,7 @@ impl<'a> MultiStartIKSolver<'a> {
     ///
     /// The first solution is always the one from the baseline seed (for comparison).
     /// Subsequent solutions are from alternative seeds, filtered for duplicates.
-    pub fn solve_multi(&self, goal: IKGoal) -> Vec<IKResult> {
+    pub fn solve_multi(&self, _goal: IKGoal) -> Vec<IKResult> {
         // Generate seeds from the baseline configuration
         // Note: base_joints and target_joints are not available here because
         // the solver doesn't know the robot's current state. The seeds must
@@ -93,7 +98,10 @@ impl<'a> MultiStartIKSolver<'a> {
             if sol.q.len() != new_q.len() {
                 continue;
             }
-            let diff: f64 = sol.q.iter().zip(new_q.iter())
+            let diff: f64 = sol
+                .q
+                .iter()
+                .zip(new_q.iter())
                 .map(|(a, b)| (a - b).abs())
                 .sum();
             if diff < self.duplicate_tolerance {
@@ -107,8 +115,8 @@ impl<'a> MultiStartIKSolver<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::kinematics::inverse::solver::{IKGoal, IKSolver};
     use crate::kinematics::inverse::result::{IKResult, IKStatus};
+    use crate::kinematics::inverse::solver::{IKGoal, IKSolver};
     use thalos_math::Vector3;
 
     /// A mock solver that returns a fixed solution regardless of seed.
@@ -117,7 +125,11 @@ mod tests {
     }
 
     impl IKSolver for MockSolver {
-        fn solve(&self, _q0: &[f64], _goal: IKGoal) -> Result<IKResult, super::super::error::IkError> {
+        fn solve(
+            &self,
+            _q0: &[f64],
+            _goal: IKGoal,
+        ) -> Result<IKResult, super::super::error::IkError> {
             Ok(IKResult::converged(self.solution.clone(), 10, 1e-8, None))
         }
     }
@@ -126,12 +138,16 @@ mod tests {
     struct MockBranchingSolver;
 
     impl IKSolver for MockBranchingSolver {
-        fn solve(&self, q0: &[f64], _goal: IKGoal) -> Result<IKResult, super::super::error::IkError> {
+        fn solve(
+            &self,
+            q0: &[f64],
+            _goal: IKGoal,
+        ) -> Result<IKResult, super::super::error::IkError> {
             // If q0[1] > 0, return solution A; if q0[1] < 0, return solution B
             let q = if q0.get(1).map_or(false, |&v| v > 0.0) {
-                vec![0.0, 0.5, -0.3]  // solution A
+                vec![0.0, 0.5, -0.3] // solution A
             } else {
-                vec![0.0, -0.5, 0.3]  // solution B
+                vec![0.0, -0.5, 0.3] // solution B
             };
             Ok(IKResult::converged(q, 10, 1e-8, None))
         }
@@ -139,12 +155,14 @@ mod tests {
 
     #[test]
     fn multi_start_filters_duplicates() {
-        let solver = MockSolver { solution: vec![0.0, 0.5, -0.3] };
+        let solver = MockSolver {
+            solution: vec![0.0, 0.5, -0.3],
+        };
         let multi = MultiStartIKSolver::new(&solver, SeedConfig::default());
 
         let seeds = vec![
             vec![0.0, 0.5, -0.3],
-            vec![0.0, -0.5, 0.3],  // different seed, same solution
+            vec![0.0, -0.5, 0.3], // different seed, same solution
         ];
 
         let goal = IKGoal::Position(Vector3::new(0.3, 0.0, 0.5));
@@ -158,12 +176,12 @@ mod tests {
     #[test]
     fn multi_start_keeps_different_solutions() {
         let solver = MockBranchingSolver;
-        let multi = MultiStartIKSolver::new(&solver, SeedConfig::default())
-            .with_duplicate_tolerance(1e-3);
+        let multi =
+            MultiStartIKSolver::new(&solver, SeedConfig::default()).with_duplicate_tolerance(1e-3);
 
         let seeds = vec![
-            vec![0.0, 0.5, -0.3],   // seed with positive q1 → solution A
-            vec![0.0, -0.5, 0.3],   // seed with negative q1 → solution B
+            vec![0.0, 0.5, -0.3], // seed with positive q1 → solution A
+            vec![0.0, -0.5, 0.3], // seed with negative q1 → solution B
         ];
 
         let goal = IKGoal::Position(Vector3::new(0.3, 0.0, 0.5));

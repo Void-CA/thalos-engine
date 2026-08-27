@@ -9,12 +9,12 @@
 //! - **Structural equivalence**: the lowering is a deterministic transformation,
 //!   not a black box.
 //! - **I2 identity**: `OperationId` survives every official IR transformation
-//!   (`SemanticOperation → ExecutionInstruction → MotionSegment →
+//!   (`SemanticOperation → ProgramInstruction → MotionSegment →
 //!   PlannedSegment → RuntimeEvent`).
 
 use std::time::Duration;
 
-use thalos_core::execution::program::ExecutionInstruction;
+use thalos_core::execution::program::ProgramInstruction;
 use thalos_core::ids::OperationId;
 use thalos_core::motion::{MotionTarget, OutputValue};
 use thalos_semantic::{
@@ -54,19 +54,19 @@ fn pick_produces_four_instructions() {
     );
     // Shape: MoveJ → MoveL → SetOutput → MoveL
     assert!(
-        matches!(instructions[0], ExecutionInstruction::MoveJ { .. }),
+        matches!(instructions[0], ProgramInstruction::MoveJ { .. }),
         "pick[0] should be MoveJ"
     );
     assert!(
-        matches!(instructions[1], ExecutionInstruction::MoveL { .. }),
+        matches!(instructions[1], ProgramInstruction::MoveL { .. }),
         "pick[1] should be MoveL"
     );
     assert!(
-        matches!(instructions[2], ExecutionInstruction::SetOutput { .. }),
+        matches!(instructions[2], ProgramInstruction::SetOutput { .. }),
         "pick[2] should be SetOutput"
     );
     assert!(
-        matches!(instructions[3], ExecutionInstruction::MoveL { .. }),
+        matches!(instructions[3], ProgramInstruction::MoveL { .. }),
         "pick[3] should be MoveL"
     );
 }
@@ -86,19 +86,19 @@ fn place_produces_four_instructions() {
         "Place should produce exactly 4 instructions"
     );
     assert!(
-        matches!(instructions[0], ExecutionInstruction::MoveJ { .. }),
+        matches!(instructions[0], ProgramInstruction::MoveJ { .. }),
         "place[0] should be MoveJ"
     );
     assert!(
-        matches!(instructions[1], ExecutionInstruction::MoveL { .. }),
+        matches!(instructions[1], ProgramInstruction::MoveL { .. }),
         "place[1] should be MoveL"
     );
     assert!(
-        matches!(instructions[2], ExecutionInstruction::SetOutput { .. }),
+        matches!(instructions[2], ProgramInstruction::SetOutput { .. }),
         "place[2] should be SetOutput"
     );
     assert!(
-        matches!(instructions[3], ExecutionInstruction::MoveL { .. }),
+        matches!(instructions[3], ProgramInstruction::MoveL { .. }),
         "place[3] should be MoveL"
     );
 }
@@ -117,7 +117,7 @@ fn move_to_produces_one_instruction() {
         "MoveTo should produce exactly 1 instruction"
     );
     assert!(
-        matches!(instructions[0], ExecutionInstruction::MoveJ { .. }),
+        matches!(instructions[0], ProgramInstruction::MoveJ { .. }),
         "MoveTo should produce MoveJ"
     );
 }
@@ -135,7 +135,7 @@ fn wait_produces_one_delay() {
         "Wait should produce exactly 1 instruction"
     );
     assert!(
-        matches!(instructions[0], ExecutionInstruction::Delay { .. }),
+        matches!(instructions[0], ProgramInstruction::Delay { .. }),
         "Wait should produce Delay"
     );
 }
@@ -152,7 +152,7 @@ fn home_produces_one_move_j() {
         "Home should produce exactly 1 instruction"
     );
     assert!(
-        matches!(instructions[0], ExecutionInstruction::MoveJ { .. }),
+        matches!(instructions[0], ProgramInstruction::MoveJ { .. }),
         "Home should produce MoveJ"
     );
 }
@@ -172,10 +172,10 @@ fn pick_origin_propagates_to_all_instructions() {
     let instructions = lower(program);
     for (i, inst) in instructions.iter().enumerate() {
         let inst_origin = match inst {
-            ExecutionInstruction::MoveJ { origin, .. }
-            | ExecutionInstruction::MoveL { origin, .. }
-            | ExecutionInstruction::SetOutput { origin, .. }
-            | ExecutionInstruction::Delay { origin, .. } => origin,
+            ProgramInstruction::MoveJ { origin, .. }
+            | ProgramInstruction::MoveL { origin, .. }
+            | ProgramInstruction::SetOutput { origin, .. }
+            | ProgramInstruction::Delay { origin, .. } => origin,
         };
         assert_eq!(
             *inst_origin, origin,
@@ -196,10 +196,10 @@ fn place_origin_propagates_to_all_instructions() {
     let instructions = lower(program);
     for (i, inst) in instructions.iter().enumerate() {
         let inst_origin = match inst {
-            ExecutionInstruction::MoveJ { origin, .. }
-            | ExecutionInstruction::MoveL { origin, .. }
-            | ExecutionInstruction::SetOutput { origin, .. }
-            | ExecutionInstruction::Delay { origin, .. } => origin,
+            ProgramInstruction::MoveJ { origin, .. }
+            | ProgramInstruction::MoveL { origin, .. }
+            | ProgramInstruction::SetOutput { origin, .. }
+            | ProgramInstruction::Delay { origin, .. } => origin,
         };
         assert_eq!(
             *inst_origin, origin,
@@ -217,7 +217,7 @@ fn home_origin_propagates() {
     let instructions = lower(program);
     assert_eq!(instructions.len(), 1);
     match &instructions[0] {
-        ExecutionInstruction::MoveJ { origin: o, .. } => {
+        ProgramInstruction::MoveJ { origin: o, .. } => {
             assert_eq!(*o, origin);
         }
         other => panic!("Expected MoveJ, got {other:?}"),
@@ -285,21 +285,21 @@ fn operation_order_is_preserved() {
 
     // Wait → Delay
     assert!(
-        matches!(instructions[0], ExecutionInstruction::Delay { .. }),
+        matches!(instructions[0], ProgramInstruction::Delay { .. }),
         "first operation (Wait) should produce the first instruction"
     );
     // Pick → 4 instructions (MoveJ, MoveL, SetOutput, MoveL)
     assert!(
-        matches!(instructions[1], ExecutionInstruction::MoveJ { .. }),
+        matches!(instructions[1], ProgramInstruction::MoveJ { .. }),
         "Pick should start at instruction 1"
     );
     assert!(
-        matches!(instructions[4], ExecutionInstruction::MoveL { .. }),
+        matches!(instructions[4], ProgramInstruction::MoveL { .. }),
         "Pick should end at instruction 4"
     );
     // Home → MoveJ
     assert!(
-        matches!(instructions[5], ExecutionInstruction::MoveJ { .. }),
+        matches!(instructions[5], ProgramInstruction::MoveJ { .. }),
         "Home should start at instruction 5"
     );
 
@@ -329,7 +329,7 @@ fn pick_wait_place_home_full_pipeline() {
 
     // ── Pick approach [0]: MoveJ with approach_frame from provider ──
     match &instructions[0] {
-        ExecutionInstruction::MoveJ {
+        ProgramInstruction::MoveJ {
             target, profile, ..
         } => {
             assert_eq!(
@@ -344,7 +344,7 @@ fn pick_wait_place_home_full_pipeline() {
 
     // ── Pick grasp [1]: MoveL with grasp_frame from provider ──
     match &instructions[1] {
-        ExecutionInstruction::MoveL { target, .. } => {
+        ProgramInstruction::MoveL { target, .. } => {
             assert_eq!(
                 *target,
                 MotionTarget::Pose(sample_pose(0.5, 0.0, 0.0)),
@@ -356,7 +356,7 @@ fn pick_wait_place_home_full_pipeline() {
 
     // ── Pick grip [2]: SetOutput(true) ──
     match &instructions[2] {
-        ExecutionInstruction::SetOutput { channel, value, .. } => {
+        ProgramInstruction::SetOutput { channel, value, .. } => {
             assert_eq!(
                 channel.name, "gripper",
                 "Pick grip should use gripper channel"
@@ -372,7 +372,7 @@ fn pick_wait_place_home_full_pipeline() {
 
     // ── Pick retract [3]: MoveL with retreat_frame from provider ──
     match &instructions[3] {
-        ExecutionInstruction::MoveL { target, .. } => {
+        ProgramInstruction::MoveL { target, .. } => {
             assert_eq!(
                 *target,
                 MotionTarget::Pose(sample_pose(0.6, 0.0, 0.1)),
@@ -384,7 +384,7 @@ fn pick_wait_place_home_full_pipeline() {
 
     // ── Wait [4]: Delay ──
     match &instructions[4] {
-        ExecutionInstruction::Delay { duration, .. } => {
+        ProgramInstruction::Delay { duration, .. } => {
             assert_eq!(*duration, Duration::from_millis(500));
         }
         _ => panic!("instructions[4] should be Delay"),
@@ -392,7 +392,7 @@ fn pick_wait_place_home_full_pipeline() {
 
     // ── Place approach [5]: MoveJ with approach_frame from provider ──
     match &instructions[5] {
-        ExecutionInstruction::MoveJ { target, .. } => {
+        ProgramInstruction::MoveJ { target, .. } => {
             assert_eq!(
                 *target,
                 MotionTarget::Pose(sample_pose(0.4, 0.3, 0.2)),
@@ -404,7 +404,7 @@ fn pick_wait_place_home_full_pipeline() {
 
     // ── Place drop [6]: MoveL with drop_frame from provider ──
     match &instructions[6] {
-        ExecutionInstruction::MoveL { target, .. } => {
+        ProgramInstruction::MoveL { target, .. } => {
             assert_eq!(
                 *target,
                 MotionTarget::Pose(sample_pose(0.4, 0.5, 0.0)),
@@ -416,7 +416,7 @@ fn pick_wait_place_home_full_pipeline() {
 
     // ── Place ungrip [7]: SetOutput(false) ──
     match &instructions[7] {
-        ExecutionInstruction::SetOutput { channel, value, .. } => {
+        ProgramInstruction::SetOutput { channel, value, .. } => {
             assert_eq!(
                 channel.name, "gripper",
                 "Place ungrip should use gripper channel"
@@ -432,7 +432,7 @@ fn pick_wait_place_home_full_pipeline() {
 
     // ── Place retract [8]: MoveL with retreat_frame from provider ──
     match &instructions[8] {
-        ExecutionInstruction::MoveL { target, .. } => {
+        ProgramInstruction::MoveL { target, .. } => {
             assert_eq!(
                 *target,
                 MotionTarget::Pose(sample_pose(0.4, 0.6, 0.1)),
@@ -444,7 +444,7 @@ fn pick_wait_place_home_full_pipeline() {
 
     // ── Home [9]: MoveJ ──
     match &instructions[9] {
-        ExecutionInstruction::MoveJ { target, .. } => {
+        ProgramInstruction::MoveJ { target, .. } => {
             assert_eq!(
                 *target,
                 MotionTarget::Pose(sample_pose(0.0, 0.0, 0.0)),
@@ -457,9 +457,9 @@ fn pick_wait_place_home_full_pipeline() {
     // Traceability
     for i in 0..4 {
         let origin = match &instructions[i] {
-            ExecutionInstruction::MoveJ { origin, .. }
-            | ExecutionInstruction::MoveL { origin, .. }
-            | ExecutionInstruction::SetOutput { origin, .. } => origin,
+            ProgramInstruction::MoveJ { origin, .. }
+            | ProgramInstruction::MoveL { origin, .. }
+            | ProgramInstruction::SetOutput { origin, .. } => origin,
             _ => panic!("unexpected instruction type at {i}"),
         };
         assert_eq!(
@@ -469,16 +469,16 @@ fn pick_wait_place_home_full_pipeline() {
         );
     }
     match &instructions[4] {
-        ExecutionInstruction::Delay { origin, .. } => {
+        ProgramInstruction::Delay { origin, .. } => {
             assert_eq!(*origin, OperationId("op-wait".to_string()));
         }
         _ => panic!("instruction[4] should be Delay"),
     }
     for i in 5..9 {
         let origin = match &instructions[i] {
-            ExecutionInstruction::MoveJ { origin, .. }
-            | ExecutionInstruction::MoveL { origin, .. }
-            | ExecutionInstruction::SetOutput { origin, .. } => origin,
+            ProgramInstruction::MoveJ { origin, .. }
+            | ProgramInstruction::MoveL { origin, .. }
+            | ProgramInstruction::SetOutput { origin, .. } => origin,
             _ => panic!("unexpected instruction type at {i}"),
         };
         assert_eq!(
@@ -488,7 +488,7 @@ fn pick_wait_place_home_full_pipeline() {
         );
     }
     match &instructions[9] {
-        ExecutionInstruction::MoveJ { origin, .. } => {
+        ProgramInstruction::MoveJ { origin, .. } => {
             assert_eq!(*origin, OperationId("op-home".to_string()));
         }
         _ => panic!("instruction[9] should be MoveJ"),
@@ -517,13 +517,13 @@ fn two_picks_produce_eight_instructions() {
         "two Picks should produce 8 instructions"
     );
     match &instructions[2] {
-        ExecutionInstruction::SetOutput { value, .. } => {
+        ProgramInstruction::SetOutput { value, .. } => {
             assert_eq!(*value, OutputValue::Bool(true), "first Pick grip");
         }
         _ => panic!(),
     }
     match &instructions[6] {
-        ExecutionInstruction::SetOutput { value, .. } => {
+        ProgramInstruction::SetOutput { value, .. } => {
             assert_eq!(*value, OutputValue::Bool(true), "second Pick grip");
         }
         _ => panic!(),
@@ -603,7 +603,7 @@ home";
 // The SAME `OperationId` must survive every official IR transformation:
 //
 // ```text
-// SemanticOperation → ExecutionInstruction → MotionSegment → PlannedSegment
+// SemanticOperation → ProgramInstruction → MotionSegment → PlannedSegment
 //                                                                      ↘
 //                                                           RuntimeEvent
 // ```
@@ -625,19 +625,19 @@ use thalos_planning::{
     resolver::MotionResolver,
 };
 
-/// The `OperationId` carried by an `ExecutionInstruction` (all four variants).
-fn instruction_origin(inst: &ExecutionInstruction) -> OperationId {
+/// The `OperationId` carried by an `ProgramInstruction` (all four variants).
+fn instruction_origin(inst: &ProgramInstruction) -> OperationId {
     match inst {
-        ExecutionInstruction::MoveJ { origin, .. }
-        | ExecutionInstruction::MoveL { origin, .. }
-        | ExecutionInstruction::Delay { origin, .. }
-        | ExecutionInstruction::SetOutput { origin, .. } => origin.clone(),
+        ProgramInstruction::MoveJ { origin, .. }
+        | ProgramInstruction::MoveL { origin, .. }
+        | ProgramInstruction::Delay { origin, .. }
+        | ProgramInstruction::SetOutput { origin, .. } => origin.clone(),
     }
 }
 
 /// Runs the full canonical pipeline for a `SemanticProgram` and returns the
 /// origin observed at each IR stage:
-/// 1. every `ExecutionInstruction`,
+/// 1. every `ProgramInstruction`,
 /// 2. every `MotionSegment` (resolver output),
 /// 3. every `PlannedSegment` (compiler output),
 /// 4. every `RuntimeEvent` (resolver output).
@@ -726,7 +726,7 @@ fn i2_operation_id_identity_across_full_pipeline() {
 
     let (instructions, segments, planned, events) = run_pipeline(program);
 
-    // Stage 1 — every ExecutionInstruction carries the origin.
+    // Stage 1 — every ProgramInstruction carries the origin.
     assert!(
         !instructions.is_empty(),
         "pipeline must produce instructions"
@@ -734,7 +734,7 @@ fn i2_operation_id_identity_across_full_pipeline() {
     for (i, o) in instructions.iter().enumerate() {
         assert_eq!(
             o, &origin,
-            "ExecutionInstruction[{i}] must carry origin 'op-7'"
+            "ProgramInstruction[{i}] must carry origin 'op-7'"
         );
     }
     // Stage 2 — every MotionSegment carries the origin.
@@ -786,7 +786,7 @@ fn i2_origin_identity_with_different_operations_and_origin() {
     for (i, o) in instructions.iter().enumerate() {
         assert_eq!(
             o, &origin,
-            "ExecutionInstruction[{i}] must carry origin 'op-99'"
+            "ProgramInstruction[{i}] must carry origin 'op-99'"
         );
     }
     assert!(!segments.is_empty());

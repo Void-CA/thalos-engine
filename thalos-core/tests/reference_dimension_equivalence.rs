@@ -18,9 +18,7 @@ use std::path::PathBuf;
 
 use thalos_core::models::scara::ScaraSpec;
 use thalos_core::robot::adapter;
-use thalos_core::robot::scale::{
-    manipulability_reference_dimension, scene_reference_dimension,
-};
+use thalos_core::robot::scale::{manipulability_reference_dimension, scene_reference_dimension};
 use thalos_models::urdf::parser::parse_robot;
 
 fn fixture_path() -> PathBuf {

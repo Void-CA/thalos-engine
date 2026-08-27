@@ -33,7 +33,7 @@
 use std::time::Duration;
 
 use thalos_core::{
-    execution::program::ExecutionProgram,
+    execution::program::{ExecutionProgram, ProgramInstruction},
     execution::runtime::{RuntimeAction, RuntimeEvent, RuntimeProgram},
 };
 
@@ -73,16 +73,14 @@ impl TimelineScheduler {
 
         for instruction in &program.instructions {
             match instruction {
-                thalos_core::execution::program::ExecutionInstruction::MoveJ { .. }
-                | thalos_core::execution::program::ExecutionInstruction::MoveL { .. } => {
+                ProgramInstruction::MoveJ { .. } | ProgramInstruction::MoveL { .. } => {
                     if let Some(segment) = compiled.segments.get(segment_idx) {
                         let duration = segment.time_range.end - segment.time_range.start;
                         cursor += Duration::from_secs_f64(duration.max(0.0));
                         segment_idx += 1;
                     }
                 }
-                thalos_core::execution::program::ExecutionInstruction::Delay { .. }
-                | thalos_core::execution::program::ExecutionInstruction::SetOutput { .. } => {
+                ProgramInstruction::Delay { .. } | ProgramInstruction::SetOutput { .. } => {
                     if let Some(event) = logical.events.get(event_idx) {
                         let mut stamped = event.clone();
                         stamped.at_time = cursor;

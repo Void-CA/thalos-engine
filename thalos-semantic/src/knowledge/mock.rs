@@ -79,7 +79,12 @@ impl MockKnowledgeProvider {
     }
 
     /// Configure an `Ok` return for a specific (object, location) pair's `place_plan`.
-    pub fn with_place_ok(self, object: ObjectId, location: LocationId, plan: PlacementPlan) -> Self {
+    pub fn with_place_ok(
+        self,
+        object: ObjectId,
+        location: LocationId,
+        plan: PlacementPlan,
+    ) -> Self {
         self.with_place_plan(object, location, Ok(plan))
     }
 
@@ -128,10 +133,11 @@ impl Default for MockKnowledgeProvider {
 
 impl KnowledgeProvider for MockKnowledgeProvider {
     fn grasp_plan(&self, object: &ObjectId) -> Result<GraspPlan, LoweringError> {
-        self.grasp_plans
-            .get(object)
-            .cloned()
-            .unwrap_or_else(|| Err(LoweringError::KnowledgeProvider("not configured".to_string())))
+        self.grasp_plans.get(object).cloned().unwrap_or_else(|| {
+            Err(LoweringError::KnowledgeProvider(
+                "not configured".to_string(),
+            ))
+        })
     }
 
     fn place_plan(
@@ -140,17 +146,22 @@ impl KnowledgeProvider for MockKnowledgeProvider {
         location: &LocationId,
     ) -> Result<PlacementPlan, LoweringError> {
         let key = (object.clone(), location.clone());
-        self.place_plans
-            .get(&key)
-            .cloned()
-            .unwrap_or_else(|| Err(LoweringError::KnowledgeProvider("not configured".to_string())))
+        self.place_plans.get(&key).cloned().unwrap_or_else(|| {
+            Err(LoweringError::KnowledgeProvider(
+                "not configured".to_string(),
+            ))
+        })
     }
 
     fn location_pose(&self, location: &LocationId) -> Result<MotionPose, LoweringError> {
         self.location_poses
             .get(location)
             .cloned()
-            .unwrap_or_else(|| Err(LoweringError::KnowledgeProvider("not configured".to_string())))
+            .unwrap_or_else(|| {
+                Err(LoweringError::KnowledgeProvider(
+                    "not configured".to_string(),
+                ))
+            })
     }
 
     fn home_pose(&self) -> Result<MotionPose, LoweringError> {
@@ -204,8 +215,11 @@ mod tests {
         let object = ObjectId("bolt-1".to_string());
         let location = LocationId("tray-1".to_string());
         let plan = sample_placement_plan();
-        let provider =
-            MockKnowledgeProvider::new().with_place_ok(object.clone(), location.clone(), plan.clone());
+        let provider = MockKnowledgeProvider::new().with_place_ok(
+            object.clone(),
+            location.clone(),
+            plan.clone(),
+        );
 
         let result = provider.place_plan(&object, &location);
         assert_eq!(result, Ok(plan));
@@ -248,8 +262,11 @@ mod tests {
         let object = ObjectId("unknown".to_string());
         let location = LocationId("unknown-loc".to_string());
         let error = LoweringError::KnowledgeProvider("placement not found".to_string());
-        let provider = MockKnowledgeProvider::new()
-            .with_place_error(object.clone(), location.clone(), error.clone());
+        let provider = MockKnowledgeProvider::new().with_place_error(
+            object.clone(),
+            location.clone(),
+            error.clone(),
+        );
 
         let result = provider.place_plan(&object, &location);
         assert_eq!(result, Err(error));
@@ -259,8 +276,8 @@ mod tests {
     fn mock_returns_configured_location_error() {
         let location = LocationId("unknown".to_string());
         let error = LoweringError::KnowledgeProvider("location unknown".to_string());
-        let provider = MockKnowledgeProvider::new()
-            .with_location_error(location.clone(), error.clone());
+        let provider =
+            MockKnowledgeProvider::new().with_location_error(location.clone(), error.clone());
 
         let result = provider.location_pose(&location);
         assert_eq!(result, Err(error));
@@ -268,8 +285,8 @@ mod tests {
 
     #[test]
     fn mock_returns_configured_home_error() {
-        let provider = MockKnowledgeProvider::new()
-            .with_home_pose(Err(LoweringError::MissingHomePose));
+        let provider =
+            MockKnowledgeProvider::new().with_home_pose(Err(LoweringError::MissingHomePose));
 
         let result = provider.home_pose();
         assert_eq!(result, Err(LoweringError::MissingHomePose));
@@ -283,8 +300,7 @@ mod tests {
         let unknown = ObjectId("unknown".to_string());
         let plan = sample_grasp_plan();
 
-        let provider = MockKnowledgeProvider::new()
-            .with_grasp_ok(known.clone(), plan.clone());
+        let provider = MockKnowledgeProvider::new().with_grasp_ok(known.clone(), plan.clone());
 
         assert_eq!(provider.grasp_plan(&known), Ok(plan));
         assert!(
@@ -299,8 +315,7 @@ mod tests {
         let unknown = LocationId("unknown".to_string());
         let pose = sample_pose(1.0, 0.0, 0.0);
 
-        let provider = MockKnowledgeProvider::new()
-            .with_location_ok(known.clone(), pose.clone());
+        let provider = MockKnowledgeProvider::new().with_location_ok(known.clone(), pose.clone());
 
         assert_eq!(provider.location_pose(&known), Ok(pose));
         assert!(

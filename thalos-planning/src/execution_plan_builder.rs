@@ -1,5 +1,5 @@
 use thalos_core::execution::plan::{
-    BuilderError, ExecutionInstruction, ExecutionPlan, ExecutionSegment, ExecutionWaypoint,
+    BuilderError, ExecutionPlan, ExecutionSegment, ExecutionWaypoint, PlanInstruction,
 };
 use thalos_core::motion::segment::MotionSegment;
 
@@ -22,9 +22,9 @@ impl ExecutionPlanBuilder {
                 index: idx,
                 planned_segment_index: idx,
                 instruction: match &seg.source {
-                    MotionSegment::MoveJ { .. } => ExecutionInstruction::MoveJ,
-                    MotionSegment::MoveL { .. } => ExecutionInstruction::MoveL,
-                    MotionSegment::MoveLPosition { .. } => ExecutionInstruction::MoveL,
+                    MotionSegment::MoveJ { .. } => PlanInstruction::MoveJ,
+                    MotionSegment::MoveL { .. } => PlanInstruction::MoveL,
+                    MotionSegment::MoveLPosition { .. } => PlanInstruction::MoveL,
                 },
                 waypoint_range: seg.waypoint_range.clone(),
             })
@@ -44,7 +44,7 @@ impl ExecutionPlanBuilder {
             waypoints,
             segments,
             duration: plan.duration,
-    repeat_count: 1,
+            repeat_count: 1,
         })
     }
 }
@@ -53,7 +53,7 @@ impl ExecutionPlanBuilder {
 mod tests {
     use std::ops::Range;
 
-    use thalos_core::execution::plan::ExecutionInstruction;
+    use thalos_core::execution::plan::PlanInstruction;
     use thalos_core::ids::OperationId;
     use thalos_core::motion::segment::MotionSegment;
     use thalos_core::prelude::{Trajectory, TrajectoryPoint};
@@ -159,11 +159,11 @@ mod tests {
         assert_eq!(execution.segments.len(), 2);
         assert!(matches!(
             execution.segments[0].instruction,
-            ExecutionInstruction::MoveJ
+            PlanInstruction::MoveJ
         ));
         assert!(matches!(
             execution.segments[1].instruction,
-            ExecutionInstruction::MoveL
+            PlanInstruction::MoveL
         ));
     }
 
@@ -221,15 +221,15 @@ mod tests {
         assert_eq!(execution.segments.len(), 3);
         assert!(matches!(
             execution.segments[0].instruction,
-            ExecutionInstruction::MoveJ
+            PlanInstruction::MoveJ
         ));
         assert!(matches!(
             execution.segments[1].instruction,
-            ExecutionInstruction::MoveL
+            PlanInstruction::MoveL
         ));
         assert!(matches!(
             execution.segments[2].instruction,
-            ExecutionInstruction::MoveJ
+            PlanInstruction::MoveJ
         ));
         assert_eq!(execution.duration, plan.duration);
         assert_eq!(execution.duration, 2.5);

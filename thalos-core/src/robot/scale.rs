@@ -60,8 +60,7 @@ fn sum_segment_norms(
         .iter()
         .filter(|segment| include(segment))
         .map(|segment| {
-            segment.link.transform.translation.norm()
-                + segment.joint.origin().translation.norm()
+            segment.link.transform.translation.norm() + segment.joint.origin().translation.norm()
         })
         .sum();
     sum.max(REFERENCE_DIMENSION_EPS)

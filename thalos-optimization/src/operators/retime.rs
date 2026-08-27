@@ -676,9 +676,7 @@ mod unit_tests {
             allowed: vec![true, false, true],
         };
 
-        let result = op
-            .apply(&robot, &traj, &region, &ctx, Some(&mock))
-            .unwrap();
+        let result = op.apply(&robot, &traj, &region, &ctx, Some(&mock)).unwrap();
 
         let t0 = result.waypoints()[0].timestamp();
         let t1 = result.waypoints()[1].timestamp();
@@ -714,9 +712,7 @@ mod unit_tests {
         let mock = TimingMock {
             allowed: vec![true, true, true],
         };
-        let with_query = op
-            .apply(&robot, &traj, &region, &ctx, Some(&mock))
-            .unwrap();
+        let with_query = op.apply(&robot, &traj, &region, &ctx, Some(&mock)).unwrap();
         let without_query = op.apply(&robot, &traj, &region, &ctx, None).unwrap();
 
         for (a, b) in with_query
@@ -755,9 +751,7 @@ mod unit_tests {
             allowed: vec![true, true, false],
         };
 
-        let result = op
-            .apply(&robot, &traj, &region, &ctx, Some(&mock))
-            .unwrap();
+        let result = op.apply(&robot, &traj, &region, &ctx, Some(&mock)).unwrap();
 
         let t: Vec<f64> = result.waypoints().iter().map(|wp| wp.timestamp()).collect();
 
@@ -804,9 +798,7 @@ mod unit_tests {
             allowed: vec![true, true, true, false],
         };
 
-        let result = op
-            .apply(&robot, &traj, &region, &ctx, Some(&mock))
-            .unwrap();
+        let result = op.apply(&robot, &traj, &region, &ctx, Some(&mock)).unwrap();
 
         let t: Vec<f64> = result.waypoints().iter().map(|wp| wp.timestamp()).collect();
 

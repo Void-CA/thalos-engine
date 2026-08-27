@@ -48,8 +48,8 @@ mod tests {
     use crate::domain::{context::JointLimits, score};
     use std::sync::Arc;
     use thalos_core::{
-        analysis::region::{ProblemRegion, RegionId, RegionKind, RegionSeverity},
         analysis::AnalysisReport,
+        analysis::region::{ProblemRegion, RegionId, RegionKind, RegionSeverity},
         evaluation::PlanMetrics,
         models::{RobotModel, RobotRegistry},
         operation::{ConstraintQuery, PrecisionLevel},
@@ -445,7 +445,13 @@ mod tests {
         let operators: [&dyn TrajectoryOperator; 1] = [&op];
         pipeline
             .optimize_regions(
-                &operators, &robot, &traj, &regions, &metrics, &ctx, Some(&query),
+                &operators,
+                &robot,
+                &traj,
+                &regions,
+                &metrics,
+                &ctx,
+                Some(&query),
             )
             .expect("pipeline should succeed");
         assert_eq!(
@@ -489,7 +495,13 @@ mod tests {
         let operators: [&dyn TrajectoryOperator; 1] = [&op];
         let result = pipeline
             .optimize_regions(
-                &operators, &robot, &traj, &regions, &metrics, &ctx, Some(&query),
+                &operators,
+                &robot,
+                &traj,
+                &regions,
+                &metrics,
+                &ctx,
+                Some(&query),
             )
             .expect("pipeline should succeed");
 
@@ -652,7 +664,15 @@ mod tests {
         let op = ScoreMock::new("report_op", OperatorFamily::Geometry, 1.0, 1.0, 1.0);
         let operators: [&dyn TrajectoryOperator; 1] = [&op];
         let result = pipeline
-            .optimize(&operators, &robot, &traj, &test_report(), &metrics, &ctx, None)
+            .optimize(
+                &operators,
+                &robot,
+                &traj,
+                &test_report(),
+                &metrics,
+                &ctx,
+                None,
+            )
             .expect("pipeline should succeed with a report input");
 
         assert_eq!(result.report.steps.len(), 1);
@@ -666,7 +686,15 @@ mod tests {
         let op2 = ScoreMock::new("report_op2", OperatorFamily::Geometry, 1.0, 1.0, 1.0);
         let operators2: [&dyn TrajectoryOperator; 1] = [&op2];
         let result2 = pipeline
-            .optimize(&operators2, &robot, &traj, &test_empty_report(), &metrics, &ctx, None)
+            .optimize(
+                &operators2,
+                &robot,
+                &traj,
+                &test_empty_report(),
+                &metrics,
+                &ctx,
+                None,
+            )
             .expect("pipeline should succeed with an empty report");
 
         assert!(result2.report.steps.is_empty(), "no regions → no steps");

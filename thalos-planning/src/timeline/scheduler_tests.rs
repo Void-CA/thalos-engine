@@ -8,7 +8,7 @@
 use std::time::Duration;
 
 use thalos_core::{
-    execution::program::{ExecutionInstruction, ExecutionMetadata, ExecutionProgram},
+    execution::program::{ExecutionMetadata, ExecutionProgram, ProgramInstruction},
     execution::runtime::{RuntimeAction, RuntimeEvent, RuntimeProgram},
     ids::OperationId,
     motion::segment::MotionSegment,
@@ -51,7 +51,7 @@ fn default_profile() -> MotionProfile {
 }
 
 /// Build an `ExecutionProgram` from instructions.
-fn program_with(instructions: Vec<ExecutionInstruction>) -> ExecutionProgram {
+fn program_with(instructions: Vec<ProgramInstruction>) -> ExecutionProgram {
     ExecutionProgram {
         instructions,
         metadata: sample_metadata(),
@@ -133,12 +133,12 @@ fn empty_program_produces_empty_runtime_program() {
 fn set_output_after_motion_gets_segment_end_time() {
     // MoveJ [0, 1.0] then SetOutput → at_time must be 1.0s (absolute).
     let program = program_with(vec![
-        ExecutionInstruction::MoveJ {
+        ProgramInstruction::MoveJ {
             origin: origin("op-j"),
             target: MotionTarget::Pose(sample_pose(1.0)),
             profile: default_profile(),
         },
-        ExecutionInstruction::SetOutput {
+        ProgramInstruction::SetOutput {
             origin: origin("op-out"),
             channel: OutputChannel {
                 name: "gripper".into(),
@@ -166,16 +166,16 @@ fn delay_contributes_duration_to_timeline_cursor() {
     // MoveJ [0, 1.0], Delay(500ms), SetOutput.
     // Delay fires at 1.0s; the SetOutput fires 500ms later → at_time = 1.5s.
     let program = program_with(vec![
-        ExecutionInstruction::MoveJ {
+        ProgramInstruction::MoveJ {
             origin: origin("op-j"),
             target: MotionTarget::Pose(sample_pose(1.0)),
             profile: default_profile(),
         },
-        ExecutionInstruction::Delay {
+        ProgramInstruction::Delay {
             origin: origin("op-wait"),
             duration: Duration::from_millis(500),
         },
-        ExecutionInstruction::SetOutput {
+        ProgramInstruction::SetOutput {
             origin: origin("op-out"),
             channel: OutputChannel {
                 name: "gripper".into(),
@@ -212,21 +212,21 @@ fn spec_scenario_delay_then_post_delay_absolute() {
     // 500ms → trajectory holds until clock 1.5s → SetOutput at 2.0s fires
     // exactly at 2.0s from plan start (not 0.5s after the delay).
     let program = program_with(vec![
-        ExecutionInstruction::MoveJ {
+        ProgramInstruction::MoveJ {
             origin: origin("op-move-1"),
             target: MotionTarget::Pose(sample_pose(1.0)),
             profile: default_profile(),
         },
-        ExecutionInstruction::Delay {
+        ProgramInstruction::Delay {
             origin: origin("op-wait"),
             duration: Duration::from_millis(500),
         },
-        ExecutionInstruction::MoveL {
+        ProgramInstruction::MoveL {
             origin: origin("op-move-2"),
             target: MotionTarget::Pose(sample_pose(2.0)),
             profile: default_profile(),
         },
-        ExecutionInstruction::SetOutput {
+        ProgramInstruction::SetOutput {
             origin: origin("op-out"),
             channel: OutputChannel {
                 name: "gripper".into(),
@@ -264,16 +264,16 @@ fn at_time_independent_of_segment_ordering() {
     // segment ends at 3.0s → fires at t=5.0s from plan start, not 2.0s
     // after the prior segment.
     let program = program_with(vec![
-        ExecutionInstruction::MoveJ {
+        ProgramInstruction::MoveJ {
             origin: origin("op-move"),
             target: MotionTarget::Pose(sample_pose(3.0)),
             profile: default_profile(),
         },
-        ExecutionInstruction::Delay {
+        ProgramInstruction::Delay {
             origin: origin("op-wait"),
             duration: Duration::from_secs(2),
         },
-        ExecutionInstruction::SetOutput {
+        ProgramInstruction::SetOutput {
             origin: origin("op-out"),
             channel: OutputChannel {
                 name: "gripper".into(),
@@ -304,20 +304,21 @@ fn at_time_independent_of_segment_ordering() {
 }
 
 #[test]
-fn events_are_sorted_by_absolute_time() {    // Even if the logical events arrive in program order with zero at_time,
+fn events_are_sorted_by_absolute_time() {
+    // Even if the logical events arrive in program order with zero at_time,
     // the scheduler output must be sorted by at_time (spec: RuntimeProgram
     // Structure). Cursor is monotonic, so this holds by construction.
     let program = program_with(vec![
-        ExecutionInstruction::Delay {
+        ProgramInstruction::Delay {
             origin: origin("op-wait-1"),
             duration: Duration::from_millis(500),
         },
-        ExecutionInstruction::MoveJ {
+        ProgramInstruction::MoveJ {
             origin: origin("op-j"),
             target: MotionTarget::Pose(sample_pose(1.0)),
             profile: default_profile(),
         },
-        ExecutionInstruction::SetOutput {
+        ProgramInstruction::SetOutput {
             origin: origin("op-out"),
             channel: OutputChannel {
                 name: "gripper".into(),

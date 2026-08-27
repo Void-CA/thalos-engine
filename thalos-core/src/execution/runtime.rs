@@ -34,7 +34,7 @@ pub enum RuntimeAction {
 /// same timeline origin as `CompiledPlan`. It is assigned by the
 /// `TimelineScheduler` (logical → temporal post-pass), never by the resolver.
 /// `Duration` serializes with serde's default `{secs,nanos}` shape — the same
-/// convention as `ExecutionInstruction` (Q1).
+/// convention as `ProgramInstruction` (Q1).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RuntimeEvent {
     /// Absolute time from plan start at which this event fires.
@@ -133,7 +133,7 @@ mod tests {
     #[test]
     fn runtime_event_serde_uses_default_duration_shape() {
         // D1: Duration serializes with serde's default `{secs,nanos}` shape —
-        // consistent with ExecutionInstruction (Q1). No humantime_serde.
+        // consistent with ProgramInstruction (Q1). No humantime_serde.
         let event = sample_set_output_event();
         let json = serde_json::to_string(&event).expect("serialize");
         assert!(

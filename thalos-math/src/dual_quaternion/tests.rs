@@ -1,5 +1,5 @@
 use super::*;
-use crate::{Quaternion, UnitQuaternion, UnitVector3, Vector3, Transform3D, constants::EPS};
+use crate::{Quaternion, Transform3D, UnitQuaternion, UnitVector3, Vector3, constants::EPS};
 
 // ═══════════════════════════════════════════════════════════════════
 // Phase 1: DualNumber arithmetic
@@ -86,7 +86,8 @@ fn dq_new_accepts_unit() {
 
 #[test]
 fn dq_from_rotation_translation_roundtrip() {
-    let rotation = UnitQuaternion::from_axis_angle(UnitVector3::z_axis(), std::f64::consts::FRAC_PI_2);
+    let rotation =
+        UnitQuaternion::from_axis_angle(UnitVector3::z_axis(), std::f64::consts::FRAC_PI_2);
     let translation = Vector3::new(1.0, 2.0, 3.0);
     let dq = DualQuaternion::from_rotation_translation(rotation, translation);
 
@@ -214,13 +215,17 @@ fn dq_transform_roundtrip_arbitrary() {
     let t1 = dq.translation();
     let t2 = dq2.translation();
     let err_trans = (t1.x - t2.x).abs() + (t1.y - t2.y).abs() + (t1.z - t2.z).abs();
-    assert!(err_trans < 1e-12, "translation round-trip error: {}", err_trans);
+    assert!(
+        err_trans < 1e-12,
+        "translation round-trip error: {}",
+        err_trans
+    );
 }
 
 #[test]
 fn dq_transform_roundtrip_random() {
     use rand::Rng;
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     for _ in 0..1000 {
         let axis = UnitVector3::new(Vector3::new(
@@ -250,7 +255,11 @@ fn dq_transform_roundtrip_random() {
         let t1 = dq.translation();
         let t2 = dq2.translation();
         let err_trans = (t1.x - t2.x).abs() + (t1.y - t2.y).abs() + (t1.z - t2.z).abs();
-        assert!(err_trans < 1e-12, "translation round-trip error: {}", err_trans);
+        assert!(
+            err_trans < 1e-12,
+            "translation round-trip error: {}",
+            err_trans
+        );
     }
 }
 
@@ -293,7 +302,8 @@ fn screw_axis_pure_translation() {
 
 #[test]
 fn twist_struct_matches_screw_axis() {
-    let rotation = UnitQuaternion::from_axis_angle(UnitVector3::z_axis(), std::f64::consts::FRAC_PI_3);
+    let rotation =
+        UnitQuaternion::from_axis_angle(UnitVector3::z_axis(), std::f64::consts::FRAC_PI_3);
     let translation = Vector3::new(1.0, 2.0, 3.0);
     let dq = DualQuaternion::from_rotation_translation(rotation, translation);
 

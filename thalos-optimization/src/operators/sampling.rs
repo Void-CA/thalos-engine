@@ -702,9 +702,7 @@ mod unit_tests {
         let mock = NeighborsMock {
             allowed: vec![false, true],
         };
-        let result = op
-            .apply(&robot, &traj, &region, &ctx, Some(&mock))
-            .unwrap();
+        let result = op.apply(&robot, &traj, &region, &ctx, Some(&mock)).unwrap();
 
         assert_eq!(
             result.len(),
@@ -732,9 +730,7 @@ mod unit_tests {
         let free = NeighborsMock {
             allowed: vec![true, true],
         };
-        let result = op
-            .apply(&robot, &traj, &region, &ctx, Some(&free))
-            .unwrap();
+        let result = op.apply(&robot, &traj, &region, &ctx, Some(&free)).unwrap();
 
         assert_eq!(
             result.len(),
@@ -761,9 +757,7 @@ mod unit_tests {
         let mock = NeighborsMock {
             allowed: vec![true, false, true],
         };
-        let result = op
-            .apply(&robot, &traj, &region, &ctx, Some(&mock))
-            .unwrap();
+        let result = op.apply(&robot, &traj, &region, &ctx, Some(&mock)).unwrap();
 
         assert_eq!(
             result.len(),

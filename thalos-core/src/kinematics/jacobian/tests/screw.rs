@@ -1,7 +1,7 @@
-use crate::models::scara::ScaraSpec;
-use crate::models::planar_3r::Planar3RSpec;
-use crate::prelude::*;
 use crate::kinematics::jacobian::screw::ScrewJacobian;
+use crate::models::planar_3r::Planar3RSpec;
+use crate::models::scara::ScaraSpec;
+use crate::prelude::*;
 
 #[test]
 fn scara_dimensions() {
@@ -110,7 +110,11 @@ fn scara_screw_vs_numerical() {
                 assert!(
                     (js.linear[(r, c)] - jn.linear[(r, c)]).abs() < 1e-4,
                     "SCARA screw vs numerical mismatch at q={:?}, ({},{}): screw={}, num={}",
-                    q, r, c, js.linear[(r, c)], jn.linear[(r, c)]
+                    q,
+                    r,
+                    c,
+                    js.linear[(r, c)],
+                    jn.linear[(r, c)]
                 );
             }
         }
@@ -147,7 +151,11 @@ fn planar3r_screw_vs_numerical() {
                 assert!(
                     (js.linear[(r, c)] - jn.linear[(r, c)]).abs() < 1e-4,
                     "Planar3R screw vs numerical mismatch at q={:?}, ({},{}): screw={}, num={}",
-                    q, r, c, js.linear[(r, c)], jn.linear[(r, c)]
+                    q,
+                    r,
+                    c,
+                    js.linear[(r, c)],
+                    jn.linear[(r, c)]
                 );
             }
         }
@@ -195,7 +203,11 @@ fn scara_screw_vs_geometric() {
                 assert!(
                     (val_g - val_s).abs() < 1e-8,
                     "SCARA screw vs geometric mismatch at q={:?}, ({},{}): geom={}, screw={}",
-                    q, r, c, val_g, val_s
+                    q,
+                    r,
+                    c,
+                    val_g,
+                    val_s
                 );
             }
         }

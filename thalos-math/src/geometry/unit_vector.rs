@@ -45,6 +45,6 @@ impl Deref for UnitVector3 {
 
 impl std::fmt::Display for UnitVector3 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return write!(f, "{:}", self.into_inner());
+        write!(f, "{:}", self.into_inner())
     }
 }

@@ -5,7 +5,7 @@ use thalos_core::motion::MotionPose;
 ///
 /// Contains only geometric frames — no motion instructions, trajectories,
 /// or constraints exist on this type. Lowering converts these frames into
-/// `ExecutionInstruction` values.
+/// `ProgramInstruction` values.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlacementPlan {
     /// The pose where the object is released.

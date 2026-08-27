@@ -44,8 +44,8 @@ use thalos_collision::NaiveCollisionChecker;
 use thalos_core::{
     analysis::{
         Aggregator,
-        aggregator::DefaultAggregator,
         action::ActionKind,
+        aggregator::DefaultAggregator,
         location::Location,
         observation::{ArtifactRef, Observation, ObservationId, ObservationKind, Severity},
         scoring::DefaultScoringPolicy,
@@ -174,9 +174,7 @@ fn pipeline_case_strategy() -> impl Strategy<Value = (SerialChain, Vec<f64>, Pla
     // in a small box around the verified case [0.5, 0.6, -0.15].
     let scara = (0.3f64..0.9, -0.3f64..0.1, -0.3f64..-0.05).prop_map(|(elbow, dbase, dz)| {
         let chain = chain(RobotModel::Scara);
-        let program = PlanningProgram::new(vec![
-            movej(vec![0.5 + dbase, elbow, dz, 0.0]),
-        ]);
+        let program = PlanningProgram::new(vec![movej(vec![0.5 + dbase, elbow, dz, 0.0])]);
         // Home: non-singular — elbow bent to the negative side, base ~0.
         (chain, vec![0.0, -1.31, -0.1, 0.0], program)
     });
@@ -404,13 +402,13 @@ fn metrics_strategy() -> impl Strategy<Value = BTreeMap<String, f64>> {
     prop::collection::btree_map(keys, metric_value_strategy(), 0..8)
 }
 
-fn aggregate(
-    observations: &[Observation],
-    metrics: &BTreeMap<String, f64>,
-) -> f64 {
+fn aggregate(observations: &[Observation], metrics: &BTreeMap<String, f64>) -> f64 {
     let artifact = ArtifactRef::MotionPlan(MotionPlanId("prop".to_string()));
-    let report = DefaultAggregator::new(DefaultScoringPolicy)
-        .aggregate_with_metrics(artifact, observations.to_vec(), metrics.clone());
+    let report = DefaultAggregator::new(DefaultScoringPolicy).aggregate_with_metrics(
+        artifact,
+        observations.to_vec(),
+        metrics.clone(),
+    );
     report.summary.quality_index
 }
 

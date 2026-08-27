@@ -238,13 +238,8 @@ mod tests {
         let robot = RobotRegistry::create_default(RobotModel::Scara);
         let state = RobotState::zero(4);
         let fk = ForwardKinematics::new(robot.clone());
-        let solver = DampedLeastSquaresSolver::new(
-            fk,
-            robot.end_effector().clone(),
-            500,
-            1e-6,
-            0.1,
-        );
+        let solver =
+            DampedLeastSquaresSolver::new(fk, robot.end_effector().clone(), 500, 1e-6, 0.1);
         let ctx = PlanningContext {
             robot: &robot,
             current_state: &state,
@@ -266,7 +261,11 @@ mod tests {
         assert_eq!(position, &target);
 
         let fk2 = ForwardKinematics::new(robot.clone());
-        let ee = fk2.evaluate(state.as_slice()).ee_pose().unwrap().translation();
+        let ee = fk2
+            .evaluate(state.as_slice())
+            .ee_pose()
+            .unwrap()
+            .translation();
         let error = (ee - target).magnitude();
         assert!(
             error < 0.02,

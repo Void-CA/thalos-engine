@@ -1,7 +1,5 @@
 use crate::analysis::workspace::Workspace;
-use crate::kinematics::jacobian::{
-    JacobianSolver, ManipulabilityReport, SingularityReport,
-};
+use crate::kinematics::jacobian::{JacobianSolver, ManipulabilityReport, SingularityReport};
 use crate::robot::serial_chain::SerialChain;
 
 use super::report::{ManipulabilityAnalysis, ManipulabilitySample};
@@ -28,8 +26,11 @@ impl ManipulabilityAnalyzer {
                 let q = &ws_sample.q;
                 let jacobian = jacobian_solver.evaluate(q);
                 let singularity = SingularityReport::analyze(&jacobian);
-                let manipulability =
-                    ManipulabilityReport::compute_with_normalization(&singularity, &jacobian, chain);
+                let manipulability = ManipulabilityReport::compute_with_normalization(
+                    &singularity,
+                    &jacobian,
+                    chain,
+                );
 
                 ManipulabilitySample {
                     q: q.clone(),
@@ -150,7 +151,10 @@ mod tests {
         // configurations at joint limits vs fully dexterous ones) — the
         // relative metric must DISCRIMINATE, not collapse to a constant.
         assert!(
-            analysis.samples.iter().any(|s| s.relative_manipulability < 1.0),
+            analysis
+                .samples
+                .iter()
+                .any(|s| s.relative_manipulability < 1.0),
             "a real workspace must produce relative scores below 1.0"
         );
         assert!(
@@ -203,7 +207,10 @@ mod tests {
 
         for s in &analysis.samples {
             let report = &s.manipulability;
-            assert!(report.manipulability_grade.is_some(), "grade must be classified");
+            assert!(
+                report.manipulability_grade.is_some(),
+                "grade must be classified"
+            );
             assert!(
                 report.normalized_yoshikawa.is_finite() && report.normalized_yoshikawa >= 0.0,
                 "normalized must be finite and non-negative"

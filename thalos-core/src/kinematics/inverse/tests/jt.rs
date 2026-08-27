@@ -298,8 +298,8 @@ fn unreachable_target_error_equals_distance() {
 
     for (target, target_distance) in test_cases {
         let result = solver
-        .solve(&[0.0, 0.0], IKGoal::Position(target))
-        .expect("JT solve should succeed");
+            .solve(&[0.0, 0.0], IKGoal::Position(target))
+            .expect("JT solve should succeed");
 
         assert_eq!(
             result.status,

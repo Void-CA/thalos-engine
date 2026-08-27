@@ -11,7 +11,9 @@ use crate::{
 };
 use thalos_core::{
     analysis::{AnalysisReport, RegionGrouper},
-    evaluation::PlanMetrics, operation::ConstraintQuery, robot::serial_chain::SerialChain,
+    evaluation::PlanMetrics,
+    operation::ConstraintQuery,
+    robot::serial_chain::SerialChain,
     trajectory::Trajectory,
 };
 
@@ -83,7 +85,15 @@ impl OptimizationPipeline {
         constraints: Option<&dyn ConstraintQuery>,
     ) -> Result<OptimizationResult, OptimizationError> {
         let regions = RegionGrouper::default().group(&report.observations);
-        self.optimize_regions(operators, robot, trajectory, &regions, metrics, ctx, constraints)
+        self.optimize_regions(
+            operators,
+            robot,
+            trajectory,
+            &regions,
+            metrics,
+            ctx,
+            constraints,
+        )
     }
 
     /// LEGACY regions-based entry point — the same per-region loop, fed with an

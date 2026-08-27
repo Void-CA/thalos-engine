@@ -6,9 +6,6 @@
 //!
 //! Seeds are pure data — no IK solving, no validation, no quality assessment.
 
-use crate::motion::segment::MotionSegment;
-use crate::ids::OperationId;
-
 /// A policy for generating alternative IK seeds.
 ///
 /// Different policies explore different branches:

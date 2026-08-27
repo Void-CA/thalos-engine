@@ -14,10 +14,7 @@ use thalos_optimization::{
     operators::JointCenteringOperator,
     pipeline::OptimizationPipeline,
 };
-use thalos_planning::{
-    evaluation::evaluator::PlanEvaluator,
-    evaluation::metrics::PlanMetrics,
-};
+use thalos_planning::{evaluation::evaluator::PlanEvaluator, evaluation::metrics::PlanMetrics};
 
 fn build_chain() -> SerialChain {
     Manipulator3DOFSpec::ideal().build()

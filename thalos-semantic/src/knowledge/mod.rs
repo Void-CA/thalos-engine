@@ -128,7 +128,7 @@ mod tests {
 
     #[test]
     fn no_motion_instruction_types_in_signatures() {
-        // Confirm that GraspPlan/PlacementPlan do NOT contain ExecutionInstruction
+        // Confirm that GraspPlan/PlacementPlan do NOT contain ProgramInstruction
         fn check_grasp_plan_fields(plan: &GraspPlan) {
             let GraspPlan {
                 grasp_frame: _,
@@ -146,11 +146,11 @@ mod tests {
             } = plan;
         }
 
-        // Also verify the return types don't reference ExecutionInstruction
+        // Also verify the return types don't reference ProgramInstruction
         fn provider_returns_no_instructions(provider: &dyn KnowledgeProvider, object: &ObjectId) {
             match provider.grasp_plan(object) {
                 Ok(plan) => {
-                    // plan is GraspPlan — not ExecutionInstruction, not ExecutionProgram
+                    // plan is GraspPlan — not ProgramInstruction, not ExecutionProgram
                     let _: &GraspPlan = &plan;
                 }
                 Err(_) => {}

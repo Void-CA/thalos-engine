@@ -5,11 +5,11 @@ use thalos_core::ids::OperationId;
 use thalos_core::operation::MotionRole;
 use thalos_core::prelude::Trajectory;
 
-use thalos_core::execution::program::ExecutionInstruction;
+use thalos_core::execution::program::ProgramInstruction;
 use thalos_core::motion::segment::MotionSegment;
 
 /// Semantic motion instruction retained alongside resolved segments.
-pub type SemanticTarget = ExecutionInstruction;
+pub type SemanticTarget = ProgramInstruction;
 
 /// A planning program: an ordered sequence of movement commands.
 ///

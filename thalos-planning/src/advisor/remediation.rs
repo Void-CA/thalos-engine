@@ -237,18 +237,15 @@ mod tests {
         analysis::action::{ActionImpact, ActionKind, ActionPriority},
         analysis::observation::ObservationId,
         ids::OperationId,
-        kinematics::{
-            forward::ForwardKinematics,
-            inverse::DampedLeastSquaresSolver,
-        },
+        kinematics::{forward::ForwardKinematics, inverse::DampedLeastSquaresSolver},
         models::{RobotModel, RobotRegistry},
         motion::segment::MotionSegment,
         robot::serial_chain::SerialChain,
         spatial::frame::FrameId,
     };
 
-    use crate::feedback::operator::ActionProposal;
     use crate::feedback::materializer::{MaterializationError, ProposalMaterializer};
+    use crate::feedback::operator::ActionProposal;
 
     use super::{PhysicalEnvelope, SingularityResolveMaterializer};
 
@@ -330,7 +327,10 @@ mod tests {
             .evaluate(&bad_target)
             .ee_position()
             .expect("bad target FK position");
-        let alt_pos = fk.evaluate(target).ee_position().expect("re-solved FK position");
+        let alt_pos = fk
+            .evaluate(target)
+            .ee_position()
+            .expect("re-solved FK position");
         assert!(
             (bad_pos.x - alt_pos.x).abs() < 1e-3
                 && (bad_pos.y - alt_pos.y).abs() < 1e-3
@@ -369,33 +369,51 @@ mod tests {
 
         assert_eq!(
             PhysicalEnvelope::for_signature(4, &[Revolute, Revolute, Prismatic, Revolute]),
-            PhysicalEnvelope { max_velocity: 25.0, max_acceleration: 600.0 },
+            PhysicalEnvelope {
+                max_velocity: 25.0,
+                max_acceleration: 600.0
+            },
             "SCARA ceiling"
         );
         assert_eq!(
             PhysicalEnvelope::for_signature(3, &[Revolute, Revolute, Revolute]),
-            PhysicalEnvelope { max_velocity: 30.0, max_acceleration: 900.0 },
+            PhysicalEnvelope {
+                max_velocity: 30.0,
+                max_acceleration: 900.0
+            },
             "Planar3R / Manipulator3DOF ceiling"
         );
         assert_eq!(
             PhysicalEnvelope::for_signature(2, &[Revolute, Revolute]),
-            PhysicalEnvelope { max_velocity: 20.0, max_acceleration: 500.0 },
+            PhysicalEnvelope {
+                max_velocity: 20.0,
+                max_acceleration: 500.0
+            },
             "Planar2R ceiling"
         );
         assert_eq!(
             PhysicalEnvelope::for_signature(1, &[Revolute]),
-            PhysicalEnvelope { max_velocity: 15.0, max_acceleration: 400.0 },
+            PhysicalEnvelope {
+                max_velocity: 15.0,
+                max_acceleration: 400.0
+            },
             "SingleRevolute ceiling"
         );
         assert_eq!(
             PhysicalEnvelope::for_signature(0, &[]),
-            PhysicalEnvelope { max_velocity: 15.0, max_acceleration: 400.0 },
+            PhysicalEnvelope {
+                max_velocity: 15.0,
+                max_acceleration: 400.0
+            },
             "unknown signature must fall back to the conservative generic ceiling"
         );
         // The per-robot requirement: SCARA and Planar3R MUST differ.
         let scara = PhysicalEnvelope::for_chain(&chain(RobotModel::Scara));
         let p3r = PhysicalEnvelope::for_chain(&chain(RobotModel::Planar3R));
-        assert_ne!(scara, p3r, "the envelope must be per-robot, never a global constant");
+        assert_ne!(
+            scara, p3r,
+            "the envelope must be per-robot, never a global constant"
+        );
         assert!(scara.max_acceleration < p3r.max_acceleration);
     }
 }

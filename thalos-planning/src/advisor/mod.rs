@@ -31,9 +31,7 @@ use crate::feedback::materializer::{
     InsertWaypointMaterializer, LiftTcpMaterializer, MaterializationError, ProposalMaterializer,
 };
 use crate::feedback::operator::ActionProposal;
-use crate::motion::compiler::{
-    segment_start_joints, DefaultPlannerDispatcher, PlanCompiler,
-};
+use crate::motion::compiler::{DefaultPlannerDispatcher, PlanCompiler, segment_start_joints};
 use crate::motion::planner::SegmentPlanningContext;
 use crate::motion::program::{CompiledPlan, PlanningProgram};
 use crate::program_edit::ProgramEdit;
@@ -146,7 +144,15 @@ impl PlanAdvisor {
     ) -> Vec<Recommendation> {
         let Some(robot) = ik_solver.robot() else {
             // Sin modelo cinemático (mocks): no hay compilación posible.
-            return self.recommend_core(observations, program, ik_solver, current_joints, None, None, None);
+            return self.recommend_core(
+                observations,
+                program,
+                ik_solver,
+                current_joints,
+                None,
+                None,
+                None,
+            );
         };
         let state = RobotState::new(current_joints.to_vec());
         let ctx = SegmentPlanningContext {
@@ -277,11 +283,7 @@ impl PlanAdvisor {
                                     tcp,
                                 };
                                 match Self::verify_available(&context, &edit) {
-                                    Ok(()) => (
-                                        edit,
-                                        Some(RecommendationStatus::Available),
-                                        None,
-                                    ),
+                                    Ok(()) => (edit, Some(RecommendationStatus::Available), None),
                                     Err(reason) => (
                                         edit,
                                         Some(RecommendationStatus::Unavailable),
@@ -487,15 +489,18 @@ impl PlanAdvisor {
             tcp,
         };
         let compiler = PlanCompiler::new(Box::new(DefaultPlannerDispatcher::default()));
-        let compiled = compiler.compile(&edited, &ctx).map_err(|error| match error.source {
-            PlanningError::IkFailed { .. }
-            | PlanningError::IkFailedPosition { .. }
-            | PlanningError::Ik(_) => UnavailabilityReason::IkFailed,
-            _ => UnavailabilityReason::CompileFailed,
-        })?;
+        let compiled = compiler
+            .compile(&edited, &ctx)
+            .map_err(|error| match error.source {
+                PlanningError::IkFailed { .. }
+                | PlanningError::IkFailedPosition { .. }
+                | PlanningError::Ik(_) => UnavailabilityReason::IkFailed,
+                _ => UnavailabilityReason::CompileFailed,
+            })?;
 
         // 3. Re-analizar la trayectoria compilada (mismo TCP activo).
-        let artifact = ArtifactRef::MotionPlan(MotionPlanId("availability-verification".to_string()));
+        let artifact =
+            ArtifactRef::MotionPlan(MotionPlanId("availability-verification".to_string()));
         let (_analysis, reanalyzed) = TrajectoryAnalyzer::new(robot, tcp)
             .analyze_with_observations(artifact, &compiled.merged_trajectory)
             .map_err(|_| UnavailabilityReason::PlanningFailed)?;
@@ -812,9 +817,9 @@ mod tests {
         // the wire) — never a claimed `Available`. The end-to-end D8
         // verification requires a real robot (production always has one).
         assert!(
-            recommendations.iter().any(|r| {
-                r.action.kind == ActionKind::Waypoint && r.status.is_none()
-            }),
+            recommendations
+                .iter()
+                .any(|r| { r.action.kind == ActionKind::Waypoint && r.status.is_none() }),
             "without a kinematic model the materialization-only status must be None (not evaluated), \
              never a claimed Available"
         );
@@ -862,21 +867,13 @@ mod tests {
             MotionSegment::MoveL {
                 origin: thalos_core::ids::OperationId("op-a".to_string()),
                 frame: FrameId::World,
-                target_pose: Pose::new(
-                    FrameId::World,
-                    FrameId::Id(1),
-                    Transform3D::identity(),
-                ),
+                target_pose: Pose::new(FrameId::World, FrameId::Id(1), Transform3D::identity()),
                 max_velocity: Some(200.0),
             },
             MotionSegment::MoveL {
                 origin: thalos_core::ids::OperationId("op-b".to_string()),
                 frame: FrameId::World,
-                target_pose: Pose::new(
-                    FrameId::World,
-                    FrameId::Id(2),
-                    Transform3D::identity(),
-                ),
+                target_pose: Pose::new(FrameId::World, FrameId::Id(2), Transform3D::identity()),
                 max_velocity: Some(200.0),
             },
         ]);
@@ -892,7 +889,8 @@ mod tests {
         observations.push(other);
 
         let advisor = PlanAdvisor;
-        let recommendations = advisor.recommend(&observations, &program, &FailingIKSolver, &[0.0, 0.0]);
+        let recommendations =
+            advisor.recommend(&observations, &program, &FailingIKSolver, &[0.0, 0.0]);
 
         let singularity = recommendations
             .iter()
@@ -965,7 +963,9 @@ mod tests {
     }
 
     /// A real solver over the real chain, as the runtime wires it.
-    fn real_solver(chain: &thalos_core::robot::serial_chain::SerialChain) -> DampedLeastSquaresSolver {
+    fn real_solver(
+        chain: &thalos_core::robot::serial_chain::SerialChain,
+    ) -> DampedLeastSquaresSolver {
         let fk = ForwardKinematics::new(chain.clone());
         DampedLeastSquaresSolver::new(fk, *chain.end_effector(), 500, 1e-6, 0.1)
     }
@@ -974,8 +974,8 @@ mod tests {
     fn owning_segment_maps_waypoints_to_their_owning_segment() {
         // Design ADR-5: waypoint 5 in segment 0's range resolves to segment 0
         // — NEVER to segment index 5. Ranges are [start, end).
-        use thalos_core::prelude::Trajectory;
         use crate::motion::program::{CompiledPlan, PlannedSegment};
+        use thalos_core::prelude::Trajectory;
 
         fn seg(range: std::ops::Range<usize>) -> PlannedSegment {
             PlannedSegment {
@@ -995,7 +995,11 @@ mod tests {
             Some(0),
             "waypoint 5 lives in segment 0 — never segment index 5"
         );
-        assert_eq!(owning_segment(&plan, 10), Some(1), "ranges are [start, end)");
+        assert_eq!(
+            owning_segment(&plan, 10),
+            Some(1),
+            "ranges are [start, end)"
+        );
         assert_eq!(owning_segment(&plan, 15), Some(1));
         assert_eq!(owning_segment(&plan, 20), None, "out of every range");
     }
@@ -1017,12 +1021,8 @@ mod tests {
         obs.location = Location::Waypoint(1);
 
         let advisor = PlanAdvisor;
-        let recommendations = advisor.recommend(
-            &[obs],
-            &program,
-            &real_solver(&robot),
-            &[0.0, 0.0],
-        );
+        let recommendations =
+            advisor.recommend(&[obs], &program, &real_solver(&robot), &[0.0, 0.0]);
 
         assert!(
             !recommendations.is_empty(),
@@ -1045,8 +1045,8 @@ mod tests {
         // Cartesian materializers cannot transform a MoveJ: when the owning
         // segment is not cartesian, the advisor falls back to the first MoveL
         // (the documented intent of the original target_segment).
-        use thalos_core::prelude::Trajectory;
         use crate::motion::program::{CompiledPlan, PlannedSegment};
+        use thalos_core::prelude::Trajectory;
 
         let program = crate::motion::program::PlanningProgram::new(vec![
             MotionSegment::MoveJ {
@@ -1094,8 +1094,8 @@ mod tests {
         // failure": a recommendation whose materialization fails IK is
         // Unavailable WITH `reason: Some(IkFailed)` — the additive field is
         // populated, never silently dropped.
-        use thalos_core::analysis::observation::ObservationKind;
         use crate::recommendation::{RecommendationStatus, UnavailabilityReason};
+        use thalos_core::analysis::observation::ObservationKind;
 
         let observations = vec![observation(1, ObservationKind::LowManipulability)];
         let advisor = PlanAdvisor;
@@ -1110,7 +1110,10 @@ mod tests {
             .iter()
             .find(|r| r.action.kind == ActionKind::Manipulability)
             .expect("the manipulability recommendation must be present");
-        assert_eq!(manipulability.status, Some(RecommendationStatus::Unavailable));
+        assert_eq!(
+            manipulability.status,
+            Some(RecommendationStatus::Unavailable)
+        );
         assert_eq!(
             manipulability.reason,
             Some(UnavailabilityReason::IkFailed),
@@ -1169,7 +1172,9 @@ mod tests {
             tcp: None,
         };
         let compiler = PlanCompiler::new(Box::new(DefaultPlannerDispatcher::default()));
-        let compiled = compiler.compile(&program, &ctx).expect("original must compile");
+        let compiled = compiler
+            .compile(&program, &ctx)
+            .expect("original must compile");
 
         let artifact = ArtifactRef::MotionPlan(MotionPlanId("m4-crossing".to_string()));
         let (_analysis, observations) = TrajectoryAnalyzer::new(&robot, None)
@@ -1201,9 +1206,7 @@ mod tests {
 
         // The edit must be a clean 1:1 MoveJ replacement (not a split).
         let ProgramEdit::ReplaceSegment {
-            index,
-            replacement,
-            ..
+            index, replacement, ..
         } = &singularity.edit
         else {
             panic!("a singularity edit must be ReplaceSegment");
@@ -1292,9 +1295,8 @@ mod tests {
         // excluding waypoint 0 still leaves 23 inside the projected range —
         // the gate MUST reject the recommendation (the region remains mostly
         // singular and the score stays 0.0).
-        let observations: Vec<Observation> = (0..24)
-            .map(|wp| singular_obs(wp as u32 + 1, wp))
-            .collect();
+        let observations: Vec<Observation> =
+            (0..24).map(|wp| singular_obs(wp as u32 + 1, wp)).collect();
         let range = 0..25;
         assert_eq!(
             region_singularity_observations(&observations, &range, true),
@@ -1319,9 +1321,11 @@ mod tests {
             0,
             "observations outside the projected range must not count"
         );
-        assert!(
-            projected_region_has_zero_relevant_observations(&observations, &range, false)
-        );
+        assert!(projected_region_has_zero_relevant_observations(
+            &observations,
+            &range,
+            false
+        ));
     }
 
     // ── R3-2 (P0): honest no-context arm ────────────────────────────────────
@@ -1364,16 +1368,15 @@ mod tests {
             ik_solver: &solver,
             tcp: None,
         };
-        let compile_result =
-            PlanCompiler::new(Box::new(DefaultPlannerDispatcher::default())).compile(&program, &ctx);
+        let compile_result = PlanCompiler::new(Box::new(DefaultPlannerDispatcher::default()))
+            .compile(&program, &ctx);
         assert!(
             compile_result.is_err(),
             "precondition: the base program must fail to compile"
         );
 
         let observations = vec![singular_obs(1, 0)];
-        let recommendations =
-            PlanAdvisor.recommend(&observations, &program, &solver, &start);
+        let recommendations = PlanAdvisor.recommend(&observations, &program, &solver, &start);
         let singularity = recommendations
             .iter()
             .find(|r| r.action.kind == ActionKind::Singularity)
@@ -1431,8 +1434,13 @@ mod tests {
             .expect("analysis");
 
         let identity_tcp = ToolFrame::identity(*robot.end_effector());
-        let without =
-            PlanAdvisor.recommend_with_segment_context(&observations, &program, &solver, &compiled, None);
+        let without = PlanAdvisor.recommend_with_segment_context(
+            &observations,
+            &program,
+            &solver,
+            &compiled,
+            None,
+        );
         let with = PlanAdvisor.recommend_with_segment_context(
             &observations,
             &program,
@@ -1447,10 +1455,22 @@ mod tests {
             "the TCP must not change the recommendation set when it is identity-at-flange"
         );
         for (a, b) in without.iter().zip(with.iter()) {
-            assert_eq!(a.id, b.id, "recommendation ids must be deterministic under the TCP");
-            assert_eq!(a.status, b.status, "statuses must be identical for an identity TCP");
-            assert_eq!(a.reason, b.reason, "reasons must be identical for an identity TCP");
-            assert_eq!(a.edit, b.edit, "edits must be identical for an identity TCP");
+            assert_eq!(
+                a.id, b.id,
+                "recommendation ids must be deterministic under the TCP"
+            );
+            assert_eq!(
+                a.status, b.status,
+                "statuses must be identical for an identity TCP"
+            );
+            assert_eq!(
+                a.reason, b.reason,
+                "reasons must be identical for an identity TCP"
+            );
+            assert_eq!(
+                a.edit, b.edit,
+                "edits must be identical for an identity TCP"
+            );
         }
     }
 }

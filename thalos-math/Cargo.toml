@@ -1,7 +1,9 @@
 [package]
-name = "thalos_math"
-version = "0.1.0"
-edition = "2024"
+name = "thalos-math"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 publish = false
 
 [dependencies]

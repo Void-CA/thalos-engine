@@ -76,7 +76,11 @@ fn aggregate(
         p05,
         p50,
         p95,
-        avg_relative: if total > 0 { sum_rel / total as f64 } else { 0.0 },
+        avg_relative: if total > 0 {
+            sum_rel / total as f64
+        } else {
+            0.0
+        },
     }
 }
 
@@ -161,11 +165,7 @@ mod tests {
         }
     }
 
-    fn sample_normalized(
-        normalized: f64,
-        yoshikawa: f64,
-        isotropy: f64,
-    ) -> ManipulabilitySample {
+    fn sample_normalized(normalized: f64, yoshikawa: f64, isotropy: f64) -> ManipulabilitySample {
         ManipulabilitySample {
             q: vec![],
             position: Vector3::new(0.0, 0.0, 0.0),
@@ -270,10 +270,8 @@ mod tests {
         // Zero spread (single sample, or every normalized value equal):
         // P95 == P05 → every configuration sits at the reference top and no
         // score is fabricated outside [0, 1].
-        let single = ManipulabilityAnalysis::from_samples(
-            vec![sample_normalized(0.7, 1.0, 0.5)],
-            1.0,
-        );
+        let single =
+            ManipulabilityAnalysis::from_samples(vec![sample_normalized(0.7, 1.0, 0.5)], 1.0);
         assert_eq!(single.samples[0].relative_manipulability, 1.0);
         assert_eq!(single.metrics.avg_relative, 1.0);
         assert_eq!(single.metrics.p05, 0.7);

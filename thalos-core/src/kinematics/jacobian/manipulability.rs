@@ -275,9 +275,7 @@ mod tests {
     use crate::robot::builder::SerialChainBuilder;
     use crate::robot::joint::*;
     use crate::robot::link::Link;
-    use crate::robot::scale::{
-        manipulability_reference_dimension, scene_reference_dimension,
-    };
+    use crate::robot::scale::{manipulability_reference_dimension, scene_reference_dimension};
     use crate::robot::segment::Segment;
     use crate::robot::serial_chain::SerialChain;
     use crate::spatial::frame::FrameId;
@@ -302,7 +300,10 @@ mod tests {
             FrameId::World,
             f1.clone(),
             r1,
-            Link::new(0, Transform3D::from_translation(Vector3::new(1.0, 0.0, 0.0))),
+            Link::new(
+                0,
+                Transform3D::from_translation(Vector3::new(1.0, 0.0, 0.0)),
+            ),
         ));
 
         let r2 = JointType::Revolute(RevoluteJoint::new(
@@ -315,7 +316,10 @@ mod tests {
             f1,
             f2.clone(),
             r2,
-            Link::new(1, Transform3D::from_translation(Vector3::new(1.0, 0.0, 0.0))),
+            Link::new(
+                1,
+                Transform3D::from_translation(Vector3::new(1.0, 0.0, 0.0)),
+            ),
         ));
 
         let p1 = JointType::Prismatic(PrismaticJoint::new(
@@ -471,11 +475,8 @@ mod tests {
             "full extension must lose rank structurally (rank 1)"
         );
 
-        let report = ManipulabilityReport::compute_with_normalization(
-            &singularity,
-            &jacobian,
-            &chain,
-        );
+        let report =
+            ManipulabilityReport::compute_with_normalization(&singularity, &jacobian, &chain);
         assert_eq!(
             report.manipulability_grade,
             Some(ManipulabilityGrade::Low),
@@ -497,15 +498,24 @@ mod tests {
         // on the upper side: exactly T_LOW → medium, exactly T_HIGH → high.
         let eps = 1e-12;
 
-        assert_eq!(classify(T_LOW - eps, T_LOW, T_HIGH), ManipulabilityGrade::Low);
+        assert_eq!(
+            classify(T_LOW - eps, T_LOW, T_HIGH),
+            ManipulabilityGrade::Low
+        );
         assert_eq!(classify(T_LOW, T_LOW, T_HIGH), ManipulabilityGrade::Medium);
         assert_eq!(
             classify((T_LOW + T_HIGH) / 2.0, T_LOW, T_HIGH),
             ManipulabilityGrade::Medium
         );
-        assert_eq!(classify(T_HIGH - eps, T_LOW, T_HIGH), ManipulabilityGrade::Medium);
+        assert_eq!(
+            classify(T_HIGH - eps, T_LOW, T_HIGH),
+            ManipulabilityGrade::Medium
+        );
         assert_eq!(classify(T_HIGH, T_LOW, T_HIGH), ManipulabilityGrade::High);
-        assert_eq!(classify(T_HIGH + eps, T_LOW, T_HIGH), ManipulabilityGrade::High);
+        assert_eq!(
+            classify(T_HIGH + eps, T_LOW, T_HIGH),
+            ManipulabilityGrade::High
+        );
     }
 
     #[test]
@@ -533,7 +543,11 @@ mod tests {
         let fk = ForwardKinematics::new(chain.clone());
         let jac = GeometricJacobian::new(fk, chain.end_effector.clone());
 
-        for q in [vec![0.0, 0.0, 0.0], vec![0.6, -0.4, 0.2], vec![-1.2, 0.9, -0.5]] {
+        for q in [
+            vec![0.0, 0.0, 0.0],
+            vec![0.6, -0.4, 0.2],
+            vec![-1.2, 0.9, -0.5],
+        ] {
             let jacobian = jac.evaluate(&q);
             let singularity = SingularityReport::analyze(&jacobian);
 
@@ -607,7 +621,10 @@ mod tests {
         let report =
             ManipulabilityReport::compute_with_normalization(&singularity, &jacobian, &chain);
 
-        assert!(report.normalized_yoshikawa.is_finite(), "no NaN/Inf from degenerate L_ref");
+        assert!(
+            report.normalized_yoshikawa.is_finite(),
+            "no NaN/Inf from degenerate L_ref"
+        );
         assert!(
             report.manipulability_grade.is_some(),
             "grade still classified on the unscaled guard path"
@@ -639,7 +656,10 @@ mod tests {
             FrameId::World,
             f1.clone(),
             r1,
-            Link::new(0, Transform3D::from_translation(Vector3::new(1.0, 0.0, 0.0))),
+            Link::new(
+                0,
+                Transform3D::from_translation(Vector3::new(1.0, 0.0, 0.0)),
+            ),
         ));
 
         let r2 = JointType::Revolute(RevoluteJoint::new(
@@ -652,7 +672,10 @@ mod tests {
             f1,
             f2.clone(),
             r2,
-            Link::new(1, Transform3D::from_translation(Vector3::new(1.0, 0.0, 0.0))),
+            Link::new(
+                1,
+                Transform3D::from_translation(Vector3::new(1.0, 0.0, 0.0)),
+            ),
         ));
 
         let tcp_fixed = JointType::Fixed(FixedJoint::new(Transform3D::from_translation(
@@ -701,7 +724,12 @@ mod tests {
         assert_eq!(moving_a, moving_b);
 
         // Same Jacobian → same normalized + grade, waypoint by waypoint.
-        for q in [vec![0.5, -0.3], vec![1.2, 0.9], vec![-0.8, 0.4], vec![0.0, 0.0]] {
+        for q in [
+            vec![0.5, -0.3],
+            vec![1.2, 0.9],
+            vec![-0.8, 0.4],
+            vec![0.0, 0.0],
+        ] {
             let report_a = evaluate_report(&robot_a, &q);
             let report_b = evaluate_report(&robot_b, &q);
 
@@ -821,8 +849,7 @@ mod tests {
         // The 3×0 Jacobian has no singular values; `SingularityReport::analyze`
         // panics on the empty SVD, so the report is constructed directly (the
         // raw path already tolerates an empty singular-value list).
-        let jacobian =
-            Jacobian::new(DynamicMatrix::zeros(3, 0), DynamicMatrix::zeros(3, 0));
+        let jacobian = Jacobian::new(DynamicMatrix::zeros(3, 0), DynamicMatrix::zeros(3, 0));
         let singularity = make_singularity(vec![], 0, f64::INFINITY);
         let report =
             ManipulabilityReport::compute_with_normalization(&singularity, &jacobian, &chain);

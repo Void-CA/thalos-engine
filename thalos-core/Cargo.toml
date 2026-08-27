@@ -1,12 +1,14 @@
 [package]
-name = "thalos_core"
-version = "0.1.0"
-edition = "2024"
+name = "thalos-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 publish = false
 
 [dependencies]
-thalos_math = { path = "../thalos-math" }
-thalos_models = { path = "../thalos-models" }
+thalos-math = { path = "../thalos-math" }
+thalos-models = { path = "../thalos-models" }
 rand = "0.8"
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"

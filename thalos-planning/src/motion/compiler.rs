@@ -12,8 +12,7 @@ use thalos_core::{
 
 use crate::error::{CompileError, PlanningError};
 use crate::goal::{
-    GoalResolver, GoalResolverConfig, JointGoal, ResolvedPositionGoal,
-    ValidatedGoal,
+    GoalResolver, GoalResolverConfig, JointGoal, ResolvedPositionGoal, ValidatedGoal,
 };
 use crate::motion::move_j::{MoveJConfig, MoveJPlanner};
 use crate::motion::move_l::{MoveLConfig, MoveLPlanner};
@@ -206,7 +205,12 @@ impl PlanCompiler {
             };
             program.segments.len()
         ];
-        self.compile_segments(&program.segments, &metadata, ctx, program.semantic_targets.clone())
+        self.compile_segments(
+            &program.segments,
+            &metadata,
+            ctx,
+            program.semantic_targets.clone(),
+        )
     }
 
     /// Shared compilation core.
@@ -347,11 +351,13 @@ impl PlanCompiler {
             .iter()
             .enumerate()
             .filter_map(|(i, node)| {
-                node.operation_id.clone().map(|operation_id| MotionProvenance {
-                    waypoint_range: plan.segments[i].waypoint_range.clone(),
-                    operation_id,
-                    role: node.role,
-                })
+                node.operation_id
+                    .clone()
+                    .map(|operation_id| MotionProvenance {
+                        waypoint_range: plan.segments[i].waypoint_range.clone(),
+                        operation_id,
+                        role: node.role,
+                    })
             })
             .collect();
 
@@ -883,7 +889,7 @@ mod tests {
     fn provenance_survives_through_optimization() {
         use thalos_core::{
             analysis::region::{
-                project_semantic_problem, ProblemRegion, RegionId, RegionKind, RegionSeverity,
+                ProblemRegion, RegionId, RegionKind, RegionSeverity, project_semantic_problem,
             },
             evaluation::{
                 CollisionMetrics, JointSafetyMetrics, ManipulabilityMetrics, PlanMetrics,
@@ -891,11 +897,8 @@ mod tests {
             operation::MotionRole,
         };
         use thalos_optimization::{
-            TrajectoryOperator,
-            domain::context::OptimizationContext,
-            operators::Retime,
-            pipeline::OptimizationPipeline,
-            PipelineConfig,
+            PipelineConfig, TrajectoryOperator, domain::context::OptimizationContext,
+            operators::Retime, pipeline::OptimizationPipeline,
         };
 
         let h = TestHarness::new();
@@ -1165,7 +1168,9 @@ mod tests {
                 max_acceleration: None,
             },
         ]);
-        let plan = compiler.compile(&program, &h.ctx()).expect("compile failed");
+        let plan = compiler
+            .compile(&program, &h.ctx())
+            .expect("compile failed");
 
         let current = vec![0.1, 0.2];
 
@@ -1265,7 +1270,13 @@ mod tests {
         assert!(!plan.merged_trajectory.is_empty());
 
         // The last waypoint is the position-resolved state (mock returns q0).
-        let last = plan.merged_trajectory.waypoints().last().unwrap().joints().to_vec();
+        let last = plan
+            .merged_trajectory
+            .waypoints()
+            .last()
+            .unwrap()
+            .joints()
+            .to_vec();
         assert_eq!(last, vec![0.5, 0.5]);
     }
 }

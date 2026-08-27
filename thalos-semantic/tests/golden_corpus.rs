@@ -66,15 +66,12 @@ fn golden_corpus_parity() {
                 let expected_errors = entry["expected_errors"]
                     .as_array()
                     .unwrap_or_else(|| panic!("{name}: expected_errors must be an array"));
-                assert_eq!(
-                    errors.len(),
-                    expected_errors.len(),
-                    "{name}: error count"
-                );
+                assert_eq!(errors.len(), expected_errors.len(), "{name}: error count");
                 for (error, expected) in errors.iter().zip(expected_errors) {
                     let line = expected["line"]
                         .as_u64()
-                        .unwrap_or_else(|| panic!("{name}: expected error line")) as usize;
+                        .unwrap_or_else(|| panic!("{name}: expected error line"))
+                        as usize;
                     let contains = expected["contains"]
                         .as_str()
                         .unwrap_or_else(|| panic!("{name}: expected error contains"));
@@ -99,7 +96,9 @@ fn assert_op_matches(op: &SemanticOperation, expected: &Value, name: &str) {
         (SemanticOperation::Pick(pick), "pick") => {
             assert_eq!(
                 pick.object.0,
-                expected["object"].as_str().unwrap_or_else(|| panic!("{name}: pick object")),
+                expected["object"]
+                    .as_str()
+                    .unwrap_or_else(|| panic!("{name}: pick object")),
                 "{name}: pick object"
             );
             assert_tool(&pick.tool, expected, name);
@@ -107,7 +106,9 @@ fn assert_op_matches(op: &SemanticOperation, expected: &Value, name: &str) {
         (SemanticOperation::Place(place), "place") => {
             assert_eq!(
                 place.object.0,
-                expected["object"].as_str().unwrap_or_else(|| panic!("{name}: place object")),
+                expected["object"]
+                    .as_str()
+                    .unwrap_or_else(|| panic!("{name}: place object")),
                 "{name}: place object"
             );
             assert_eq!(
@@ -132,7 +133,8 @@ fn assert_op_matches(op: &SemanticOperation, expected: &Value, name: &str) {
         (SemanticOperation::Wait(wait), "wait") => {
             let expected_ms = expected["duration_ms"]
                 .as_u64()
-                .unwrap_or_else(|| panic!("{name}: wait duration_ms")) as u128;
+                .unwrap_or_else(|| panic!("{name}: wait duration_ms"))
+                as u128;
             assert_eq!(
                 wait.duration.as_millis(),
                 expected_ms,
@@ -140,9 +142,9 @@ fn assert_op_matches(op: &SemanticOperation, expected: &Value, name: &str) {
             );
         }
         (SemanticOperation::Home(_), "home") => {}
-        (other, type_name) => panic!(
-            "{name}: parsed op {other:?} does not match expected type '{type_name}'"
-        ),
+        (other, type_name) => {
+            panic!("{name}: parsed op {other:?} does not match expected type '{type_name}'")
+        }
     }
 }
 

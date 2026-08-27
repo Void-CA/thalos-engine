@@ -1,9 +1,11 @@
 [package]
-name = "thalos_models"
-version = "0.1.0"
-edition = "2024"
+name = "thalos-models"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 publish = false
 
 [dependencies]
-thalos_math = { path = "../thalos-math" }
+thalos-math = { path = "../thalos-math" }
 quick-xml = "0.37"

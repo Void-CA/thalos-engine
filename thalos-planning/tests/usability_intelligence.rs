@@ -528,9 +528,7 @@ mod edits_improve {
         // the alternate elbow posture, which must: (a) compile, (b) remove the
         // Singularity observation, and (c) strictly improve the score.
         let robot = chain(RobotModel::Scara);
-        let program = PlanningProgram::new(vec![
-            movej(vec![0.5, 0.6, -0.15, 0.0]),
-        ]);
+        let program = PlanningProgram::new(vec![movej(vec![0.5, 0.6, -0.15, 0.0])]);
         // Non-singular home: elbow bent to the negative side, base ~0.
         let start = vec![0.0, -1.31, -0.1, 0.0];
 
@@ -579,9 +577,7 @@ mod edits_improve {
         // A SCARA program crossing the extension: applying the recommendation
         // set must improve the score by removing the Singularity observation.
         let robot = chain(RobotModel::Scara);
-        let program = PlanningProgram::new(vec![
-            movej(vec![0.5, 0.6, -0.15, 0.0]),
-        ]);
+        let program = PlanningProgram::new(vec![movej(vec![0.5, 0.6, -0.15, 0.0])]);
         let start = vec![0.0, -1.31, -0.1, 0.0];
 
         let trajectory = compile(&robot, &start, &program).expect("original must compile");

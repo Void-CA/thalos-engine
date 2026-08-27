@@ -1,5 +1,5 @@
-use crate::spatial::pose::Pose;
 use crate::robot::serial_chain::SerialChain;
+use crate::spatial::pose::Pose;
 use thalos_math::DynamicVector;
 use thalos_math::{UnitQuaternion, Vector3, orientation_error};
 

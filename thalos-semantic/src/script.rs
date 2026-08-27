@@ -118,7 +118,10 @@ fn extract_named_args<'a>(args: &[&'a str]) -> (Vec<&'a str>, Vec<(&'a str, &'a 
 }
 
 fn extract_tool(named: &[(&str, &str)]) -> Option<ToolId> {
-    named.iter().find(|(k, _)| *k == "tool").map(|(_, v)| ToolId(v.to_string()))
+    named
+        .iter()
+        .find(|(k, _)| *k == "tool")
+        .map(|(_, v)| ToolId(v.to_string()))
 }
 
 fn parse_pick(args: &[&str], line_num: usize) -> Result<SemanticOperation, ParseError> {
@@ -201,9 +204,7 @@ fn parse_duration(s: &str, line_num: usize) -> Result<Duration, ParseError> {
     } else {
         Err(ParseError {
             line: line_num,
-            message: format!(
-                "invalid duration '{s}': expected format like 500ms, 2s, or 1.5s"
-            ),
+            message: format!("invalid duration '{s}': expected format like 500ms, 2s, or 1.5s"),
         })
     }
 }

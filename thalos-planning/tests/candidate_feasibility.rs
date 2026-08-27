@@ -151,7 +151,8 @@ fn pipeline_runs_and_selection_beats_the_seed_on_real_geometry() {
             better.candidate.strategy, better.assessment.risk, seed_risk
         );
     } else {
-        let any_admissible = generated_admissible.first()
+        let any_admissible = generated_admissible
+            .first()
             .expect("at least one admissible alternative");
         println!(
             "FEASIBILITY: generated {:?} admissible with risk {:.4} (seed {:.4}) — PASS (same risk)",

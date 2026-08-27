@@ -33,9 +33,8 @@ use std::collections::BTreeMap;
 use thalos_core::analysis::action::{ActionImpact, ActionKind, ActionPriority};
 use thalos_core::analysis::observation::ObservationId;
 use thalos_core::kinematics::forward::ForwardKinematics;
-use thalos_core::kinematics::inverse::{IKSolver, IKGoal, MultiStartIKSolver, SeedConfig};
+use thalos_core::kinematics::inverse::{IKGoal, IKSolver, MultiStartIKSolver, SeedConfig};
 use thalos_core::motion::segment::MotionSegment;
-use thalos_math::Vector3;
 
 use crate::advisor::remediation::SingularityResolveMaterializer;
 use crate::candidate::contract::{
@@ -125,7 +124,11 @@ impl MotionStrategy for AlternateElbow {
                 let fk = ForwardKinematics::new(robot.clone());
 
                 // Compute target position from the MoveJ target joints
-                if let MotionSegment::MoveJ { target: target_joints, .. } = target {
+                if let MotionSegment::MoveJ {
+                    target: target_joints,
+                    ..
+                } = target
+                {
                     if let Some(target_pos) = fk.evaluate(target_joints).ee_position() {
                         let seed_config = SeedConfig::for_robot(start_joints.len());
                         let multi_solver = MultiStartIKSolver::new(ik_solver, seed_config);
@@ -222,7 +225,11 @@ fn generate_elbow_seeds(base_joints: &[f64]) -> Vec<Vec<f64>> {
 
     // Seed 1: elbow flipped (negate joints 1,2 for 6DOF)
     let mut flipped = base_joints.to_vec();
-    let flip_indices = if base_joints.len() >= 4 { vec![1, 2] } else { vec![1] };
+    let flip_indices = if base_joints.len() >= 4 {
+        vec![1, 2]
+    } else {
+        vec![1]
+    };
     for &idx in &flip_indices {
         if idx < flipped.len() {
             flipped[idx] = -flipped[idx];

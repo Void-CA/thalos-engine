@@ -1,12 +1,14 @@
 [package]
 name = "thalos-intelligence"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 publish = false
 
 [dependencies]
-thalos_core = { path = "../thalos-core" }
-thalos-semantic = { path = "../thalos-semantic", package = "thalos_semantic" }
+thalos-core = { path = "../thalos-core" }
+thalos-semantic = { path = "../thalos-semantic" }
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"
 

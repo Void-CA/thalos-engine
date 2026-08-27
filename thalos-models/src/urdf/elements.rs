@@ -497,7 +497,7 @@ pub fn parse_global_material<R: BufRead>(
                 }
             }
             Event::End(e) => {
-                if e.name().as_ref().to_ascii_lowercase() == b"material" {
+                if e.name().as_ref().eq_ignore_ascii_case(b"material") {
                     break;
                 }
             }

@@ -6,7 +6,7 @@ use crate::resource::ToolId;
 ///
 /// Contains only geometric frames — no motion instructions, trajectories,
 /// or constraints exist on this type. Lowering converts these frames into
-/// `ExecutionInstruction` values.
+/// `ProgramInstruction` values.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GraspPlan {
     /// The pose where grasping occurs (the object's position/orientation).
