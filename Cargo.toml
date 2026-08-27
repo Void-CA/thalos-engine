@@ -1,5 +1,5 @@
 [workspace]
-members = ["thalos-engine", "thalos-math", "thalos-models", "thalos-core"]
+members = ["thalos-engine", "thalos-math", "thalos-models", "thalos-core", "thalos-collision"]
 resolver = "3"
 
 [workspace.package]

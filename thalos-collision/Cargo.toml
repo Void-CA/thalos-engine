@@ -1,0 +1,9 @@
+[package]
+name = "thalos-collision"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+thalos_core = { path = "../thalos-core" }
+thalos_math = { path = "../thalos-math" }
