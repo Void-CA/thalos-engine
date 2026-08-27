@@ -1,6 +1,7 @@
 pub mod capability;
 pub mod observation;
 pub mod policy;
+pub mod binding;
 pub mod active_robot;
 pub mod adapter;
 pub mod builder;

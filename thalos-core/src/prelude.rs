@@ -16,6 +16,10 @@ pub use crate::robot::{
     },
     observation::{JointObservationAssessment, ObservationAssessment, ObservationQuality},
     policy::{DeviationThresholds, ObservationResponsePolicy, PolicyDecision},
+    binding::{
+        EncoderCalibration, JointSourceBinding, JointStateBinding, ObservationSample,
+        RobotHardwareBinding, SensorContract, SensorKind, StateAggregator, StateSource,
+    },
     state::{JointState, RobotState, StateDeviation, StateRequirement, StateSatisfactionError},
 };
 
