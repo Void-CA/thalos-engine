@@ -1,0 +1,13 @@
+[package]
+name = "thalos_math"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+thiserror = "2"
+nalgebra = "0.35"
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+rand = "0.9"
