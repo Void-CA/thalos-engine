@@ -1,0 +1,137 @@
+<?xml version="1.0"?>
+<robot name="icebot">
+
+  <link name="base_link">
+    <visual>
+      <origin xyz="0 0 0.05" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.1" radius="0.07"/>
+      </geometry>
+      <material name="green">
+        <color rgba="0.251 0.451 0.278 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+  <link name="link_1">
+    <visual>
+      <origin xyz="0.0625 0 0.02" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.125 0.05 0.04"/>
+      </geometry>
+      <material name="green">
+        <color rgba="0.251 0.451 0.278 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+  <link name="link_2">
+    <visual>
+      <origin xyz="0.05 0 0.02" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.100 0.04 0.04"/>
+      </geometry>
+      <material name="green">
+        <color rgba="0.251 0.451 0.278 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+  <link name="link_z_rot">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.05" radius="0.02"/>
+      </geometry>
+      <material name="black">
+        <color rgba="0.1 0.1 0.1 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+  <link name="end_effector">
+    <visual>
+      <origin xyz="0 0 -0.06" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.12" radius="0.008"/>
+      </geometry>
+      <material name="white">
+        <color rgba="1.0 1.0 1.0 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.06" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.12" radius="0.008"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.03"/>
+      <origin xyz="0 0 -0.06" rpy="0 0 0"/>
+      <inertia ixx="0.00003" ixy="0.0" ixz="0.0" iyy="0.00003" iyz="0.0" izz="0.000001"/>
+    </inertial>
+  </link>
+
+  <link name="tool0"/>
+
+  <!--
+    TCP (tool0) measurement procedure — calibration-field Phase 0.
+    The exact tcp_joint offset depends on the PHYSICALLY MOUNTED pen tip and
+    is OUT OF REPO SCOPE: this file keeps the current value (0 0 -0.12) as
+    BASELINE until the real tip is measured. Do NOT change this origin blindly.
+
+    Procedure (see docs/execution/robot/pen-tip-procedure.md):
+      1. Mount the fabricated pen tip (cylinder with 8 mm rod hole + funnel
+         for the pen) on the prismatic rod.
+      2. Measure the REAL length from the end_effector datum to the pen tip
+         contact point with a ruler/caliper (meters, 3+ decimals).
+      3. Update this origin to the measured offset, e.g. xyz="0 0 -0.145".
+      4. Verify FK: start the backend, POST /api/v1/scene/from-fk with the
+         current joint angles and confirm the TCP position readout.
+    Any change here changes the URDF hash -> a NEW robot_id -> any previously
+    calibrated field is invalidated (correct behavior, calibration-field CF-5).
+  -->
+  <joint name="tcp_joint" type="fixed">
+    <parent link="end_effector"/>
+    <child link="tool0"/>
+    <origin xyz="0 0 -0.12" rpy="0 0 0"/>
+  </joint>
+
+  <!--
+    Physical home offsets (measured from robot prototype):
+    - axis_0: +20° (~0.3491 rad) Z — base not perfectly aligned with world X
+    - axis_1: centered (±90° range); q1=0 is the physical midpoint
+  -->
+  <joint name="axis_0" type="revolute">
+    <parent link="base_link"/>
+    <child link="link_1"/>
+    <origin xyz="0 0 0.1" rpy="0 0 0.3491"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-1.5708" upper="1.5708" effort="10.0" velocity="1.0"/> 
+  </joint>
+
+  <joint name="axis_1" type="revolute">
+    <parent link="link_1"/>
+    <child link="link_2"/>
+    <origin xyz="0.125 0 0" rpy="0 0 0"/> 
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.0944" upper="2.0944" effort="10.0" velocity="1.0"/> 
+  </joint>
+
+  <joint name="axis_2" type="revolute">
+    <parent link="link_2"/>
+    <child link="link_z_rot"/>
+    <origin xyz="0.100 0 0" rpy="0 0 0"/> 
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.1416" upper="3.1416" effort="5.0" velocity="2.0"/> 
+  </joint>
+
+  <joint name="axis_3" type="prismatic">
+    <parent link="link_z_rot"/>
+    <child link="end_effector"/>
+    <origin xyz="0 0 0.06" rpy="0 0 0"/>
+    <axis xyz="0 0 -1"/>
+    <limit lower="0.0" upper="0.06" effort="12.0" velocity="0.5"/>
+  </joint>
+
+</robot>
