@@ -8,45 +8,75 @@ pub enum JointStateComponent {
     Effort,
 }
 
+/// Temporal or quality constraints placed on an observed state component.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+pub struct ObservationConstraint {
+    pub max_staleness: Option<std::time::Duration>,
+}
+
+impl ObservationConstraint {
+    pub fn unconstrained() -> Self {
+        Self { max_staleness: None }
+    }
+
+    pub fn max_staleness(duration: std::time::Duration) -> Self {
+        Self {
+            max_staleness: Some(duration),
+        }
+    }
+}
+
 /// Declarative observation requirements for a single joint.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub struct JointObservationRequirement {
-    pub position: bool,
-    pub velocity: bool,
-    pub effort: bool,
+    pub position: Option<ObservationConstraint>,
+    pub velocity: Option<ObservationConstraint>,
+    pub effort: Option<ObservationConstraint>,
 }
 
 impl JointObservationRequirement {
     pub fn none() -> Self {
         Self {
-            position: false,
-            velocity: false,
-            effort: false,
+            position: None,
+            velocity: None,
+            effort: None,
         }
     }
 
     pub fn position_only() -> Self {
         Self {
-            position: true,
-            velocity: false,
-            effort: false,
+            position: Some(ObservationConstraint::unconstrained()),
+            velocity: None,
+            effort: None,
         }
     }
 
     pub fn position_velocity() -> Self {
         Self {
-            position: true,
-            velocity: true,
-            effort: false,
+            position: Some(ObservationConstraint::unconstrained()),
+            velocity: Some(ObservationConstraint::unconstrained()),
+            effort: None,
         }
     }
 
     pub fn full() -> Self {
         Self {
-            position: true,
-            velocity: true,
-            effort: true,
+            position: Some(ObservationConstraint::unconstrained()),
+            velocity: Some(ObservationConstraint::unconstrained()),
+            effort: Some(ObservationConstraint::unconstrained()),
         }
+    }
+
+    pub fn is_position_required(&self) -> bool {
+        self.position.is_some()
+    }
+
+    pub fn is_velocity_required(&self) -> bool {
+        self.velocity.is_some()
+    }
+
+    pub fn is_effort_required(&self) -> bool {
+        self.effort.is_some()
     }
 }
 
@@ -152,19 +182,19 @@ impl RobotCapability {
             let cap = self.joints.get(i).copied().unwrap_or_default();
             let req_j = req.joints.get(i).copied().unwrap_or_default();
 
-            if req_j.position && !cap.position {
+            if req_j.is_position_required() && !cap.position {
                 deficiencies.push(ObservationDeficiency {
                     joint: i,
                     missing: JointStateComponent::Position,
                 });
             }
-            if req_j.velocity && !cap.velocity {
+            if req_j.is_velocity_required() && !cap.velocity {
                 deficiencies.push(ObservationDeficiency {
                     joint: i,
                     missing: JointStateComponent::Velocity,
                 });
             }
-            if req_j.effort && !cap.effort {
+            if req_j.is_effort_required() && !cap.effort {
                 deficiencies.push(ObservationDeficiency {
                     joint: i,
                     missing: JointStateComponent::Effort,

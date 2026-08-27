@@ -11,8 +11,10 @@ pub use crate::robot::{
     serial_chain::SerialChain,
     capability::{
         CapabilityMatch, JointObservationCapability, JointObservationRequirement,
-        JointStateComponent, ObservationDeficiency, ObservationRequirement, RobotCapability,
+        JointStateComponent, ObservationConstraint, ObservationDeficiency,
+        ObservationRequirement, RobotCapability,
     },
+    observation::{JointObservationAssessment, ObservationAssessment, ObservationQuality},
     state::{JointState, RobotState, StateDeviation, StateRequirement, StateSatisfactionError},
 };
 
@@ -60,8 +62,9 @@ pub use crate::program::{
 };
 
 pub use crate::skill::{
-    Condition, NativeSkillId, Parameter, ProgramFragment, RobotSkill, SkillImplementation,
-    SkillPlanner, SkillRegistry,
+    Condition, ConditionEvaluator, ConditionResult, NativeSkillId, Parameter, ProgramFragment,
+    RobotSkill, SkillContract, SkillEvaluationResult, SkillImplementation, SkillPlanner,
+    SkillRegistry,
 };
 
 pub use crate::operation::{

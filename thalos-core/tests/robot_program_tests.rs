@@ -114,11 +114,11 @@ fn test_robot_skill_implementations_and_serde() {
             name: "workpiece".to_string(),
             param_type: "ObjectId".to_string(),
         }],
-        vec![Condition {
+        vec![Condition::Custom {
             identifier: "gripper.open".to_string(),
             expected_value: "true".to_string(),
         }],
-        vec![Condition {
+        vec![Condition::Custom {
             identifier: "gripper.closed".to_string(),
             expected_value: "true".to_string(),
         }],

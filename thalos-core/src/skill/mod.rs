@@ -9,13 +9,90 @@ pub struct Parameter {
     pub param_type: String,
 }
 
-/// Pre/post condition stub (Role contract per ADR-001).
+use crate::ids::{ObjectId, TargetId};
+use crate::robot::state::RobotState;
+
+/// Pre/post condition specification for skill contracts (ADR-001 / Phase 2.5c).
 ///
-/// Evaluated against semantic state, physical state, or telemetry.
+/// Expresses declarative world expectations without coupling to specific hardware sensors.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Condition {
-    pub identifier: String,
-    pub expected_value: String,
+pub enum Condition {
+    GripperOpen,
+    GripperClosed,
+    ObjectAttached(ObjectId),
+    AtTarget(TargetId),
+    Custom {
+        identifier: String,
+        expected_value: String,
+    },
+}
+
+/// Result of evaluating a `Condition` against an observed state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ConditionResult {
+    Satisfied,
+    Violated,
+    Unknown,
+}
+
+/// Evaluator trait for resolving declarative `Condition` instances against `RobotState` or observations.
+pub trait ConditionEvaluator {
+    fn evaluate(&self, condition: &Condition, state: &RobotState) -> ConditionResult;
+}
+
+/// Declarative contract governing a `RobotSkill`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SkillContract {
+    pub preconditions: Vec<Condition>,
+    pub postconditions: Vec<Condition>,
+}
+
+/// Overall result of evaluating a `SkillContract` before or after execution.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SkillEvaluationResult {
+    Success,
+    PreconditionViolation(Condition),
+    PostconditionViolation(Condition),
+    UnknownState(Condition),
+}
+
+impl SkillContract {
+    pub fn new(preconditions: Vec<Condition>, postconditions: Vec<Condition>) -> Self {
+        Self {
+            preconditions,
+            postconditions,
+        }
+    }
+
+    pub fn evaluate_preconditions(
+        &self,
+        evaluator: &impl ConditionEvaluator,
+        state: &RobotState,
+    ) -> SkillEvaluationResult {
+        for cond in &self.preconditions {
+            match evaluator.evaluate(cond, state) {
+                ConditionResult::Violated => return SkillEvaluationResult::PreconditionViolation(cond.clone()),
+                ConditionResult::Unknown => return SkillEvaluationResult::UnknownState(cond.clone()),
+                ConditionResult::Satisfied => {}
+            }
+        }
+        SkillEvaluationResult::Success
+    }
+
+    pub fn evaluate_postconditions(
+        &self,
+        evaluator: &impl ConditionEvaluator,
+        state: &RobotState,
+    ) -> SkillEvaluationResult {
+        for cond in &self.postconditions {
+            match evaluator.evaluate(cond, state) {
+                ConditionResult::Violated => return SkillEvaluationResult::PostconditionViolation(cond.clone()),
+                ConditionResult::Unknown => return SkillEvaluationResult::UnknownState(cond.clone()),
+                ConditionResult::Satisfied => {}
+            }
+        }
+        SkillEvaluationResult::Success
+    }
 }
 
 /// Program fragment for skills implemented as program compositions.
@@ -121,6 +198,114 @@ impl SkillRegistry {
 
     pub fn len(&self) -> usize {
         self.global_skills.len() + self.robot_skills.len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ids::ObjectId;
+
+    struct MockTelemetryEvaluator {
+        gripper_open: Option<bool>,
+        attached_objects: std::collections::HashSet<ObjectId>,
+    }
+
+    impl ConditionEvaluator for MockTelemetryEvaluator {
+        fn evaluate(&self, condition: &Condition, _state: &RobotState) -> ConditionResult {
+            match condition {
+                Condition::GripperOpen => match self.gripper_open {
+                    Some(true) => ConditionResult::Satisfied,
+                    Some(false) => ConditionResult::Violated,
+                    None => ConditionResult::Unknown,
+                },
+                Condition::GripperClosed => match self.gripper_open {
+                    Some(false) => ConditionResult::Satisfied,
+                    Some(true) => ConditionResult::Violated,
+                    None => ConditionResult::Unknown,
+                },
+                Condition::ObjectAttached(obj) => {
+                    if self.attached_objects.contains(obj) {
+                        ConditionResult::Satisfied
+                    } else {
+                        ConditionResult::Violated
+                    }
+                }
+                Condition::AtTarget(_) => ConditionResult::Unknown,
+                Condition::Custom { .. } => ConditionResult::Unknown,
+            }
+        }
+    }
+
+    #[test]
+    fn contract_scenario_1_successful_execution() {
+        let contract = SkillContract::new(
+            vec![Condition::GripperOpen],
+            vec![Condition::ObjectAttached(ObjectId("part_01".into()))],
+        );
+
+        let dummy_state = RobotState::zero(6);
+        let mut attached = std::collections::HashSet::new();
+        attached.insert(ObjectId("part_01".into()));
+
+        let evaluator = MockTelemetryEvaluator {
+            gripper_open: Some(true),
+            attached_objects: attached,
+        };
+
+        assert_eq!(
+            contract.evaluate_preconditions(&evaluator, &dummy_state),
+            SkillEvaluationResult::Success
+        );
+        assert_eq!(
+            contract.evaluate_postconditions(&evaluator, &dummy_state),
+            SkillEvaluationResult::Success
+        );
+    }
+
+    #[test]
+    fn contract_scenario_2_semantic_postcondition_violation() {
+        let part = ObjectId("part_01".into());
+        let contract = SkillContract::new(
+            vec![Condition::GripperOpen],
+            vec![Condition::ObjectAttached(part.clone())],
+        );
+
+        let dummy_state = RobotState::zero(6);
+        // Trajectories succeeded, but gripper failed to grasp object (attached_objects is empty)
+        let evaluator = MockTelemetryEvaluator {
+            gripper_open: Some(true),
+            attached_objects: std::collections::HashSet::new(),
+        };
+
+        assert_eq!(
+            contract.evaluate_preconditions(&evaluator, &dummy_state),
+            SkillEvaluationResult::Success
+        );
+        assert_eq!(
+            contract.evaluate_postconditions(&evaluator, &dummy_state),
+            SkillEvaluationResult::PostconditionViolation(Condition::ObjectAttached(part))
+        );
+    }
+
+    #[test]
+    fn contract_scenario_3_insufficient_information_unknown_precondition() {
+        let contract = SkillContract::new(
+            vec![Condition::GripperOpen],
+            vec![Condition::ObjectAttached(ObjectId("part_01".into()))],
+        );
+
+        let dummy_state = RobotState::zero(6);
+        // No telemetry received for gripper state
+        let evaluator = MockTelemetryEvaluator {
+            gripper_open: None,
+            attached_objects: std::collections::HashSet::new(),
+        };
+
+        assert_eq!(
+            contract.evaluate_preconditions(&evaluator, &dummy_state),
+            SkillEvaluationResult::UnknownState(Condition::GripperOpen)
+        );
     }
 }
 
