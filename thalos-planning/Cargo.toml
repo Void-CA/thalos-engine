@@ -1,0 +1,24 @@
+[package]
+name = "thalos-planning"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+thalos_core = { path = "../thalos-core" }
+thalos_math = { path = "../thalos-math" }
+thalos-collision = { path = "../thalos-collision" }
+thalos-optimization = { path = "../thalos-optimization" }
+thiserror = "2.0"
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+proptest = "1"
+serde_json = "1"
+thalos_semantic = { path = "../thalos-semantic" }
+thalos-intelligence = { path = "../thalos-intelligence" }
+
+[[bench]]
+name = "analyze"
+harness = false

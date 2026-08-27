@@ -8,6 +8,7 @@ members = [
     "thalos-optimization",
     "thalos-semantic",
     "thalos-intelligence",
+    "thalos-planning",
 ]
 resolver = "3"
 

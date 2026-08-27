@@ -37,11 +37,10 @@ thiserror = "2"
 
 [dev-dependencies]
 serde_json = "1"
-# NOTE (PR5 deferral): Industrial declared a dev-dep on `thalos-planning`
-# (path ../thalos-planning) for the I2 end-to-end tests (ir_properties.rs,
-# e2e_canonical_pipeline.rs — both gated behind `test-support`, NOT default).
-# thalos-planning is not in the Engine workspace yet (task T4.2 deferred to
-# PR5b). The dev-dep line is removed here so `cargo test --workspace`
-# resolves; the gated test targets stay skipped exactly as in Industrial's
-# default runs. Restore `thalos-planning = { path = "../thalos-planning" }`
-# when T4.2 lands.
+# I2 end-to-end origin-preservation tests drive the full canonical pipeline
+# (SemanticLowering → MotionResolver → PlanCompiler) from the semantic crate.
+# This dev-dep was DEFERRED during PR5 (T4.2 planning not yet in Engine) and is
+# RESTORED in PR5b now that thalos-planning is a workspace member. It is used
+# only by the feature-gated test targets (ir_properties.rs, e2e_canonical_pipeline.rs
+# — both `required-features = ["test-support"]`), so it is inert in default runs.
+thalos-planning = { path = "../thalos-planning" }
