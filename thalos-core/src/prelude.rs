@@ -9,6 +9,10 @@ pub use crate::robot::{
     link::Link,
     segment::Segment,
     serial_chain::SerialChain,
+    capability::{
+        CapabilityMatch, JointObservationCapability, JointObservationRequirement,
+        JointStateComponent, ObservationDeficiency, ObservationRequirement, RobotCapability,
+    },
     state::{JointState, RobotState, StateDeviation, StateRequirement, StateSatisfactionError},
 };
 
