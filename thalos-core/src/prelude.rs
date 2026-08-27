@@ -15,6 +15,7 @@ pub use crate::robot::{
         ObservationRequirement, RobotCapability,
     },
     observation::{JointObservationAssessment, ObservationAssessment, ObservationQuality},
+    policy::{DeviationThresholds, ObservationResponsePolicy, PolicyDecision},
     state::{JointState, RobotState, StateDeviation, StateRequirement, StateSatisfactionError},
 };
 
