@@ -69,3 +69,15 @@ fn test_unicode_utf8_byte_offset_conversion() {
     assert_eq!(pick_slice, "PICK");
     assert_eq!(pick_sym.span.start as usize, source.find("PICK").unwrap());
 }
+
+#[test]
+fn test_pure_language_program_without_scene() {
+    let source = "const SPEED = 100mm;";
+    let analysis = analyze_document(source, 1);
+    assert_eq!(analysis.revision, 1);
+    assert!(analysis.diagnostics.is_empty());
+    assert_eq!(analysis.symbols.len(), 1);
+    assert_eq!(analysis.symbols[0].name, "SPEED");
+    assert_eq!(analysis.symbols[0].kind, SymbolKind::Const);
+}
+
