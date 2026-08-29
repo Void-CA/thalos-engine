@@ -86,3 +86,172 @@ fn test_e2e_rejection_guard_movel_on_joints() {
         "Error message should clearly state movel spatial target requirement"
     );
 }
+
+#[test]
+fn test_e2e_boundary_semantic_validity_vs_physical_feasibility() {
+    use thalos_core::kinematics::forward::ForwardKinematics;
+    use thalos_core::kinematics::inverse::DampedLeastSquaresSolver;
+    use thalos_core::models::{RobotModel, RobotRegistry};
+    use thalos_core::robot::state::RobotState;
+    use thalos_planning::error::PlanningError;
+    use thalos_planning::motion::compiler::{DefaultPlannerDispatcher, PlanCompiler};
+    use thalos_planning::motion::planner::SegmentPlanningContext;
+
+    let chain = RobotRegistry::create_default(RobotModel::Scara);
+    let state = RobotState::zero(chain.dof_count());
+    let fk = ForwardKinematics::new(chain.clone());
+    let ik_solver = DampedLeastSquaresSolver::new(fk, *chain.end_effector(), 500, 1e-6, 0.1);
+    let ctx = SegmentPlanningContext {
+        robot: &chain,
+        current_state: &state,
+        ik_solver: &ik_solver,
+        tcp: None,
+    };
+    let compiler = PlanCompiler::new(Box::new(DefaultPlannerDispatcher::default()));
+
+    // Case A: Semantically valid AND physically feasible target
+    let source_feasible = "
+    target reachable = position([1200mm, 300mm, 300mm])
+    fn main() {
+        movej(reachable)
+    }
+    ";
+    let ast_a = parse_source(source_feasible).expect("Parser must accept reachable script");
+    let sem_a = SemanticCompiler::compile(&ast_a).expect("Semantic compiler must accept reachable script");
+    let res_a = SemanticResolver::resolve(&sem_a).expect("Resolver must resolve reachable script");
+    let input_a = PlanningInput::from_resolved(&res_a);
+    let plan_a = compiler
+        .compile(&input_a.to_program(), &ctx)
+        .expect("PlanCompiler must plan reachable target");
+    assert_eq!(plan_a.segments.len(), 1);
+
+    // Case B: Semantically valid BUT physically unreachable target (5000mm, 5000mm, 5000mm)
+    let source_unreachable = "
+    target unreachable = position([5000mm, 5000mm, 5000mm])
+    fn main() {
+        movej(unreachable)
+    }
+    ";
+    let ast_b = parse_source(source_unreachable).expect("1. Parser MUST accept unreachable script");
+    let sem_b = SemanticCompiler::compile(&ast_b).expect("2. Semantic compiler MUST accept unreachable script");
+    let res_b = SemanticResolver::resolve(&sem_b).expect("3. Semantic resolver MUST resolve unreachable script");
+    let input_b = PlanningInput::from_resolved(&res_b);
+    let err_b = compiler
+        .compile(&input_b.to_program(), &ctx)
+        .expect_err("4. PlanCompiler MUST reject unreachable target");
+
+    assert_eq!(err_b.segment_index, 0, "Error must pinpoint segment index 0");
+    assert!(
+        matches!(
+            err_b.source,
+            PlanningError::IkFailedPosition { .. }
+                | PlanningError::IkFailed { .. }
+                | PlanningError::Ik(_)
+        ),
+        "Error must be an IK failure from physical kinematics, got {:?}",
+        err_b.source
+    );
+}
+
+#[test]
+fn test_e2e_canonical_program_pipeline() {
+    use thalos_core::kinematics::forward::ForwardKinematics;
+    use thalos_core::kinematics::inverse::DampedLeastSquaresSolver;
+    use thalos_core::models::{RobotModel, RobotRegistry};
+    use thalos_core::robot::state::RobotState;
+    use thalos_planning::motion::compiler::{DefaultPlannerDispatcher, PlanCompiler};
+    use thalos_planning::motion::planner::SegmentPlanningContext;
+
+    let source = "
+    const APPROACH = [0mm, 0mm, 100mm]
+
+    target home = position([1800mm, 0mm, 500mm])
+    target pick = position([1500mm, 300mm, 350mm])
+
+    fn approach(p: Position) -> Position {
+        p + APPROACH
+    }
+
+    fn pick_part(p: Position) {
+        movej(home)
+        movel(approach(p))
+        movel(p)
+        wait(150ms)
+        movel(approach(p))
+    }
+
+    fn main() {
+        pick_part(pick);
+    }
+    ";
+
+    let ast = parse_source(source).expect("1. Parser MUST accept canonical script");
+    let sem = SemanticCompiler::compile(&ast).expect("2. Semantic compiler MUST accept canonical script");
+    assert_eq!(sem.targets.len(), 2);
+    assert_eq!(sem.functions.len(), 3);
+
+    let res = SemanticResolver::resolve(&sem).expect("3. Semantic resolver MUST resolve canonical script");
+    let input = PlanningInput::from_resolved(&res);
+    assert_eq!(input.motions.len(), 4); // movej(home), movel(approach(pick)), movel(pick), movel(approach(pick))
+
+    let chain = RobotRegistry::create_default(RobotModel::Scara);
+    let state = RobotState::zero(chain.dof_count());
+    let fk = ForwardKinematics::new(chain.clone());
+    let ik_solver = DampedLeastSquaresSolver::new(fk, *chain.end_effector(), 500, 1e-6, 0.1);
+    let ctx = SegmentPlanningContext {
+        robot: &chain,
+        current_state: &state,
+        ik_solver: &ik_solver,
+        tcp: None,
+    };
+    let compiler = PlanCompiler::new(Box::new(DefaultPlannerDispatcher::default()));
+
+    let plan = compiler
+        .compile(&input.to_program(), &ctx)
+        .expect("5. PlanCompiler MUST compile canonical program into PlannedProgram");
+    assert_eq!(plan.segments.len(), 4);
+}
+
+#[test]
+fn test_effect_purity_rejection_builtin_motion_in_pure_fn() {
+    let source = "
+    fn invalid(p: Position) -> Position {
+        movej(p)
+        p
+    }
+    ";
+
+    let ast = parse_source(source).expect("AST parsing should succeed");
+    let compile_res = SemanticCompiler::compile(&ast);
+    assert!(compile_res.is_err(), "Pure function with movej MUST be rejected");
+    let errors = compile_res.unwrap_err();
+    assert!(
+        errors.iter().any(|e| e.contains("cannot produce robotic/IO effects")),
+        "Error message should mention robotic/IO effects prohibition, got {:?}",
+        errors
+    );
+}
+
+#[test]
+fn test_effect_purity_rejection_routine_call_in_pure_fn() {
+    let source = "
+    fn close_gripper() {
+        wait(150ms);
+    }
+
+    fn invalid(p: Position) -> Position {
+        close_gripper();
+        p + [0mm, 0mm, 100mm]
+    }
+    ";
+
+    let ast = parse_source(source).expect("AST parsing should succeed");
+    let compile_res = SemanticCompiler::compile(&ast);
+    assert!(compile_res.is_err(), "Pure function with routine call MUST be rejected");
+    let errors = compile_res.unwrap_err();
+    assert!(
+        errors.iter().any(|e| e.contains("cannot produce robotic/IO effects")),
+        "Error message should mention robotic/IO effects prohibition, got {:?}",
+        errors
+    );
+}

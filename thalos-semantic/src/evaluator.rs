@@ -157,15 +157,21 @@ impl<'a> Evaluator<'a> {
                     if args.len() == 2 {
                         let pos_val = self.eval_expr(&args[0]);
                         let rot_val = self.eval_expr(&args[1]);
-                        match (pos_val, rot_val) {
-                            (
-                                EvalResult::Value(CompileTimeValue::Vector3(pt)),
-                                EvalResult::Value(CompileTimeValue::Quaternion(q)),
-                            ) => EvalResult::Value(CompileTimeValue::Pose(Pose {
+                        let pt = match pos_val {
+                            EvalResult::Value(CompileTimeValue::Vector3(pt)) => Some(pt),
+                            EvalResult::Value(CompileTimeValue::Position(p)) => Some(p.point),
+                            _ => None,
+                        };
+                        let q = match rot_val {
+                            EvalResult::Value(CompileTimeValue::Quaternion(q)) => Some(q),
+                            _ => None,
+                        };
+                        match (pt, q) {
+                            (Some(pt), Some(q)) => EvalResult::Value(CompileTimeValue::Pose(Pose {
                                 transform: Transform3D::from_translation_rotation(pt, q),
                             })),
                             _ => EvalResult::Error(SemanticDiagnostic {
-                                message: "pose() requires Vector3 and Quaternion arguments".to_string(),
+                                message: "pose() requires Position/Vector3 and Quaternion arguments".to_string(),
                                 span: None,
                             }),
                         }

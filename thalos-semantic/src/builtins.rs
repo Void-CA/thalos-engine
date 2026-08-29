@@ -26,6 +26,7 @@ pub fn register_builtins(table: &mut SymbolTable) {
         // Built-in constructors
         ("position", vec![Type::Vector3], Type::Position),
         ("pose", vec![Type::Vector3, Type::Quaternion], Type::Pose),
+        ("pose", vec![Type::Position, Type::Quaternion], Type::Pose),
         (
             "euler",
             vec![Type::Angle, Type::Angle, Type::Angle],

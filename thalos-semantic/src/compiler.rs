@@ -35,11 +35,11 @@ impl SemanticCompiler {
                     match eval_result {
                         EvalResult::Value(val) => {
                             const_names.insert(name.clone());
-                            target_values.insert(name.clone(), val);
+                            target_values.insert(name.clone(), val.clone());
                             let _ = table.declare(Symbol::new(
                                 name.clone(),
                                 SymbolKind::Const,
-                                Type::Position,
+                                val.get_type(),
                                 None,
                             ));
                         }
@@ -147,6 +147,15 @@ impl SemanticCompiler {
         let mut checker = TypeChecker::new(&mut table);
         for item in &ast.items {
             if let Item::Function(f) = item {
+                let expected_ret = f
+                    .return_type
+                    .as_deref()
+                    .and_then(Type::from_name)
+                    .unwrap_or(Type::Unit);
+
+                checker.current_fn_name = Some(f.name.clone());
+                checker.current_fn_return_type = Some(expected_ret.clone());
+
                 checker.symbol_table.push_scope(crate::scope::ScopeKind::Function);
                 for param in &f.params {
                     let p_ty = param
@@ -167,12 +176,6 @@ impl SemanticCompiler {
                 }
                 if let Some(ref tail) = f.tail_expr {
                     let typed_tail = checker.infer_expr(tail);
-                    let expected_ret = f
-                        .return_type
-                        .as_deref()
-                        .and_then(Type::from_name)
-                        .unwrap_or(Type::Unit);
-
                     if expected_ret != Type::Unit && expected_ret != typed_tail.ty {
                         checker.diagnostics.push(crate::checker::SemanticDiagnostic {
                             message: format!(
@@ -184,6 +187,8 @@ impl SemanticCompiler {
                     }
                 }
                 checker.symbol_table.pop_scope();
+                checker.current_fn_name = None;
+                checker.current_fn_return_type = None;
             }
         }
 
@@ -277,12 +282,68 @@ impl SemanticCompiler {
                             });
                         }
                         AstStatement::Expr(AstExpr::Call { callee, args }) => {
-                            let sem_args = args.iter().map(|a| lower_expr(a, &evaluator, &param_names, &local_names, &const_names)).collect();
-                            body.push(SemanticStatement::Call {
-                                function: callee.clone(),
-                                args: sem_args,
-                                provenance: Provenance::new(Some(callee.clone()), None),
-                            });
+                            match callee.as_str() {
+                                "set_output" => {
+                                    let name = match args.first().map(|a| evaluator.eval_expr(a)) {
+                                        Some(EvalResult::Value(CompileTimeValue::String(s))) => s,
+                                        _ => "output".to_string(),
+                                    };
+                                    let value = match args.get(1).map(|a| evaluator.eval_expr(a)) {
+                                        Some(EvalResult::Value(CompileTimeValue::Bool(b))) => b,
+                                        _ => false,
+                                    };
+                                    body.push(SemanticStatement::SetOutput {
+                                        name: name.clone(),
+                                        value,
+                                        provenance: Provenance::new(Some(name), None),
+                                    });
+                                }
+                                "movej" => {
+                                    if let Some(target_expr) = args.first() {
+                                        let source_name = match target_expr {
+                                            AstExpr::Identifier(id) => Some(id.clone()),
+                                            _ => None,
+                                        };
+                                        let sem_expr = lower_expr(target_expr, &evaluator, &param_names, &local_names, &const_names);
+                                        body.push(SemanticStatement::Motion(SemanticMotion {
+                                            kind: MotionKind::MoveJ,
+                                            target: sem_expr,
+                                            provenance: Provenance::new(source_name, None),
+                                        }));
+                                    }
+                                }
+                                "movel" => {
+                                    if let Some(target_expr) = args.first() {
+                                        let source_name = match target_expr {
+                                            AstExpr::Identifier(id) => Some(id.clone()),
+                                            _ => None,
+                                        };
+                                        let sem_expr = lower_expr(target_expr, &evaluator, &param_names, &local_names, &const_names);
+                                        body.push(SemanticStatement::Motion(SemanticMotion {
+                                            kind: MotionKind::MoveL,
+                                            target: sem_expr,
+                                            provenance: Provenance::new(source_name, None),
+                                        }));
+                                    }
+                                }
+                                "wait" => {
+                                    if let Some(dur_expr) = args.first() {
+                                        let sem_expr = lower_expr(dur_expr, &evaluator, &param_names, &local_names, &const_names);
+                                        body.push(SemanticStatement::Wait {
+                                            duration: sem_expr,
+                                            provenance: Provenance::new(None, None),
+                                        });
+                                    }
+                                }
+                                _ => {
+                                    let sem_args = args.iter().map(|a| lower_expr(a, &evaluator, &param_names, &local_names, &const_names)).collect();
+                                    body.push(SemanticStatement::Call {
+                                        function: callee.clone(),
+                                        args: sem_args,
+                                        provenance: Provenance::new(Some(callee.clone()), None),
+                                    });
+                                }
+                            }
                         }
                         AstStatement::Expr(e) => {
                             let sem_expr = lower_expr(e, &evaluator, &param_names, &local_names, &const_names);

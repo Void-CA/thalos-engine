@@ -69,7 +69,7 @@ impl SemanticResolver {
         for stmt in &func.body {
             match stmt {
                 SemanticStatement::Let { name, value, .. } => {
-                    match Self::eval_value(value, &local_env, targets) {
+                    match Self::eval_value(value, &local_env, targets, functions) {
                         Ok(val) => {
                             local_env.insert(name.clone(), val);
                         }
@@ -77,7 +77,7 @@ impl SemanticResolver {
                     }
                 }
                 SemanticStatement::Motion(SemanticMotion { kind, target, provenance }) => {
-                    match Self::eval_expr(target, &local_env, targets) {
+                    match Self::eval_expr(target, &local_env, targets, functions) {
                         Ok(target_val) => {
                             let mut merged_prov = provenance.clone();
                             merged_prov.call_stack = call_stack.clone();
@@ -115,7 +115,7 @@ impl SemanticResolver {
                     if let Some(target_fn) = functions.get(function) {
                         let mut arg_vals = Vec::new();
                         for arg in args {
-                            match Self::eval_value(arg, &local_env, targets) {
+                            match Self::eval_value(arg, &local_env, targets, functions) {
                                 Ok(val) => arg_vals.push(val),
                                 Err(e) => errors.push(e),
                             }
@@ -160,6 +160,7 @@ impl SemanticResolver {
         expr: &SemanticExpr,
         env: &HashMap<String, CompileTimeValue>,
         targets: &HashMap<String, MotionTarget>,
+        functions: &HashMap<String, &SemanticFunction>,
     ) -> Result<CompileTimeValue, String> {
         match expr {
             SemanticExpr::Constant(val) => Ok(val.clone()),
@@ -179,6 +180,44 @@ impl SemanticResolver {
                     }
                 } else {
                     Err(format!("Unresolved target reference '{}'", t))
+                }
+            }
+            SemanticExpr::Binary { left, op, right } => {
+                let lhs = Self::eval_value(left, env, targets, functions)?;
+                let rhs = Self::eval_value(right, env, targets, functions)?;
+                match (lhs, op, rhs) {
+                    (CompileTimeValue::Position(p), BinaryOp::Add, CompileTimeValue::Vector3(v)) => {
+                        Ok(CompileTimeValue::Position(Position { point: p.point + v }))
+                    }
+                    (CompileTimeValue::Position(p), BinaryOp::Sub, CompileTimeValue::Vector3(v)) => {
+                        Ok(CompileTimeValue::Position(Position { point: p.point - v }))
+                    }
+                    (CompileTimeValue::Vector3(v1), BinaryOp::Add, CompileTimeValue::Vector3(v2)) => {
+                        Ok(CompileTimeValue::Vector3(v1 + v2))
+                    }
+                    (CompileTimeValue::Vector3(v1), BinaryOp::Sub, CompileTimeValue::Vector3(v2)) => {
+                        Ok(CompileTimeValue::Vector3(v1 - v2))
+                    }
+                    _ => Err("Unsupported binary operation in evaluation".to_string()),
+                }
+            }
+            SemanticExpr::Call { function, args } => {
+                if let Some(target_fn) = functions.get(function) {
+                    let mut arg_vals = Vec::new();
+                    for arg in args {
+                        arg_vals.push(Self::eval_value(arg, env, targets, functions)?);
+                    }
+                    if let Some(ref tail) = target_fn.tail_expr {
+                        let mut call_env = HashMap::new();
+                        for (p, val) in target_fn.params.iter().zip(arg_vals) {
+                            call_env.insert(p.clone(), val);
+                        }
+                        Self::eval_value(tail, &call_env, targets, functions)
+                    } else {
+                        Err(format!("Function '{}' has no return value", function))
+                    }
+                } else {
+                    Err(format!("Unresolved function call '{}'", function))
                 }
             }
             _ => Err("Complex expression resolution not supported yet".to_string()),
@@ -210,43 +249,13 @@ impl SemanticResolver {
         expr: &SemanticExpr,
         env: &HashMap<String, CompileTimeValue>,
         targets: &HashMap<String, MotionTarget>,
+        functions: &HashMap<String, &SemanticFunction>,
     ) -> Result<MotionTarget, String> {
-        match expr {
-            SemanticExpr::Constant(CompileTimeValue::Position(p)) => Ok(MotionTarget::Position(p.clone())),
-            SemanticExpr::Constant(CompileTimeValue::Pose(p)) => Ok(MotionTarget::Pose(p.clone())),
-            SemanticExpr::Constant(CompileTimeValue::Joints(j)) => Ok(MotionTarget::Joints(JointConfiguration::new(j.clone()))),
-            SemanticExpr::TargetRef(name) => {
-                if let Some(t) = targets.get(name) {
-                    Ok(t.clone())
-                } else {
-                    Err(format!("Unresolved target reference '{}'", name))
-                }
-            }
-            SemanticExpr::ParameterRef(name) | SemanticExpr::LocalRef(name) | SemanticExpr::ConstRef(name) => {
-                if let Some(val) = env.get(name) {
-                    match val {
-                        CompileTimeValue::Position(p) => Ok(MotionTarget::Position(p.clone())),
-                        CompileTimeValue::Pose(p) => Ok(MotionTarget::Pose(p.clone())),
-                        CompileTimeValue::Joints(j) => Ok(MotionTarget::Joints(JointConfiguration::new(j.clone()))),
-                        _ => Err(format!("Variable/parameter '{}' does not evaluate to a motion target", name)),
-                    }
-                } else {
-                    Err(format!("Unbound variable/parameter '{}'", name))
-                }
-            }
-            SemanticExpr::Binary { left, op, right } => {
-                let lhs = Self::eval_expr(left, env, targets)?;
-                let rhs_val = Self::eval_value(right, env, targets)?;
-                match (lhs, op, rhs_val) {
-                    (MotionTarget::Position(p), BinaryOp::Add, CompileTimeValue::Vector3(v)) => {
-                        Ok(MotionTarget::Position(Position { point: p.point + v }))
-                    }
-                    (MotionTarget::Position(p), BinaryOp::Sub, CompileTimeValue::Vector3(v)) => {
-                        Ok(MotionTarget::Position(Position { point: p.point - v }))
-                    }
-                    _ => Err("Unsupported binary operation on motion target during resolution".to_string()),
-                }
-            }
+        let val = Self::eval_value(expr, env, targets, functions)?;
+        match val {
+            CompileTimeValue::Position(p) => Ok(MotionTarget::Position(p)),
+            CompileTimeValue::Pose(p) => Ok(MotionTarget::Pose(p)),
+            CompileTimeValue::Joints(j) => Ok(MotionTarget::Joints(JointConfiguration::new(j))),
             _ => Err("Expression does not resolve to a motion target".to_string()),
         }
     }

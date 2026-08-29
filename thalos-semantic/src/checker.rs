@@ -22,6 +22,8 @@ pub struct SemanticDiagnostic {
 pub struct TypeChecker<'a> {
     pub symbol_table: &'a mut SymbolTable,
     pub diagnostics: Vec<SemanticDiagnostic>,
+    pub current_fn_name: Option<String>,
+    pub current_fn_return_type: Option<Type>,
 }
 
 impl<'a> TypeChecker<'a> {
@@ -29,6 +31,23 @@ impl<'a> TypeChecker<'a> {
         Self {
             symbol_table,
             diagnostics: Vec::new(),
+            current_fn_name: None,
+            current_fn_return_type: None,
+        }
+    }
+
+    fn check_purity_for_statement(&mut self, stmt_kind: &str) {
+        if let Some(ref ret_ty) = self.current_fn_return_type {
+            if *ret_ty != Type::Unit {
+                let fn_name = self.current_fn_name.clone().unwrap_or_default();
+                self.diagnostics.push(SemanticDiagnostic {
+                    message: format!(
+                        "Function '{}' has non-Unit return type {:?} and cannot produce robotic/IO effects through '{}'",
+                        fn_name, ret_ty, stmt_kind
+                    ),
+                    span: None,
+                });
+            }
         }
     }
 
@@ -200,6 +219,7 @@ impl<'a> TypeChecker<'a> {
                 ));
             }
             Statement::MoveJ { target } => {
+                self.check_purity_for_statement("movej");
                 let typed_target = self.infer_expr(target);
                 if !typed_target.ty.is_target() {
                     self.diagnostics.push(SemanticDiagnostic {
@@ -209,6 +229,7 @@ impl<'a> TypeChecker<'a> {
                 }
             }
             Statement::MoveL { target } => {
+                self.check_purity_for_statement("movel");
                 let typed_target = self.infer_expr(target);
                 if !typed_target.ty.is_spatial_target() {
                     self.diagnostics.push(SemanticDiagnostic {
@@ -218,6 +239,7 @@ impl<'a> TypeChecker<'a> {
                 }
             }
             Statement::Wait(dur_expr) => {
+                self.check_purity_for_statement("wait");
                 let typed_dur = self.infer_expr(dur_expr);
                 if typed_dur.ty != Type::Duration {
                     self.diagnostics.push(SemanticDiagnostic {
@@ -226,8 +248,28 @@ impl<'a> TypeChecker<'a> {
                     });
                 }
             }
+            Statement::SetOutput { .. } => {
+                self.check_purity_for_statement("set_output");
+            }
             Statement::Expr(expr) => {
-                self.infer_expr(expr);
+                let typed_expr = self.infer_expr(expr);
+                if let Some(ref ret_ty) = self.current_fn_return_type {
+                    if *ret_ty != Type::Unit && typed_expr.ty == Type::Unit {
+                        let name = match expr {
+                            Expr::Call { callee, .. } => callee.clone(),
+                            Expr::MemberCall { object, method, .. } => format!("{}.{}", object, method),
+                            _ => "side-effecting statement".to_string(),
+                        };
+                        let fn_name = self.current_fn_name.clone().unwrap_or_default();
+                        self.diagnostics.push(SemanticDiagnostic {
+                            message: format!(
+                                "Function '{}' has non-Unit return type {:?} and cannot produce robotic/IO effects through '{}'",
+                                fn_name, ret_ty, name
+                            ),
+                            span: None,
+                        });
+                    }
+                }
             }
             _ => {}
         }

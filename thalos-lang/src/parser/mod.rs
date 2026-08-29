@@ -7,11 +7,21 @@ pub type ParseError = Simple<char>;
 pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
     let ident = text::ident();
 
-    let number = filter(|c: &char| c.is_ascii_digit() || *c == '.')
+    let digits = filter(|c: &char| c.is_ascii_digit() || *c == '.')
         .repeated()
-        .at_least(1)
-        .collect::<String>()
-        .map(|s| s.parse::<f64>().unwrap_or(0.0));
+        .at_least(1);
+
+    let number = just('-')
+        .or_not()
+        .then(digits)
+        .map(|(neg, dig)| {
+            let mut s = String::new();
+            if neg.is_some() {
+                s.push('-');
+            }
+            s.extend(dig);
+            s.parse::<f64>().unwrap_or(0.0)
+        });
 
     let duration_unit = choice((
         just("ms").map(|_| 0.001),
@@ -68,11 +78,18 @@ pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
             )
             .map(|(callee, args)| Expr::Call { callee, args });
 
+        let string_expr = filter(|c: &char| *c != '"')
+            .repeated()
+            .collect::<String>()
+            .delimited_by(just('"'), just('"'))
+            .map(Expr::StringLiteral);
+
         let literal_expr = choice((
             duration_expr,
             length_expr,
             angle_expr,
             number.map(Expr::Number),
+            string_expr,
             just("true").map(|_| Expr::Boolean(true)),
             just("false").map(|_| Expr::Boolean(false)),
             ident.map(Expr::Identifier),
