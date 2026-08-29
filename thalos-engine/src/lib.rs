@@ -34,6 +34,7 @@ pub use thalos_collision as collision;
 pub use thalos_core as core;
 pub use thalos_importer as importer;
 pub use thalos_intelligence as intelligence;
+pub use thalos_lang as lang;
 pub use thalos_math as math;
 pub use thalos_models as models;
 pub use thalos_optimization as optimization;

@@ -11,6 +11,7 @@ readme = "../README.md"
 thalos-math = { path = "../thalos-math" }
 thalos-models = { path = "../thalos-models" }
 thalos-importer = { path = "../thalos-importer" }
+thalos-lang = { path = "../thalos-lang" }
 thalos-core = { path = "../thalos-core" }
 thalos-collision = { path = "../thalos-collision" }
 thalos-planning = { path = "../thalos-planning" }

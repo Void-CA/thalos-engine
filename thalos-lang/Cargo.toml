@@ -1,0 +1,11 @@
+[package]
+name = "thalos-lang"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+chumsky = "0.9"
+thiserror = "2.0"
+serde = { version = "1.0", features = ["derive"] }
