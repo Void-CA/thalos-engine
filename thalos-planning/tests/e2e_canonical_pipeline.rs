@@ -1,28 +1,3 @@
-//! E2E #1 — canonical pipeline: intent → correctly timed program artifact.
-//!
-//! Chains the FULL compiler pipeline end-to-end — the same chain the
-//! `POST /motion/plan` API entry point runs, driven from a real semantic
-//! program:
-//!
-//! ```text
-//! SemanticProgram → SemanticLowering → ExecutionProgram → MotionResolver →
-//! PlanningProgram + RuntimeProgram → PlanCompiler → CompiledPlan →
-//! TimelineScheduler → RuntimeProgram (timed)
-//! ```
-//!
-//! Each layer is unit-tested in isolation; this test protects the COMPILER
-//! contract as a whole:
-//!
-//! - `OperationId` survives every stage (`SemanticOperation` →
-//!   `ProgramInstruction` → `PlannedSegment` → `RuntimeEvent`).
-//! - The `CompiledPlan` is non-empty and the sequence ends with the Home
-//!   `MoveJ`.
-//! - The `TimelineScheduler` output is a genuinely *timed* `RuntimeProgram`:
-//!   events carry strictly non-decreasing absolute `at_time`, exactly one
-//!   `Delay` (from the `Wait`), exactly two `SetOutput` events (gripper
-//!   `true` then `false`), and the event times align with the compiled
-//!   segment timing.
-
 use std::time::Duration;
 
 use thalos_core::{
@@ -49,7 +24,6 @@ use thalos_semantic::{
     test_support::{self, pick_wait_place_home_ir},
 };
 
-/// The `OperationId` carried by an `ProgramInstruction` (all four variants).
 fn instruction_origin(inst: &ProgramInstruction) -> OperationId {
     match inst {
         ProgramInstruction::MoveJ { origin, .. }
@@ -59,27 +33,19 @@ fn instruction_origin(inst: &ProgramInstruction) -> OperationId {
     }
 }
 
-/// The artifact produced by the full canonical pipeline.
 struct PipelineArtifact {
-    /// IR-1: lowered instruction program (input to the resolver).
     exec: ExecutionProgram,
-    /// IR-3: compiled trajectory with per-segment timing.
     compiled: CompiledPlan,
-    /// IR-4: temporal events, absolute `at_time` assigned by `TimelineScheduler`.
     runtime: RuntimeProgram,
 }
 
-/// Run the canonical scenario through the entire compiler pipeline, including
-/// the `TimelineScheduler` step that the isolated unit tests never reach.
 fn run_canonical_pipeline() -> PipelineArtifact {
     let program = pick_wait_place_home_ir();
 
-    // ── IR-0 → IR-1: SemanticLowering → ExecutionProgram ────────────────
     let provider = test_support::build_provider();
     let ctx = test_support::default_ctx(&provider);
     let exec = SemanticLowering::lower(&program, &ctx).expect("lowering should succeed");
 
-    // ── IR-1 → IR-2 + runtime events: MotionResolver ─────────────────────
     let mut registry = FrameRegistry::new();
     registry.create("world");
     let ik = test_support::FixedTargetIKSolver;
@@ -87,7 +53,6 @@ fn run_canonical_pipeline() -> PipelineArtifact {
     let resolver = MotionResolver::new(&ik, &registry, &initial, 2).expect("2 DOF matches");
     let resolution = resolver.resolve(&exec).expect("resolution should succeed");
 
-    // ── IR-2 → IR-3: PlanCompiler → CompiledPlan ─────────────────────────
     let chain: SerialChain = RobotRegistry::create_default(RobotModel::Planar2R);
     let state = RobotState::zero(chain.dof_count());
     let compiler = PlanCompiler::new(Box::new(DefaultPlannerDispatcher::default()));
@@ -101,7 +66,6 @@ fn run_canonical_pipeline() -> PipelineArtifact {
         .compile(&resolution.planning, &seg_ctx)
         .expect("compilation should succeed");
 
-    // ── IR-3 → IR-4: TimelineScheduler → RuntimeProgram (timed) ──────────
     let runtime = TimelineScheduler::new().schedule(&exec, &compiled, resolution.runtime);
 
     PipelineArtifact {
@@ -111,10 +75,6 @@ fn run_canonical_pipeline() -> PipelineArtifact {
     }
 }
 
-/// Assert that `actual` matches an expected absolute time derived from the
-/// compiled segment timing. Tolerates the f64 → `Duration` conversion noise
-/// (the scheduler accumulates `Duration::from_secs_f64` per segment, while
-/// `PlannedSegment::time_range` stores the summed f64 directly).
 fn assert_close_to(actual: Duration, expected_secs: f64, context: &str) {
     let diff = (actual.as_secs_f64() - expected_secs).abs();
     assert!(
@@ -127,7 +87,6 @@ fn assert_close_to(actual: Duration, expected_secs: f64, context: &str) {
 fn canonical_pipeline_compiles_to_nonempty_plan_with_origin_trace() {
     let art = run_canonical_pipeline();
 
-    // ── CompiledPlan artifact is non-empty (compiler contract) ───────────
     assert!(
         !art.compiled.segments.is_empty(),
         "CompiledPlan must have segments"
@@ -147,7 +106,6 @@ fn canonical_pipeline_compiles_to_nonempty_plan_with_origin_trace() {
         "plan must have finite duration"
     );
 
-    // Merged trajectory timestamps are monotonic.
     let wps = art.compiled.merged_trajectory.waypoints();
     for pair in wps.windows(2) {
         assert!(
@@ -156,7 +114,6 @@ fn canonical_pipeline_compiles_to_nonempty_plan_with_origin_trace() {
         );
     }
 
-    // ── OperationId preserved at every stage (invariant I2) ──────────────
     let instruction_origins: Vec<OperationId> = art
         .exec
         .instructions
@@ -216,7 +173,6 @@ fn canonical_pipeline_compiles_to_nonempty_plan_with_origin_trace() {
         "RuntimeEvent origins must survive scheduling"
     );
 
-    // ── The sequence ends with the Home MoveJ ────────────────────────────
     match &art.compiled.segments.last().unwrap().source {
         MotionSegment::MoveJ { origin, .. } => {
             assert_eq!(
@@ -227,7 +183,7 @@ fn canonical_pipeline_compiles_to_nonempty_plan_with_origin_trace() {
         }
         other => panic!("expected the final segment to be a Home MoveJ, got {other:?}"),
     }
-    // The merged trajectory ends at the Home target.
+
     let last_wp = wps.last().unwrap();
     assert!(
         last_wp.timestamp() > 0.0,
@@ -240,21 +196,17 @@ fn timed_events_align_to_compiled_segment_timing() {
     let art = run_canonical_pipeline();
     let events = &art.runtime.events;
 
-    // ── Exactly three timed events: grip, delay, ungrip ──────────────────
     assert_eq!(
         events.len(),
         3,
         "canonical scenario produces 3 runtime events"
     );
 
-    // Every event is genuinely timed (the resolver's logical events are all
-    // zero; the scheduler must assign positive absolute times).
     assert!(
         events.iter().all(|e| e.at_time > Duration::ZERO),
         "all scheduled events must carry a positive absolute at_time"
     );
 
-    // Strictly non-decreasing absolute time (spec: RuntimeProgram Structure).
     for w in events.windows(2) {
         assert!(
             w[0].at_time <= w[1].at_time,
@@ -264,7 +216,6 @@ fn timed_events_align_to_compiled_segment_timing() {
         );
     }
 
-    // ── Exactly one Delay, from the Wait(300ms) ──────────────────────────
     let delay_dur = events
         .iter()
         .find_map(|e| match &e.action {
@@ -278,7 +229,6 @@ fn timed_events_align_to_compiled_segment_timing() {
         "Wait(300ms) must lower to a 300ms Delay"
     );
 
-    // ── Exactly two SetOutput events: gripper true (grip) then false (ungrip) ──
     let set_outputs: Vec<&RuntimeEvent> = events
         .iter()
         .filter(|e| matches!(e.action, RuntimeAction::SetOutput { .. }))
@@ -314,26 +264,17 @@ fn timed_events_align_to_compiled_segment_timing() {
         "grip must fire before ungrip"
     );
 
-    // ── Absolute times derived from the compiled segment timing ──────────
-    // Instruction stream: MoveJ, MoveL, SetOutput, MoveL, Delay, MoveJ, MoveL,
-    // SetOutput, MoveL, MoveJ. The cursor advances by each motion segment's
-    // duration (`time_range.end - time_range.start`); segments are contiguous
-    // from t=0, so the cursor after segment *k* equals `segments[k].end`.
     let seg = &art.compiled.segments;
-    // SetOutput(true) fires when the Pick grasp MoveL (segment 1) completes.
     assert_close_to(
         set_outputs[0].at_time,
         seg[1].time_range.end,
         "grip at_time",
     );
-    // The Delay starts when the Pick retract MoveL (segment 2) completes.
     let delay_event = events
         .iter()
         .find(|e| matches!(e.action, RuntimeAction::Delay(_)))
         .expect("Delay event");
     assert_close_to(delay_event.at_time, seg[2].time_range.end, "delay at_time");
-    // SetOutput(false) fires after the delay + Place approach + Place drop
-    // (segment 4 completes, plus the 300ms delay shifted the cursor).
     assert_close_to(
         set_outputs[1].at_time,
         seg[4].time_range.end + 0.300,

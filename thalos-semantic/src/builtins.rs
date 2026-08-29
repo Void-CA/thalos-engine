@@ -26,6 +26,16 @@ pub fn register_builtins(table: &mut SymbolTable) {
         // Built-in constructors
         ("position", vec![Type::Vector3], Type::Position),
         ("pose", vec![Type::Vector3, Type::Quaternion], Type::Pose),
+        (
+            "euler",
+            vec![Type::Angle, Type::Angle, Type::Angle],
+            Type::Quaternion,
+        ),
+        (
+            "quaternion",
+            vec![Type::Float, Type::Float, Type::Float, Type::Float],
+            Type::Quaternion,
+        ),
     ];
 
     for (name, params, return_type) in overloaded_builtins {

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use thalos_lang::ast::{BinaryOp, Expr};
-use thalos_math::{Transform3D, UnitQuaternion, Vector3};
+use thalos_math::{Quaternion, Transform3D, UnitQuaternion, Vector3};
 use crate::checker::SemanticDiagnostic;
 use crate::scope::SymbolTable;
 use crate::types::Type;
@@ -101,18 +101,21 @@ impl<'a> Evaluator<'a> {
             Expr::Vector3([x_expr, y_expr, z_expr]) => {
                 let x = match self.eval_expr(x_expr) {
                     EvalResult::Value(CompileTimeValue::Length(v)) => v,
+                    EvalResult::Value(CompileTimeValue::Angle(v)) => v,
                     EvalResult::Value(CompileTimeValue::Float(v)) => v,
                     EvalResult::Value(CompileTimeValue::Int(v)) => v as f64,
                     other => return other,
                 };
                 let y = match self.eval_expr(y_expr) {
                     EvalResult::Value(CompileTimeValue::Length(v)) => v,
+                    EvalResult::Value(CompileTimeValue::Angle(v)) => v,
                     EvalResult::Value(CompileTimeValue::Float(v)) => v,
                     EvalResult::Value(CompileTimeValue::Int(v)) => v as f64,
                     other => return other,
                 };
                 let z = match self.eval_expr(z_expr) {
                     EvalResult::Value(CompileTimeValue::Length(v)) => v,
+                    EvalResult::Value(CompileTimeValue::Angle(v)) => v,
                     EvalResult::Value(CompileTimeValue::Float(v)) => v,
                     EvalResult::Value(CompileTimeValue::Int(v)) => v as f64,
                     other => return other,
@@ -180,10 +183,74 @@ impl<'a> Evaluator<'a> {
                             EvalResult::Value(CompileTimeValue::Angle(a)) => vals.push(a),
                             EvalResult::Value(CompileTimeValue::Length(l)) => vals.push(l),
                             EvalResult::Value(CompileTimeValue::Float(f)) => vals.push(f),
+                            EvalResult::Value(CompileTimeValue::Vector3(v)) => {
+                                vals.push(v.x);
+                                vals.push(v.y);
+                                vals.push(v.z);
+                            }
                             other => return other,
                         }
                     }
                     EvalResult::Value(CompileTimeValue::Joints(vals))
+                }
+                "euler" => {
+                    if args.len() == 3 {
+                        let r = match self.eval_expr(&args[0]) {
+                            EvalResult::Value(CompileTimeValue::Angle(a)) => a,
+                            other => return other,
+                        };
+                        let p = match self.eval_expr(&args[1]) {
+                            EvalResult::Value(CompileTimeValue::Angle(a)) => a,
+                            other => return other,
+                        };
+                        let y = match self.eval_expr(&args[2]) {
+                            EvalResult::Value(CompileTimeValue::Angle(a)) => a,
+                            other => return other,
+                        };
+                        EvalResult::Value(CompileTimeValue::Quaternion(UnitQuaternion::from_euler(
+                            r, p, y,
+                        )))
+                    } else {
+                        EvalResult::Error(SemanticDiagnostic {
+                            message: "euler() requires 3 Angle arguments (roll, pitch, yaw)"
+                                .to_string(),
+                            span: None,
+                        })
+                    }
+                }
+                "quaternion" => {
+                    if args.len() == 4 {
+                        let w = match self.eval_expr(&args[0]) {
+                            EvalResult::Value(CompileTimeValue::Float(f)) => f,
+                            EvalResult::Value(CompileTimeValue::Int(i)) => i as f64,
+                            other => return other,
+                        };
+                        let x = match self.eval_expr(&args[1]) {
+                            EvalResult::Value(CompileTimeValue::Float(f)) => f,
+                            EvalResult::Value(CompileTimeValue::Int(i)) => i as f64,
+                            other => return other,
+                        };
+                        let y = match self.eval_expr(&args[2]) {
+                            EvalResult::Value(CompileTimeValue::Float(f)) => f,
+                            EvalResult::Value(CompileTimeValue::Int(i)) => i as f64,
+                            other => return other,
+                        };
+                        let z = match self.eval_expr(&args[3]) {
+                            EvalResult::Value(CompileTimeValue::Float(f)) => f,
+                            EvalResult::Value(CompileTimeValue::Int(i)) => i as f64,
+                            other => return other,
+                        };
+                        let q = Quaternion::new(w, x, y, z).normalize_or_identity();
+                        EvalResult::Value(CompileTimeValue::Quaternion(
+                            UnitQuaternion::from_quaternion_unchecked(q),
+                        ))
+                    } else {
+                        EvalResult::Error(SemanticDiagnostic {
+                            message: "quaternion() requires 4 float arguments (w, x, y, z)"
+                                .to_string(),
+                            span: None,
+                        })
+                    }
                 }
                 _ => EvalResult::NotConstant,
             },

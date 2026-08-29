@@ -7,6 +7,7 @@ pub mod execution_plan_builder;
 pub mod feedback;
 pub mod goal;
 pub mod interpolate;
+pub mod input;
 pub mod motion;
 pub mod program_edit;
 pub mod recommendation;

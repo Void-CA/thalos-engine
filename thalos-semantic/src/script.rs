@@ -375,9 +375,26 @@ fn parse_legacy_script(input: &str) -> Result<RobotProgram, Vec<ParseError>> {
                         message: "'pick' requires at least an object name".into(),
                     });
                 } else {
+                    let object_name = args[0].to_string();
+                    let mut tool = None;
+                    let mut idx = 1;
+                    while idx < args.len() {
+                        let arg = args[idx];
+                        if arg.starts_with("tool=") {
+                            tool = Some(arg["tool=".len()..].to_string());
+                        } else if arg == "with" && idx + 1 < args.len() {
+                            idx += 1;
+                            tool = Some(args[idx].to_string());
+                        }
+                        idx += 1;
+                    }
+                    let mut call_args = vec![Value::Object(thalos_core::ids::ObjectId(object_name))];
+                    if let Some(t) = tool {
+                        call_args.push(Value::String(t));
+                    }
                     body.push(Instruction::Skill(SkillCall::new(
                         SkillId("pick".into()),
-                        vec![Value::Object(thalos_core::ids::ObjectId(args[0].to_string()))],
+                        call_args,
                     )));
                 }
             }
@@ -388,6 +405,7 @@ fn parse_legacy_script(input: &str) -> Result<RobotProgram, Vec<ParseError>> {
                         message: "'place' requires format: place <object> at <location>".into(),
                     });
                 } else {
+                    let object_name = args[0].to_string();
                     let target_id = TargetId(args[2].to_string());
                     if target_set.insert(target_id.clone()) {
                         targets.push(Target::new(
@@ -398,12 +416,28 @@ fn parse_legacy_script(input: &str) -> Result<RobotProgram, Vec<ParseError>> {
                             },
                         ));
                     }
+                    let mut tool = None;
+                    let mut idx = 3;
+                    while idx < args.len() {
+                        let arg = args[idx];
+                        if arg.starts_with("tool=") {
+                            tool = Some(arg["tool=".len()..].to_string());
+                        } else if arg == "with" && idx + 1 < args.len() {
+                            idx += 1;
+                            tool = Some(args[idx].to_string());
+                        }
+                        idx += 1;
+                    }
+                    let mut call_args = vec![
+                        Value::Object(thalos_core::ids::ObjectId(object_name)),
+                        Value::Target(target_id),
+                    ];
+                    if let Some(t) = tool {
+                        call_args.push(Value::String(t));
+                    }
                     body.push(Instruction::Skill(SkillCall::new(
                         SkillId("place".into()),
-                        vec![
-                            Value::Object(thalos_core::ids::ObjectId(args[0].to_string())),
-                            Value::Target(target_id),
-                        ],
+                        call_args,
                     )));
                 }
             }
@@ -424,9 +458,32 @@ fn parse_legacy_script(input: &str) -> Result<RobotProgram, Vec<ParseError>> {
                             },
                         ));
                     }
-                    body.push(Instruction::Motion(MotionInstruction::MoveLinear {
-                        target: target_id,
-                    }));
+                    let mut tool = None;
+                    let mut idx = 1;
+                    while idx < args.len() {
+                        let arg = args[idx];
+                        if arg.starts_with("tool=") {
+                            tool = Some(arg["tool=".len()..].to_string());
+                        } else if arg == "with" && idx + 1 < args.len() {
+                            idx += 1;
+                            tool = Some(args[idx].to_string());
+                        }
+                        idx += 1;
+                    }
+                    if let Some(t) = tool {
+                        let call_args = vec![
+                            Value::Target(target_id),
+                            Value::String(t),
+                        ];
+                        body.push(Instruction::Skill(SkillCall::new(
+                            SkillId("move_to".into()),
+                            call_args,
+                        )));
+                    } else {
+                        body.push(Instruction::Motion(MotionInstruction::MoveLinear {
+                            target: target_id,
+                        }));
+                    }
                 }
             }
             "wait" => {

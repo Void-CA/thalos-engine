@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use thalos_lang::ast::BinaryOp;
 use thalos_lang::span::Span;
 use crate::evaluator::{CompileTimeValue, Position, Pose};
+use crate::types::Type;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CallSite {
@@ -68,6 +69,8 @@ pub enum MotionKind {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SemanticExpr {
     Constant(CompileTimeValue),
+    ConstRef(String),
+    LocalRef(String),
     ParameterRef(String),
     TargetRef(String),
     Binary {
@@ -95,6 +98,11 @@ pub struct SemanticMotion {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SemanticStatement {
+    Let {
+        name: String,
+        value: SemanticExpr,
+        provenance: Provenance,
+    },
     Motion(SemanticMotion),
     Wait {
         duration: SemanticExpr,
@@ -110,13 +118,16 @@ pub enum SemanticStatement {
         args: Vec<SemanticExpr>,
         provenance: Provenance,
     },
+    Expr(SemanticExpr),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SemanticFunction {
     pub name: String,
     pub params: Vec<String>,
+    pub return_type: Type,
     pub body: Vec<SemanticStatement>,
+    pub tail_expr: Option<SemanticExpr>,
     pub provenance: Provenance,
 }
 

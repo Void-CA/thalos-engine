@@ -41,15 +41,23 @@ pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
         .map(|(val, mult)| Expr::Angle(AngleRadians(val * mult)));
 
     let expr = recursive(|expr| {
-        let literal_expr = choice((
-            duration_expr,
-            length_expr,
-            angle_expr,
-            number.map(Expr::Number),
-            just("true").map(|_| Expr::Boolean(true)),
-            just("false").map(|_| Expr::Boolean(false)),
-            ident.map(Expr::Identifier),
-        ));
+        let vector3_expr = expr
+            .clone()
+            .padded()
+            .separated_by(just(','))
+            .allow_trailing()
+            .delimited_by(just('[').padded(), just(']').padded())
+            .try_map(|elems: Vec<Expr>, span| {
+                if elems.len() == 3 {
+                    Ok(Expr::Vector3([
+                        Box::new(elems[0].clone()),
+                        Box::new(elems[1].clone()),
+                        Box::new(elems[2].clone()),
+                    ]))
+                } else {
+                    Err(Simple::custom(span, "Vector3 expects exactly 3 elements"))
+                }
+            });
 
         let call_expr = ident
             .then(
@@ -60,47 +68,132 @@ pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
             )
             .map(|(callee, args)| Expr::Call { callee, args });
 
-        choice((call_expr, literal_expr)).padded()
+        let literal_expr = choice((
+            duration_expr,
+            length_expr,
+            angle_expr,
+            number.map(Expr::Number),
+            just("true").map(|_| Expr::Boolean(true)),
+            just("false").map(|_| Expr::Boolean(false)),
+            ident.map(Expr::Identifier),
+        ));
+
+        let atom = choice((vector3_expr, call_expr, literal_expr)).padded();
+
+        let op = choice((
+            just('+').map(|_| BinaryOp::Add),
+            just('-').map(|_| BinaryOp::Sub),
+            just('*').map(|_| BinaryOp::Mul),
+            just('/').map(|_| BinaryOp::Div),
+        ))
+        .padded();
+
+        atom.clone()
+            .then(op.then(atom.clone()).repeated())
+            .map(|(first, rest)| {
+                rest.into_iter().fold(first, |acc, (op, val)| Expr::Binary {
+                    left: Box::new(acc),
+                    op,
+                    right: Box::new(val),
+                })
+            })
     });
+
+    let type_ann = just(':').padded().ignore_then(ident.padded());
+
+    let let_stmt = just("let")
+        .ignore_then(ident.padded())
+        .then(type_ann.clone().or_not())
+        .then_ignore(just('=').padded())
+        .then(expr.clone())
+        .then_ignore(just(';').or_not())
+        .map(|((name, type_ann), value)| Statement::Let {
+            name,
+            type_ann,
+            value,
+        });
 
     let movej_stmt = just("movej")
         .ignore_then(expr.clone().delimited_by(just('('), just(')')))
+        .then_ignore(just(';').or_not())
         .map(|target| Statement::MoveJ { target });
 
     let movel_stmt = just("movel")
         .ignore_then(expr.clone().delimited_by(just('('), just(')')))
+        .then_ignore(just(';').or_not())
         .map(|target| Statement::MoveL { target });
 
     let wait_stmt = just("wait")
         .ignore_then(expr.clone().delimited_by(just('('), just(')')))
+        .then_ignore(just(';').or_not())
         .map(Statement::Wait);
 
-    let statement = choice((movej_stmt, movel_stmt, wait_stmt, expr.clone().map(Statement::Expr)))
-        .padded()
-        .then_ignore(just(';').or_not());
+    let stmt_with_semi = choice((
+        let_stmt,
+        movej_stmt,
+        movel_stmt,
+        wait_stmt,
+        expr.clone()
+            .then_ignore(just(';'))
+            .map(Statement::Expr),
+    ))
+    .padded();
+
+    let fn_body = stmt_with_semi
+        .repeated()
+        .then(expr.clone().or_not())
+        .delimited_by(just('{').padded(), just('}').padded());
 
     let fn_decl = just("fn")
         .ignore_then(ident.padded())
         .then(
             ident
-                .map(|name| Param { name, type_ann: None })
+                .padded()
+                .then(type_ann.clone().or_not())
+                .map(|(name, type_ann)| Param { name, type_ann })
                 .separated_by(just(',').padded())
+                .allow_trailing()
                 .delimited_by(just('('), just(')')),
         )
-        .then(statement.repeated().delimited_by(just('{').padded(), just('}').padded()))
-        .map(|((name, params), body)| Item::Function(FnDecl { name, params, body }));
+        .then(just("->").padded().ignore_then(ident.padded()).or_not())
+        .then(fn_body)
+        .map(|(((name, params), return_type), (body, tail_expr))| {
+            Item::Function(FnDecl {
+                name,
+                params,
+                return_type,
+                body,
+                tail_expr: tail_expr.map(Box::new),
+            })
+        });
+
+    let const_decl = just("const")
+        .ignore_then(ident.padded())
+        .then(type_ann.clone().or_not())
+        .then_ignore(just('=').padded())
+        .then(expr.clone().padded())
+        .then_ignore(just(';').or_not())
+        .map(|((name, type_ann), value)| {
+            Item::Const(ConstDecl {
+                name,
+                type_ann,
+                value,
+            })
+        });
 
     let target_decl = just("target")
         .ignore_then(ident.padded())
         .then_ignore(just('='))
-        .then(expr.padded())
+        .then(expr.clone().padded())
+        .then_ignore(just(';').or_not())
         .map(|(name, pose)| Item::Target(TargetDecl { name, pose }));
 
     let use_decl = just("use")
         .ignore_then(ident.padded())
+        .then_ignore(just(';').or_not())
         .map(|path| Item::Use(UseDecl { path }));
 
-    let item = choice((fn_decl, target_decl, use_decl)).padded();
+    let item = choice((const_decl, fn_decl, target_decl, use_decl)).padded();
 
     item.repeated().then_ignore(end()).map(|items| Program { items })
 }

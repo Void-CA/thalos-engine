@@ -64,10 +64,20 @@ impl SemanticResolver {
             span: func.provenance.span.clone(),
         });
 
+        let mut local_env = env.clone();
+
         for stmt in &func.body {
             match stmt {
+                SemanticStatement::Let { name, value, .. } => {
+                    match Self::eval_value(value, &local_env, targets) {
+                        Ok(val) => {
+                            local_env.insert(name.clone(), val);
+                        }
+                        Err(e) => errors.push(e),
+                    }
+                }
                 SemanticStatement::Motion(SemanticMotion { kind, target, provenance }) => {
-                    match Self::eval_expr(target, env, targets) {
+                    match Self::eval_expr(target, &local_env, targets) {
                         Ok(target_val) => {
                             let mut merged_prov = provenance.clone();
                             merged_prov.call_stack = call_stack.clone();
@@ -81,7 +91,7 @@ impl SemanticResolver {
                     }
                 }
                 SemanticStatement::Wait { duration, provenance } => {
-                    if let Ok(secs) = Self::eval_scalar(duration, env) {
+                    if let Ok(secs) = Self::eval_scalar(duration, &local_env) {
                         let mut merged_prov = provenance.clone();
                         merged_prov.call_stack = call_stack.clone();
                         out.push(ResolvedStatement::Wait {
@@ -105,7 +115,7 @@ impl SemanticResolver {
                     if let Some(target_fn) = functions.get(function) {
                         let mut arg_vals = Vec::new();
                         for arg in args {
-                            match Self::eval_value(arg, env, targets) {
+                            match Self::eval_value(arg, &local_env, targets) {
                                 Ok(val) => arg_vals.push(val),
                                 Err(e) => errors.push(e),
                             }
@@ -139,6 +149,7 @@ impl SemanticResolver {
                         errors.push(format!("Unresolved function call '{}'", function));
                     }
                 }
+                SemanticStatement::Expr(_) => {}
             }
         }
 
@@ -152,11 +163,11 @@ impl SemanticResolver {
     ) -> Result<CompileTimeValue, String> {
         match expr {
             SemanticExpr::Constant(val) => Ok(val.clone()),
-            SemanticExpr::ParameterRef(p) => {
+            SemanticExpr::ParameterRef(p) | SemanticExpr::LocalRef(p) | SemanticExpr::ConstRef(p) => {
                 if let Some(val) = env.get(p) {
                     Ok(val.clone())
                 } else {
-                    Err(format!("Unbound parameter '{}'", p))
+                    Err(format!("Unbound variable/parameter '{}'", p))
                 }
             }
             SemanticExpr::TargetRef(t) => {
@@ -179,16 +190,16 @@ impl SemanticResolver {
             SemanticExpr::Constant(CompileTimeValue::Duration(d)) => Ok(*d),
             SemanticExpr::Constant(CompileTimeValue::Float(f)) => Ok(*f),
             SemanticExpr::Constant(CompileTimeValue::Int(i)) => Ok(*i as f64),
-            SemanticExpr::ParameterRef(p) => {
+            SemanticExpr::ParameterRef(p) | SemanticExpr::LocalRef(p) | SemanticExpr::ConstRef(p) => {
                 if let Some(val) = env.get(p) {
                     match val {
                         CompileTimeValue::Duration(d) => Ok(*d),
                         CompileTimeValue::Float(f) => Ok(*f),
                         CompileTimeValue::Int(i) => Ok(*i as f64),
-                        _ => Err(format!("Parameter '{}' is not a scalar number", p)),
+                        _ => Err(format!("Variable/parameter '{}' is not a scalar number", p)),
                     }
                 } else {
-                    Err(format!("Unbound parameter '{}'", p))
+                    Err(format!("Unbound variable/parameter '{}'", p))
                 }
             }
             _ => Err("Could not resolve scalar expression".to_string()),
@@ -211,26 +222,27 @@ impl SemanticResolver {
                     Err(format!("Unresolved target reference '{}'", name))
                 }
             }
-            SemanticExpr::ParameterRef(name) => {
+            SemanticExpr::ParameterRef(name) | SemanticExpr::LocalRef(name) | SemanticExpr::ConstRef(name) => {
                 if let Some(val) = env.get(name) {
                     match val {
                         CompileTimeValue::Position(p) => Ok(MotionTarget::Position(p.clone())),
                         CompileTimeValue::Pose(p) => Ok(MotionTarget::Pose(p.clone())),
                         CompileTimeValue::Joints(j) => Ok(MotionTarget::Joints(JointConfiguration::new(j.clone()))),
-                        _ => Err(format!("Parameter '{}' does not evaluate to a motion target", name)),
+                        _ => Err(format!("Variable/parameter '{}' does not evaluate to a motion target", name)),
                     }
                 } else {
-                    Err(format!("Unbound parameter '{}'", name))
+                    Err(format!("Unbound variable/parameter '{}'", name))
                 }
             }
             SemanticExpr::Binary { left, op, right } => {
                 let lhs = Self::eval_expr(left, env, targets)?;
-                match (lhs, op, right.as_ref()) {
-                    (MotionTarget::Position(p), BinaryOp::Add, SemanticExpr::Constant(CompileTimeValue::Vector3(v))) => {
-                        Ok(MotionTarget::Position(Position { point: p.point + *v }))
+                let rhs_val = Self::eval_value(right, env, targets)?;
+                match (lhs, op, rhs_val) {
+                    (MotionTarget::Position(p), BinaryOp::Add, CompileTimeValue::Vector3(v)) => {
+                        Ok(MotionTarget::Position(Position { point: p.point + v }))
                     }
-                    (MotionTarget::Position(p), BinaryOp::Sub, SemanticExpr::Constant(CompileTimeValue::Vector3(v))) => {
-                        Ok(MotionTarget::Position(Position { point: p.point - *v }))
+                    (MotionTarget::Position(p), BinaryOp::Sub, CompileTimeValue::Vector3(v)) => {
+                        Ok(MotionTarget::Position(Position { point: p.point - v }))
                     }
                     _ => Err("Unsupported binary operation on motion target during resolution".to_string()),
                 }

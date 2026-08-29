@@ -22,7 +22,7 @@ use thalos_semantic::operation::SemanticOperation;
 use thalos_semantic::resource::ToolId;
 use thalos_semantic::script;
 
-const CORPUS: &str = include_str!("../../../../test-fixtures/script-golden.json");
+const CORPUS: &str = include_str!("../../test-fixtures/script-golden.json");
 
 #[test]
 fn golden_corpus_parity() {
@@ -104,6 +104,10 @@ fn assert_op_matches(op: &SemanticOperation, expected: &Value, name: &str) {
             );
             assert_tool(&pick.tool, expected, name);
         }
+        (SemanticOperation::Skill(skill), "pick") => {
+            assert_eq!(skill.skill_call.skill.0, "pick", "{name}: pick skill name");
+            assert_skill_tool(&skill.skill_call.arguments, expected, name);
+        }
         (SemanticOperation::Place(place), "place") => {
             assert_eq!(
                 place.object.0,
@@ -121,6 +125,10 @@ fn assert_op_matches(op: &SemanticOperation, expected: &Value, name: &str) {
             );
             assert_tool(&place.tool, expected, name);
         }
+        (SemanticOperation::Skill(skill), "place") => {
+            assert_eq!(skill.skill_call.skill.0, "place", "{name}: place skill name");
+            assert_skill_tool(&skill.skill_call.arguments, expected, name);
+        }
         (SemanticOperation::MoveTo(move_to), "move_to") => {
             assert_eq!(
                 move_to.destination.0,
@@ -130,6 +138,10 @@ fn assert_op_matches(op: &SemanticOperation, expected: &Value, name: &str) {
                 "{name}: move_to destination"
             );
             assert_tool(&move_to.tool, expected, name);
+        }
+        (SemanticOperation::Skill(skill), "move_to") => {
+            assert_eq!(skill.skill_call.skill.0, "move_to", "{name}: move_to skill name");
+            assert_skill_tool(&skill.skill_call.arguments, expected, name);
         }
         (SemanticOperation::Wait(wait), "wait") => {
             let expected_ms = expected["duration_ms"]
@@ -156,6 +168,21 @@ fn assert_tool(tool: &Option<ToolId>, expected: &Value, name: &str) {
         }
         (None, None) => {}
         (Some(actual), None) => panic!("{name}: unexpected tool '{}'", actual.0),
+        (None, Some(wanted)) => panic!("{name}: expected tool '{wanted}', got none"),
+    }
+}
+
+fn assert_skill_tool(args: &[thalos_core::program::Value], expected: &Value, name: &str) {
+    let actual_tool = args.iter().find_map(|arg| match arg {
+        thalos_core::program::Value::String(s) => Some(s.as_str()),
+        _ => None,
+    });
+    match (actual_tool, expected["tool"].as_str()) {
+        (Some(actual), Some(wanted)) => {
+            assert_eq!(actual, wanted, "{name}: tool");
+        }
+        (None, None) => {}
+        (Some(actual), None) => panic!("{name}: unexpected tool '{actual}'"),
         (None, Some(wanted)) => panic!("{name}: expected tool '{wanted}', got none"),
     }
 }

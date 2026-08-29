@@ -5,6 +5,7 @@ use crate::types::Type;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SymbolKind {
     Target,
+    Const,
     Function,
     Parameter,
     Variable,

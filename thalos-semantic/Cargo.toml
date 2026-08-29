@@ -8,7 +8,7 @@ publish = false
 
 [features]
 default = []
-test-support = ["dep:thalos-planning"]
+test-support = []
 
 [dependencies]
 thalos-core = { path = "../thalos-core" }
@@ -18,19 +18,5 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
 thiserror = "2"
-thalos-planning = { path = "../thalos-planning", optional = true }
 
 [dev-dependencies]
-thalos-planning = { path = "../thalos-planning" }
-
-[[test]]
-name = "ir_properties"
-required-features = ["test-support"]
-
-[[test]]
-name = "e2e_canonical_pipeline"
-required-features = ["test-support"]
-
-[[test]]
-name = "golden_corpus"
-required-features = ["test-support"]

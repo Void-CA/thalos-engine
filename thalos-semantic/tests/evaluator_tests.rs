@@ -114,3 +114,32 @@ fn test_runtime_expression_returns_not_constant() {
     let res = evaluator.eval_expr(&runtime_call);
     assert_eq!(res, EvalResult::NotConstant);
 }
+
+#[test]
+fn test_euler_and_quaternion_evaluation() {
+    use thalos_lang::units::AngleRadians;
+    use thalos_math::UnitQuaternion;
+
+    let mut table = SymbolTable::new();
+    register_builtins(&mut table);
+    let evaluator = Evaluator::new(&table);
+
+    // euler(0deg, 0deg, 3.141592653589793rad)
+    let euler_expr = Expr::Call {
+        callee: "euler".to_string(),
+        args: vec![
+            Expr::Angle(AngleRadians(0.0)),
+            Expr::Angle(AngleRadians(0.0)),
+            Expr::Angle(AngleRadians(std::f64::consts::PI)),
+        ],
+    };
+
+    let res = evaluator.eval_expr(&euler_expr);
+    if let EvalResult::Value(CompileTimeValue::Quaternion(q)) = res {
+        let expected = UnitQuaternion::from_euler(0.0, 0.0, std::f64::consts::PI);
+        assert!((q.inner().w - expected.inner().w).abs() < 1e-6);
+        assert!((q.inner().z - expected.inner().z).abs() < 1e-6);
+    } else {
+        panic!("Expected CompileTimeValue::Quaternion, got {:?}", res);
+    }
+}

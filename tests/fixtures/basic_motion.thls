@@ -1,0 +1,13 @@
+target home = joints([0deg, 0deg, 0deg])
+
+target pick = position([
+    420mm,
+    180mm,
+    80mm
+])
+
+fn main() {
+    movej(home)
+    movej(pick)
+    movel(pick + [0mm, 0mm, 100mm])
+}

@@ -3,6 +3,7 @@ use thalos_lang::ast::{Expr, Statement};
 use thalos_lang::span::Span;
 use crate::operators::BinaryOpRule;
 use crate::scope::SymbolTable;
+use crate::symbols::{Symbol, SymbolKind};
 use crate::types::Type;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -171,6 +172,33 @@ impl<'a> TypeChecker<'a> {
 
     pub fn check_statement(&mut self, stmt: &Statement) {
         match stmt {
+            Statement::Let { name, type_ann, value } => {
+                let typed_val = self.infer_expr(value);
+                if let Some(ann) = type_ann {
+                    if let Some(expected_ty) = Type::from_name(ann) {
+                        if expected_ty != typed_val.ty {
+                            self.diagnostics.push(SemanticDiagnostic {
+                                message: format!(
+                                    "Type mismatch in let binding '{}': expected {:?}, got {:?}",
+                                    name, expected_ty, typed_val.ty
+                                ),
+                                span: None,
+                            });
+                        }
+                    } else {
+                        self.diagnostics.push(SemanticDiagnostic {
+                            message: format!("Unknown type annotation '{}' in let binding '{}'", ann, name),
+                            span: None,
+                        });
+                    }
+                }
+                let _ = self.symbol_table.declare(Symbol::new(
+                    name.clone(),
+                    SymbolKind::Variable,
+                    typed_val.ty,
+                    None,
+                ));
+            }
             Statement::MoveJ { target } => {
                 let typed_target = self.infer_expr(target);
                 if !typed_target.ty.is_target() {

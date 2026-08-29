@@ -27,15 +27,18 @@ fn test_parametric_function_resolution_and_provenance() {
             name: "target".to_string(),
             type_ann: None,
         }],
+        return_type: None,
         body: vec![Statement::MoveJ {
             target: Expr::Identifier("target".to_string()),
         }],
+        tail_expr: None,
     });
 
     // fn main() { pick(home); wait(200ms); }
     let main_fn = Item::Function(FnDecl {
         name: "main".to_string(),
         params: vec![],
+        return_type: None,
         body: vec![
             Statement::Expr(Expr::Call {
                 callee: "pick".to_string(),
@@ -43,6 +46,7 @@ fn test_parametric_function_resolution_and_provenance() {
             }),
             Statement::Wait(Expr::Duration(DurationSeconds(0.2))),
         ],
+        tail_expr: None,
     });
 
     let ast_program = Program {
