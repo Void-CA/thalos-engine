@@ -61,6 +61,18 @@ impl SemanticIr {
     }
 }
 
+impl From<&crate::program::SemanticProgram> for SemanticIr {
+    fn from(program: &crate::program::SemanticProgram) -> Self {
+        Self::from_operations(program.operations.clone())
+    }
+}
+
+impl From<crate::program::SemanticProgram> for SemanticIr {
+    fn from(program: crate::program::SemanticProgram) -> Self {
+        Self::from_operations(program.operations)
+    }
+}
+
 
 /// Pure normalization pass: `RobotProgram → SemanticIr`.
 ///
@@ -89,7 +101,8 @@ pub fn normalize(program: &RobotProgram) -> Result<SemanticIr, NormalizeError> {
 
         match inst {
             Instruction::Motion(motion) => match motion {
-                MotionInstruction::MoveJoint { target }
+                MotionInstruction::Move { target }
+                | MotionInstruction::MoveJoint { target }
                 | MotionInstruction::MoveLinear { target }
                 | MotionInstruction::Approach { target, .. } => {
                     if !defined_targets.contains(target) {

@@ -94,18 +94,14 @@ pub fn build_provider() -> MockKnowledgeProvider {
 
 /// A `LoweringContext` over the canonical provider.
 pub fn default_ctx(provider: &MockKnowledgeProvider) -> LoweringContext<'_> {
-    LoweringContext {
-        provider,
-        default_tool: Some(ToolId("gripper-1".to_string())),
-        default_profile: MotionProfile {
+    LoweringContext::new(provider)
+        .with_default_tool(Some(ToolId("gripper-1".to_string())))
+        .with_default_profile(MotionProfile {
             max_velocity: 1.0,
             max_acceleration: 0.5,
             max_jerk: None,
-        },
-        // Legacy caller: cartesian instructions fall back to the joint
-        // profile (backward compatible).
-        default_cartesian_profile: None,
-    }
+        })
+        .with_default_cartesian_profile(None)
 }
 
 /// Lower a program with the canonical provider/context and return its

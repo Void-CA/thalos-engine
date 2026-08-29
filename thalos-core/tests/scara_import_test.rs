@@ -14,7 +14,7 @@ use std::path::PathBuf;
 
 use thalos_core::kinematics::forward::ForwardKinematics;
 use thalos_core::robot::adapter;
-use thalos_models::urdf::parser::parse_robot;
+use thalos_importer::import_urdf;
 
 fn fixture_path() -> PathBuf {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -30,7 +30,7 @@ fn load_scara_urdf() -> String {
 
 fn load_robot() -> thalos_models::Robot {
     let source = load_scara_urdf();
-    parse_robot(&source).expect("SCARA should parse")
+    import_urdf(&source).expect("SCARA should parse")
 }
 
 // ─── from_tip — primary API ─────────────────────────────────────

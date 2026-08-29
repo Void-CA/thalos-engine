@@ -17,15 +17,12 @@
 //! | `geometry`  | `Geometry`, `Visual`, `Collision`            |
 //! | `material`  | `Material`, `Color`                          |
 //! | `graph`     | `RobotGraph`, `Path`, `LinkId`, `JointId`    |
-//! | `urdf`      | URDF parser and exporter (future)            |
-
 pub mod geometry;
 pub mod graph;
 pub mod joint;
 pub mod link;
 pub mod material;
 pub mod robot;
-pub mod urdf;
 
 pub use geometry::{Box3D, Collision, CollisionGeometry, Cylinder, Geometry, Mesh, Sphere, Visual};
 pub use graph::{JointId, LinkId, Path, RobotGraph};

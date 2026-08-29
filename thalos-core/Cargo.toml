@@ -9,6 +9,7 @@ publish = false
 [dependencies]
 thalos-math = { path = "../thalos-math" }
 thalos-models = { path = "../thalos-models" }
+thalos-importer = { path = "../thalos-importer" }
 rand = "0.8"
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"

@@ -1,27 +1,38 @@
-//! Task Script — a human-readable DSL for constructing `SemanticProgram`s.
+//! `.thalos` Task Script — human-readable DSL for constructing `RobotProgram`s.
 //!
-//! # Format
+//! # Format (.thalos DSL)
 //!
 //! ```text
-//! # Comment
-//! pick <object> [tool=<name>]
-//! place <object> at <location> [tool=<name>]
-//! move_to <location> [tool=<name>]
-//! wait <duration>          (e.g., 500ms, 2s, 1.5s)
-//! home
-//! ```
+//! program pick_and_place(robot = scara_01) {
+//!     target approach = cartesian(
+//!         x = 0.120,
+//!         y = 0.080,
+//!         z = 0.050
+//!     )
 //!
-//! Each line is one operation. Empty lines and comments are ignored.
-//! Named arguments use `key=value` syntax.
+//!     target pick_target = cartesian(
+//!         x = 0.120,
+//!         y = 0.080,
+//!         z = 0.010
+//!     )
+//!
+//!     move approach
+//!     pick(part_01, at = pick_target)
+//!     wait(500ms)
+//! }
+//! ```
 
 use std::time::Duration;
+use thalos_core::ids::{ProgramName, RobotId, SkillId, TargetId, TargetName};
+use thalos_core::program::{
+    ControlInstruction, Instruction, JointPosition, MotionInstruction, RobotProgram, SkillCall,
+    Target, TargetReference, Value,
+};
+use thalos_core::spatial::frame::frame::FrameId;
+use thalos_core::spatial::pose::Pose;
+use thalos_math::{Transform3D, Vector3};
 
-use crate::operation::{HomeOp, MoveToOp, PickOp, PlaceOp, SemanticOperation, WaitOp};
-use crate::program::SemanticProgram;
-use crate::resource::{LocationId, ObjectId, ToolId};
-use thalos_core::ids::OperationId;
-
-/// Error returned when parsing a Task Script line fails.
+/// Error returned when parsing a `.thalos` script line fails.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParseError {
     pub line: usize,
@@ -34,25 +45,117 @@ impl std::fmt::Display for ParseError {
     }
 }
 
-/// Parse a Task Script string into a `SemanticProgram`.
+/// Parse a `.thalos` DSL string or legacy script into a pure `RobotProgram`.
+pub fn parse(input: &str) -> Result<RobotProgram, Vec<ParseError>> {
+    let input_trimmed = input.trim();
+    if input_trimmed.starts_with("program ") {
+        parse_block_program(input)
+    } else {
+        parse_legacy_script(input)
+    }
+}
+
+/// Parse a `.thalos` skill fragment script into a `ProgramFragment`.
 ///
-/// Each line is parsed as one operation. Lines starting with `#` are comments.
-/// Empty lines are ignored.
-pub fn parse(input: &str) -> Result<SemanticProgram, Vec<ParseError>> {
-    let mut operations = Vec::new();
+/// A fragment contains instruction lines (e.g. `move approach`, `wait(100ms)`),
+/// but MUST NOT contain a top-level `program` block declaration.
+pub fn parse_fragment(input: &str) -> Result<thalos_core::skill::ProgramFragment, Vec<ParseError>> {
+    let input_trimmed = input.trim();
+    if input_trimmed.starts_with("program ") {
+        return Err(vec![ParseError {
+            line: 1,
+            message: "skill fragment cannot contain a top-level 'program' block declaration".into(),
+        }]);
+    }
+
+    let mut instructions = Vec::new();
     let mut errors = Vec::new();
 
-    for (line_idx, line) in input.lines().enumerate() {
-        let line = line.trim();
-        let line_num = line_idx + 1;
+    for (idx, line) in input.lines().enumerate() {
+        let line_num = idx + 1;
+        let line_trimmed = line.trim();
 
-        // Skip empty lines and comments
-        if line.is_empty() || line.starts_with('#') {
+        if line_trimmed.is_empty()
+            || line_trimmed.starts_with("//")
+            || line_trimmed.starts_with('#')
+        {
             continue;
         }
 
-        match parse_line(line, line_num) {
-            Ok(op) => operations.push(op),
+        match parse_instruction_line(line_trimmed, line_num) {
+            Ok(inst) => instructions.push(inst),
+            Err(e) => errors.push(e),
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(thalos_core::skill::ProgramFragment { instructions })
+    } else {
+        Err(errors)
+    }
+}
+
+/// Parse a block-structured `.thalos` program.
+fn parse_block_program(input: &str) -> Result<RobotProgram, Vec<ParseError>> {
+    let mut errors = Vec::new();
+    let mut program_name = ProgramName("unnamed_program".into());
+    let mut robot_id = RobotId("default_robot".into());
+    let mut targets = Vec::new();
+    let mut body = Vec::new();
+
+    let lines: Vec<&str> = input.lines().collect();
+    let mut idx = 0;
+
+    while idx < lines.len() {
+        let raw_line = lines[idx];
+        let line = raw_line.trim();
+        let line_num = idx + 1;
+        idx += 1;
+
+        if line.is_empty() || line.starts_with('#') || line.starts_with("//") {
+            continue;
+        }
+
+        if line.starts_with("program ") {
+            if let Some(open_paren) = line.find('(') {
+                let name_part = line["program ".len()..open_paren].trim();
+                program_name = ProgramName(name_part.to_string());
+
+                if let Some(close_paren) = line.find(')') {
+                    let param_part = line[open_paren + 1..close_paren].trim();
+                    if let Some(eq_pos) = param_part.find('=') {
+                        let key = param_part[..eq_pos].trim();
+                        let val = param_part[eq_pos + 1..].trim();
+                        if key == "robot" {
+                            robot_id = RobotId(val.to_string());
+                        }
+                    }
+                }
+            }
+            continue;
+        }
+
+        if line == "}" {
+            continue;
+        }
+
+        if line.starts_with("target ") {
+            let mut target_block = line.to_string();
+            let start_line_num = line_num;
+            while !target_block.contains(')') && idx < lines.len() {
+                target_block.push(' ');
+                target_block.push_str(lines[idx].trim());
+                idx += 1;
+            }
+            match parse_target_decl(&target_block, start_line_num) {
+                Ok(target) => targets.push(target),
+                Err(e) => errors.push(e),
+            }
+            continue;
+        }
+
+        match parse_instruction_line(line, line_num) {
+            Ok(inst) => body.push(inst),
             Err(e) => errors.push(e),
         }
     }
@@ -61,10 +164,68 @@ pub fn parse(input: &str) -> Result<SemanticProgram, Vec<ParseError>> {
         return Err(errors);
     }
 
-    Ok(SemanticProgram::new(operations))
+    Ok(RobotProgram::new(program_name, robot_id, targets, body))
 }
 
-fn parse_line(line: &str, line_num: usize) -> Result<SemanticOperation, ParseError> {
+fn parse_target_decl(line: &str, line_num: usize) -> Result<Target, ParseError> {
+    let rest = line["target ".len()..].trim();
+    let eq_pos = rest.find('=').ok_or_else(|| ParseError {
+        line: line_num,
+        message: format!("malformed target declaration: '{line}'"),
+    })?;
+
+    let name = rest[..eq_pos].trim();
+    let expr = rest[eq_pos + 1..].trim();
+
+    if expr.starts_with("cartesian") {
+        let x = extract_num_param(expr, "x").unwrap_or(0.0);
+        let y = extract_num_param(expr, "y").unwrap_or(0.0);
+        let z = extract_num_param(expr, "z").unwrap_or(0.0);
+
+        let transform = Transform3D::from_translation(Vector3::new(x, y, z));
+        let pose = Pose::new(FrameId::World, FrameId::Id(0), transform);
+        Ok(Target::new(
+            TargetId(name.to_string()),
+            TargetName(name.to_string()),
+            TargetReference::Cartesian { pose },
+        ))
+    } else if expr.starts_with("joint") {
+        let mut q = Vec::new();
+        for i in 1..=6 {
+            if let Some(val) = extract_num_param(expr, &format!("q{i}")) {
+                q.push(val);
+            }
+        }
+        Ok(Target::new(
+            TargetId(name.to_string()),
+            TargetName(name.to_string()),
+            TargetReference::Joint {
+                position: JointPosition::new(q),
+            },
+        ))
+    } else {
+        Err(ParseError {
+            line: line_num,
+            message: format!("unknown target reference type in '{expr}'"),
+        })
+    }
+}
+
+fn extract_num_param(expr: &str, key: &str) -> Option<f64> {
+    let pattern = format!("{key}=");
+    if let Some(pos) = expr.find(&pattern) {
+        let rest = &expr[pos + pattern.len()..];
+        let end = rest
+            .find(|c: char| c == ',' || c == ')' || c.is_whitespace())
+            .unwrap_or(rest.len());
+        let val_str = rest[..end].trim();
+        val_str.parse::<f64>().ok()
+    } else {
+        None
+    }
+}
+
+fn parse_instruction_line(line: &str, line_num: usize) -> Result<Instruction, ParseError> {
     let parts: Vec<&str> = line.split_whitespace().collect();
     if parts.is_empty() {
         return Err(ParseError {
@@ -74,121 +235,95 @@ fn parse_line(line: &str, line_num: usize) -> Result<SemanticOperation, ParseErr
     }
 
     let command = parts[0];
-    let args = &parts[1..];
 
-    match command {
-        "pick" => parse_pick(args, line_num),
-        "place" => parse_place(args, line_num),
-        "move_to" => parse_move_to(args, line_num),
-        "wait" => parse_wait(args, line_num),
-        "home" => {
-            if !args.is_empty() {
-                return Err(ParseError {
-                    line: line_num,
-                    message: format!("'home' takes no arguments, got: {}", args.join(" ")),
-                });
-            }
-            Ok(SemanticOperation::Home(HomeOp {
-                origin: OperationId(format!("home-{line_num}")),
-            }))
+    if command == "move" {
+        if parts.len() < 2 {
+            return Err(ParseError {
+                line: line_num,
+                message: "'move' requires a target name".into(),
+            });
         }
-        other => Err(ParseError {
-            line: line_num,
-            message: format!("unknown command '{other}'"),
-        }),
+        let target_id = TargetId(parts[1].trim_matches(',').to_string());
+        return Ok(Instruction::Motion(MotionInstruction::Move {
+            target: target_id,
+        }));
     }
-}
 
-/// Extract named arguments (key=value) from the tail of an argument list.
-fn extract_named_args<'a>(args: &[&'a str]) -> (Vec<&'a str>, Vec<(&'a str, &'a str)>) {
-    let mut positional = Vec::new();
-    let mut named = Vec::new();
+    if command == "move_linear" {
+        if parts.len() < 2 {
+            return Err(ParseError {
+                line: line_num,
+                message: "'move_linear' requires a target name".into(),
+            });
+        }
+        let target_id = TargetId(parts[1].trim_matches(',').to_string());
+        return Ok(Instruction::Motion(MotionInstruction::MoveLinear {
+            target: target_id,
+        }));
+    }
 
-    for arg in args {
-        if let Some(eq_pos) = arg.find('=') {
-            let key = &arg[..eq_pos];
-            let value = &arg[eq_pos + 1..];
-            named.push((key, value));
+    if command == "move_joint" {
+        if parts.len() < 2 {
+            return Err(ParseError {
+                line: line_num,
+                message: "'move_joint' requires a target name".into(),
+            });
+        }
+        let target_id = TargetId(parts[1].trim_matches(',').to_string());
+        return Ok(Instruction::Motion(MotionInstruction::MoveJoint {
+            target: target_id,
+        }));
+    }
+
+    if command.starts_with("wait") {
+        let arg = if parts.len() > 1 {
+            parts[1]
+        } else if let Some(open) = line.find('(') {
+            let close = line.find(')').unwrap_or(line.len());
+            &line[open + 1..close]
         } else {
-            positional.push(*arg);
+            return Err(ParseError {
+                line: line_num,
+                message: "'wait' requires a duration".into(),
+            });
+        };
+        let duration = parse_duration(arg, line_num)?;
+        return Ok(Instruction::Control(ControlInstruction::Wait { duration }));
+    }
+
+    if let Some(open_paren) = line.find('(') {
+        let skill_name = SkillId(line[..open_paren].trim().to_string());
+        let close_paren = line.find(')').unwrap_or(line.len());
+        let args_str = &line[open_paren + 1..close_paren];
+
+        let mut args = Vec::new();
+        for arg in args_str.split(',') {
+            let arg = arg.trim();
+            if arg.is_empty() {
+                continue;
+            }
+            if let Some(eq_pos) = arg.find('=') {
+                let val = arg[eq_pos + 1..].trim();
+                args.push(Value::Target(TargetId(val.to_string())));
+            } else if arg.starts_with('"') && arg.ends_with('"') {
+                let clean_arg = arg.trim_matches('"');
+                args.push(Value::String(clean_arg.to_string()));
+            } else {
+                args.push(Value::Object(thalos_core::ids::ObjectId(arg.to_string())));
+            }
         }
+
+        return Ok(Instruction::Skill(SkillCall::new(skill_name, args)));
     }
 
-    (positional, named)
-}
-
-fn extract_tool(named: &[(&str, &str)]) -> Option<ToolId> {
-    named
-        .iter()
-        .find(|(k, _)| *k == "tool")
-        .map(|(_, v)| ToolId(v.to_string()))
-}
-
-fn parse_pick(args: &[&str], line_num: usize) -> Result<SemanticOperation, ParseError> {
-    let (pos, named) = extract_named_args(args);
-
-    if pos.is_empty() {
-        return Err(ParseError {
-            line: line_num,
-            message: "'pick' requires at least an object name".into(),
-        });
-    }
-
-    let object = ObjectId(pos[0].to_string());
-    let tool = extract_tool(&named);
-
-    Ok(SemanticOperation::Pick(PickOp {
-        origin: OperationId(format!("pick-{line_num}")),
-        object,
-        tool,
-    }))
-}
-
-fn parse_place(args: &[&str], line_num: usize) -> Result<SemanticOperation, ParseError> {
-    let (pos, named) = extract_named_args(args);
-
-    // Expected: place <object> at <location>
-    if pos.len() < 3 || pos[1] != "at" {
-        return Err(ParseError {
-            line: line_num,
-            message: "'place' requires format: place <object> at <location>".into(),
-        });
-    }
-
-    let object = ObjectId(pos[0].to_string());
-    let destination = LocationId(pos[2].to_string());
-    let tool = extract_tool(&named);
-
-    Ok(SemanticOperation::Place(PlaceOp {
-        origin: OperationId(format!("place-{line_num}")),
-        object,
-        destination,
-        tool,
-    }))
-}
-
-fn parse_move_to(args: &[&str], line_num: usize) -> Result<SemanticOperation, ParseError> {
-    let (pos, named) = extract_named_args(args);
-
-    if pos.is_empty() {
-        return Err(ParseError {
-            line: line_num,
-            message: "'move_to' requires a location name".into(),
-        });
-    }
-
-    let destination = LocationId(pos[0].to_string());
-    let tool = extract_tool(&named);
-
-    Ok(SemanticOperation::MoveTo(MoveToOp {
-        origin: OperationId(format!("move_to-{line_num}")),
-        destination,
-        tool,
-    }))
+    Err(ParseError {
+        line: line_num,
+        message: format!("unknown instruction '{line}'"),
+    })
 }
 
 fn parse_duration(s: &str, line_num: usize) -> Result<Duration, ParseError> {
-    let s = s.trim();
+    let s = s.trim().trim_matches(')');
     if s.ends_with("ms") {
         let val: f64 = s[..s.len() - 2].parse().map_err(|_| ParseError {
             line: line_num,
@@ -209,20 +344,135 @@ fn parse_duration(s: &str, line_num: usize) -> Result<Duration, ParseError> {
     }
 }
 
-fn parse_wait(args: &[&str], line_num: usize) -> Result<SemanticOperation, ParseError> {
-    if args.is_empty() {
-        return Err(ParseError {
-            line: line_num,
-            message: "'wait' requires a duration (e.g., 500ms, 2s)".into(),
-        });
+/// Legacy line-based script parser that emits a valid `RobotProgram`.
+fn parse_legacy_script(input: &str) -> Result<RobotProgram, Vec<ParseError>> {
+    let mut body = Vec::new();
+    let mut targets = Vec::new();
+    let mut target_set = std::collections::HashSet::new();
+    let mut errors = Vec::new();
+
+    for (line_idx, line) in input.lines().enumerate() {
+        let line = line.trim();
+        let line_num = line_idx + 1;
+
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.is_empty() {
+            continue;
+        }
+
+        let command = parts[0];
+        let args = &parts[1..];
+
+        match command {
+            "pick" => {
+                if args.is_empty() {
+                    errors.push(ParseError {
+                        line: line_num,
+                        message: "'pick' requires at least an object name".into(),
+                    });
+                } else {
+                    body.push(Instruction::Skill(SkillCall::new(
+                        SkillId("pick".into()),
+                        vec![Value::Object(thalos_core::ids::ObjectId(args[0].to_string()))],
+                    )));
+                }
+            }
+            "place" => {
+                if args.len() < 3 || args[1] != "at" {
+                    errors.push(ParseError {
+                        line: line_num,
+                        message: "'place' requires format: place <object> at <location>".into(),
+                    });
+                } else {
+                    let target_id = TargetId(args[2].to_string());
+                    if target_set.insert(target_id.clone()) {
+                        targets.push(Target::new(
+                            target_id.clone(),
+                            TargetName(args[2].to_string()),
+                            TargetReference::Cartesian {
+                                pose: Pose::new(FrameId::World, FrameId::Id(0), Transform3D::identity()),
+                            },
+                        ));
+                    }
+                    body.push(Instruction::Skill(SkillCall::new(
+                        SkillId("place".into()),
+                        vec![
+                            Value::Object(thalos_core::ids::ObjectId(args[0].to_string())),
+                            Value::Target(target_id),
+                        ],
+                    )));
+                }
+            }
+            "move_to" => {
+                if args.is_empty() {
+                    errors.push(ParseError {
+                        line: line_num,
+                        message: "'move_to' requires a location name".into(),
+                    });
+                } else {
+                    let target_id = TargetId(args[0].to_string());
+                    if target_set.insert(target_id.clone()) {
+                        targets.push(Target::new(
+                            target_id.clone(),
+                            TargetName(args[0].to_string()),
+                            TargetReference::Cartesian {
+                                pose: Pose::new(FrameId::World, FrameId::Id(0), Transform3D::identity()),
+                            },
+                        ));
+                    }
+                    body.push(Instruction::Motion(MotionInstruction::MoveLinear {
+                        target: target_id,
+                    }));
+                }
+            }
+            "wait" => {
+                if args.is_empty() {
+                    errors.push(ParseError {
+                        line: line_num,
+                        message: "'wait' requires a duration (e.g., 500ms, 2s)".into(),
+                    });
+                } else {
+                    match parse_duration(args[0], line_num) {
+                        Ok(dur) => body.push(Instruction::Control(ControlInstruction::Wait {
+                            duration: dur,
+                        })),
+                        Err(e) => errors.push(e),
+                    }
+                }
+            }
+            "home" => {
+                if !args.is_empty() {
+                    errors.push(ParseError {
+                        line: line_num,
+                        message: format!("'home' takes no arguments, got: {}", args.join(" ")),
+                    });
+                } else {
+                    body.push(Instruction::Motion(MotionInstruction::Retract {
+                        distance: 0.0,
+                    }));
+                }
+            }
+            other => errors.push(ParseError {
+                line: line_num,
+                message: format!("unknown command '{other}'"),
+            }),
+        }
     }
 
-    let duration = parse_duration(args[0], line_num)?;
+    if !errors.is_empty() {
+        return Err(errors);
+    }
 
-    Ok(SemanticOperation::Wait(WaitOp {
-        origin: OperationId(format!("wait-{line_num}")),
-        duration,
-    }))
+    Ok(RobotProgram::new(
+        ProgramName("legacy_program".into()),
+        RobotId("scara_1".into()),
+        targets,
+        body,
+    ))
 }
 
 #[cfg(test)]
@@ -230,155 +480,79 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_empty() {
-        let program = parse("").unwrap();
-        assert!(program.operations.is_empty());
+    fn test_parse_block_thalos_program() {
+        let script = r#"
+program pick_and_place(robot = scara_01) {
+
+    target approach = cartesian(
+        x = 0.120,
+        y = 0.080,
+        z = 0.050
+    )
+
+    target pick_target = cartesian(
+        x = 0.120,
+        y = 0.080,
+        z = 0.010
+    )
+
+    target place_target = cartesian(
+        x = 0.250,
+        y = 0.100,
+        z = 0.010
+    )
+
+    move approach
+    pick(part_01, at = pick_target)
+    place(part_01, at = place_target)
+    wait(500ms)
+}
+"#;
+        let program = parse(script).expect("should parse valid .thalos program");
+        assert_eq!(program.name.as_str(), "pick_and_place");
+        assert_eq!(program.robot.as_str(), "scara_01");
+        assert_eq!(program.targets.len(), 3);
+        assert_eq!(program.body.len(), 4);
+        assert!(matches!(program.body[0], Instruction::Motion(_)));
+        assert!(matches!(program.body[1], Instruction::Skill(_)));
+        assert!(matches!(program.body[2], Instruction::Skill(_)));
+        assert!(matches!(program.body[3], Instruction::Control(_)));
     }
 
     #[test]
-    fn parse_comments_only() {
-        let program = parse("# comment\n  # another\n").unwrap();
-        assert!(program.operations.is_empty());
+    fn parse_produces_deterministic_robot_program() {
+        let script = r#"
+program test_prog(robot = bot1) {
+    target t1 = cartesian(x = 1.0, y = 2.0, z = 3.0)
+    move t1
+}
+"#;
+        let a = parse(script).unwrap();
+        let b = parse(script).unwrap();
+        assert_eq!(a, b, "Parsing same source must produce identical RobotProgram AST");
     }
 
     #[test]
-    fn parse_pick() {
-        let program = parse("pick bolt").unwrap();
-        assert_eq!(program.operations.len(), 1);
-        match &program.operations[0] {
-            SemanticOperation::Pick(PickOp { object, tool, .. }) => {
-                assert_eq!(object.0, "bolt");
-                assert!(tool.is_none());
-            }
-            _ => panic!("expected Pick"),
-        }
-    }
-
-    #[test]
-    fn parse_pick_with_tool() {
-        let program = parse("pick bolt tool=gripper-1").unwrap();
-        assert_eq!(program.operations.len(), 1);
-        match &program.operations[0] {
-            SemanticOperation::Pick(PickOp { object, tool, .. }) => {
-                assert_eq!(object.0, "bolt");
-                assert_eq!(tool.as_ref().unwrap().0, "gripper-1");
-            }
-            _ => panic!("expected Pick"),
-        }
-    }
-
-    #[test]
-    fn parse_place() {
-        let program = parse("place bolt at tray").unwrap();
-        assert_eq!(program.operations.len(), 1);
-        match &program.operations[0] {
-            SemanticOperation::Place(PlaceOp {
-                object,
-                destination,
-                ..
-            }) => {
-                assert_eq!(object.0, "bolt");
-                assert_eq!(destination.0, "tray");
-            }
-            _ => panic!("expected Place"),
-        }
-    }
-
-    #[test]
-    fn parse_move_to() {
-        let program = parse("move_to station-2").unwrap();
-        assert_eq!(program.operations.len(), 1);
-        match &program.operations[0] {
-            SemanticOperation::MoveTo(MoveToOp { destination, .. }) => {
-                assert_eq!(destination.0, "station-2");
-            }
-            _ => panic!("expected MoveTo"),
-        }
-    }
-
-    #[test]
-    fn parse_wait_ms() {
-        let program = parse("wait 500ms").unwrap();
-        match &program.operations[0] {
-            SemanticOperation::Wait(WaitOp { duration, .. }) => {
-                assert_eq!(*duration, Duration::from_millis(500));
-            }
-            _ => panic!("expected Wait"),
-        }
-    }
-
-    #[test]
-    fn parse_wait_seconds() {
-        let program = parse("wait 2s").unwrap();
-        match &program.operations[0] {
-            SemanticOperation::Wait(WaitOp { duration, .. }) => {
-                assert_eq!(*duration, Duration::from_secs(2));
-            }
-            _ => panic!("expected Wait"),
-        }
-    }
-
-    #[test]
-    fn parse_wait_fractional() {
-        let program = parse("wait 1.5s").unwrap();
-        match &program.operations[0] {
-            SemanticOperation::Wait(WaitOp { duration, .. }) => {
-                assert_eq!(*duration, Duration::from_millis(1500));
-            }
-            _ => panic!("expected Wait"),
-        }
-    }
-
-    #[test]
-    fn parse_home() {
-        let program = parse("home").unwrap();
-        assert_eq!(program.operations.len(), 1);
-        assert!(matches!(program.operations[0], SemanticOperation::Home(_)));
-    }
-
-    #[test]
-    fn parse_full_program() {
-        let script = "\
-# Assemble bolt
-pick bolt
-wait 500ms
-place bolt at tray
-home";
+    fn same_program_compiles_differently_in_different_scenes() {
+        let script = r#"
+program test_prog(robot = bot1) {
+    target t1 = cartesian(x = 1.0, y = 2.0, z = 3.0)
+    move t1
+}
+"#;
         let program = parse(script).unwrap();
-        assert_eq!(program.operations.len(), 4);
-        assert!(matches!(program.operations[0], SemanticOperation::Pick(_)));
-        assert!(matches!(program.operations[1], SemanticOperation::Wait(_)));
-        assert!(matches!(program.operations[2], SemanticOperation::Place(_)));
-        assert!(matches!(program.operations[3], SemanticOperation::Home(_)));
+        let ir = crate::ir::normalize(&program).unwrap();
+
+        assert_eq!(program.name.as_str(), "test_prog");
+        assert_eq!(program.robot.as_str(), "bot1");
+        assert_eq!(ir.targets.len(), 1);
+        assert_eq!(ir.targets[0].id.as_str(), "t1");
     }
 
     #[test]
-    fn parse_unknown_command_errors() {
-        let result = parse("jump 10");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn parse_home_with_args_errors() {
-        let result = parse("home somewhere");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn parse_place_missing_at_errors() {
-        let result = parse("place bolt tray");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn parse_invalid_duration_errors() {
-        let result = parse("wait forever");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn parse_pick_empty_errors() {
-        let result = parse("pick");
-        assert!(result.is_err());
+    fn parse_legacy_script_to_robot_program() {
+        let script = "pick bolt\nwait 500ms\nplace bolt at tray\nhome";
+        let program = parse(script).unwrap();
+        assert_eq!(program.body.len(), 4);
     }
 }

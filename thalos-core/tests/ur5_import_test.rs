@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use thalos_core::kinematics::forward::ForwardKinematics;
 use thalos_core::robot::adapter;
-use thalos_models::urdf::parser::parse_robot;
+use thalos_importer::import_urdf;
 
 /// Locate the UR5 fixture relative to the crate manifest directory.
 fn fixture_path() -> PathBuf {
@@ -27,7 +27,7 @@ fn load_ur5_urdf() -> String {
 /// Parse the UR5 URDF into a Robot.
 fn load_robot() -> thalos_models::Robot {
     let source = load_ur5_urdf();
-    parse_robot(&source).expect("UR5 should parse")
+    import_urdf(&source).expect("UR5 should parse")
 }
 
 // ─── from_tip — primary API ─────────────────────────────────────

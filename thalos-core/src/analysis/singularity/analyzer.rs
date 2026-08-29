@@ -211,7 +211,7 @@ mod tests {
             "/tests/fixtures/icebot.urdf"
         ));
         let robot =
-            thalos_models::urdf::parser::parse_robot(src).expect("icebot URDF should parse");
+            thalos_importer::import_urdf(src).expect("icebot URDF should parse");
         let chain =
             crate::robot::adapter::auto(&robot).expect("icebot should produce a valid chain");
 

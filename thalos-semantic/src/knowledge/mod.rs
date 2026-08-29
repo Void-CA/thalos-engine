@@ -24,6 +24,12 @@ pub enum LoweringError {
     /// The requested skill is not registered in the SkillRegistry.
     #[error("unknown skill: '{0}'")]
     UnknownSkill(thalos_core::ids::SkillId),
+    /// The robot definition does not support the requested skill capability.
+    #[error("unsupported skill for robot: '{0}'")]
+    UnsupportedSkill(thalos_core::ids::SkillId),
+    /// The robot declares support for the skill, but no implementation was found in SkillRegistry.
+    #[error("missing skill implementation for robot: '{0}'")]
+    MissingSkillImplementation(thalos_core::ids::SkillId),
 }
 
 /// Create the conventional gripper output channel used by lowering for

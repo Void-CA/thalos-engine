@@ -36,6 +36,7 @@ fn golden_corpus_parity() {
 
         match script::parse(input) {
             Ok(program) => {
+                let ir = thalos_semantic::ir::normalize(&program).expect("normalize parsed program");
                 // Positive case: must not expect errors, ops must match.
                 let expected_errors = entry["expected_errors"]
                     .as_array()
@@ -49,11 +50,11 @@ fn golden_corpus_parity() {
                     .as_array()
                     .unwrap_or_else(|| panic!("{name}: expected_ops must be an array"));
                 assert_eq!(
-                    program.operations.len(),
+                    ir.operations.len(),
                     expected_ops.len(),
                     "{name}: operation count"
                 );
-                for (op, expected) in program.operations.iter().zip(expected_ops) {
+                for (op, expected) in ir.operations.iter().zip(expected_ops) {
                     assert_op_matches(op, expected, name);
                 }
             }

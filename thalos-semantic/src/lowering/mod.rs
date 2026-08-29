@@ -46,13 +46,27 @@ impl SemanticLowering {
             match op {
                 SemanticOperation::Skill(skill_op) => {
                     let skill_id = &skill_op.skill_call.skill;
+
+                    if let Some(robot) = ctx.robot {
+                        if !robot.supports_skill(skill_id) {
+                            return Err(LoweringError::UnsupportedSkill(skill_id.clone()));
+                        }
+                    }
+
+                    let robot_id = ctx.robot.map(|r| &r.id).unwrap_or(&ir.robot);
                     let skill_resolved = if let Some(registry) = ctx.skills {
-                        registry.get_for_robot(&ir.robot, skill_id)
+                        registry.get_for_robot(robot_id, skill_id)
                     } else {
                         None
                     };
 
-                    let skill = skill_resolved.ok_or_else(|| LoweringError::UnknownSkill(skill_id.clone()))?;
+                    let skill = skill_resolved.ok_or_else(|| {
+                        if ctx.robot.is_some() {
+                            LoweringError::MissingSkillImplementation(skill_id.clone())
+                        } else {
+                            LoweringError::UnknownSkill(skill_id.clone())
+                        }
+                    })?;
 
                     match &skill.implementation {
                         thalos_core::skill::SkillImplementation::Program(fragment) => {
@@ -350,9 +364,10 @@ mod tests {
             .with_home_pose(Ok(sample_pose(0.0, 0.0, 0.5)))
     }
 
-    fn sample_ctx(provider: &MockKnowledgeProvider) -> LoweringContext {
+    fn sample_ctx(provider: &MockKnowledgeProvider) -> LoweringContext<'_> {
         LoweringContext {
             provider,
+            robot: None,
             skills: None,
             default_tool: None,
             default_profile: sample_profile(),
@@ -387,6 +402,7 @@ mod tests {
     fn split_profile_ctx(provider: &MockKnowledgeProvider) -> LoweringContext<'_> {
         LoweringContext {
             provider,
+            robot: None,
             skills: None,
             default_tool: None,
             default_profile: joint_profile(),
@@ -800,6 +816,7 @@ mod tests {
             .with_home_pose(Ok(sample_pose(0.0, 0.0, 0.0)));
         let ctx = LoweringContext {
             provider: &provider,
+            robot: None,
             skills: None,
             default_tool: None,
             default_profile: sample_profile(),
@@ -828,6 +845,7 @@ mod tests {
             .with_home_pose(Ok(sample_pose(0.0, 0.0, 0.0)));
         let ctx = LoweringContext {
             provider: &provider,
+            robot: None,
             skills: None,
             default_tool: None,
             default_profile: sample_profile(),
@@ -851,6 +869,7 @@ mod tests {
             MockKnowledgeProvider::new().with_home_pose(Err(LoweringError::MissingHomePose));
         let ctx = LoweringContext {
             provider: &provider,
+            robot: None,
             skills: None,
             default_tool: None,
             default_profile: sample_profile(),

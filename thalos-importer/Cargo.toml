@@ -1,0 +1,17 @@
+[package]
+name = "thalos-importer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+thalos-models = { path = "../thalos-models" }
+thalos-math = { path = "../thalos-math" }
+quick-xml = "0.37"
+thiserror = "2"
+
+[dev-dependencies]
+thalos-models = { path = "../thalos-models" }
+thalos-engine = { path = "../thalos-engine" }

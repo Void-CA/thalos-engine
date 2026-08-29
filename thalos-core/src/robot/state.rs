@@ -1,5 +1,7 @@
+use serde::{Deserialize, Serialize};
+
 /// The instantaneous physical/kinematic state of a single robot joint.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JointState {
     /// Angular or linear position (radians or meters).
     pub position: Option<f64>,
@@ -52,7 +54,7 @@ impl JointState {
 /// This type exists so that subsystems (planning, simulation, control,
 /// temporal analysis) can express "I only need the current joint values"
 /// without pulling in the full robot description.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RobotState {
     /// Acquisition timestamp in seconds.
     pub timestamp: f64,
@@ -127,7 +129,7 @@ impl RobotState {
 
 /// Declarative state observation requirements for execution policies, control loops,
 /// and deviation monitoring.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct StateRequirement {
     /// Whether position (q) observation is required for every joint.
     pub require_position: bool,
@@ -183,7 +185,7 @@ impl StateRequirement {
 }
 
 /// Error indicating that a `RobotState` fails to meet a declarative `StateRequirement`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StateSatisfactionError {
     /// Joint at `joint_index` lacks required position data.
     MissingPosition { joint_index: usize },
@@ -212,7 +214,7 @@ impl std::fmt::Display for StateSatisfactionError {
 impl std::error::Error for StateSatisfactionError {}
 
 /// The mathematical deviation between an expected robot state and an observed robot state.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StateDeviation {
     /// Difference in timestamps (t_obs - t_exp).
     pub timestamp_delta: f64,

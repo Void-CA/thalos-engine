@@ -123,6 +123,18 @@ pub enum SkillImplementation {
     Native(NativeSkillId),
 }
 
+/// Declarative functional capability of a robot declaring support for a specific skill.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct SkillCapability {
+    pub skill: SkillId,
+}
+
+impl SkillCapability {
+    pub fn new(skill: SkillId) -> Self {
+        Self { skill }
+    }
+}
+
 /// Declarative operational capability of a robot (ADR-001).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RobotSkill {

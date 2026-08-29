@@ -1,20 +1,16 @@
-//! Element body parsers for URDF sub-elements.
-
 use std::io::BufRead;
 
 use quick_xml::Reader;
 use quick_xml::events::Event;
 
-use crate::geometry::{Collision, Geometry, Visual};
-use crate::joint::{Joint, JointKind, JointLimits};
-use crate::link::{InertiaMatrix, Inertial, Link};
-use crate::material::Material;
 use crate::urdf::attr::{attr, parse_origin, parse_rgba, parse_xyz, required_attr};
 use crate::urdf::error::UrdfError;
 use thalos_math::{Transform3D, UnitVector3};
+use thalos_models::geometry::{Collision, Geometry, Visual};
+use thalos_models::joint::{Joint, JointKind, JointLimits};
+use thalos_models::link::{InertiaMatrix, Inertial, Link};
+use thalos_models::material::Material;
 
-/// Skip all events until the matching End tag for the current element.
-/// `depth` starts at 1 (the element whose children we're skipping).
 pub fn skip_element<R: BufRead>(
     reader: &mut Reader<R>,
     buf: &mut Vec<u8>,
@@ -30,7 +26,7 @@ pub fn skip_element<R: BufRead>(
                     return Ok(());
                 }
             }
-            Event::Empty(_) => { /* self-closing, no depth change */ }
+            Event::Empty(_) => {}
             Event::Eof => {
                 return Err(UrdfError::Xml("unexpected EOF during skip".into()));
             }
@@ -39,7 +35,6 @@ pub fn skip_element<R: BufRead>(
     }
 }
 
-/// Parse the contents of a `<link>` element.
 pub fn parse_link_body<R: BufRead>(
     reader: &mut Reader<R>,
     buf: &mut Vec<u8>,
@@ -65,13 +60,7 @@ pub fn parse_link_body<R: BufRead>(
                     }
                 }
             }
-            Event::Empty(e) => {
-                // Self-closing elements inside <link> (unusual but handle).
-                let tag = e.name().as_ref().to_ascii_lowercase();
-                if tag != b"inertial" && tag != b"visual" && tag != b"collision" {
-                    // inertial/visual/collision are never empty in practice
-                }
-            }
+            Event::Empty(_) => {}
             Event::End(e) => {
                 let tag = e.name().as_ref().to_ascii_lowercase();
                 if tag == b"link" {
@@ -403,7 +392,7 @@ pub fn parse_joint_body<R: BufRead>(
                     b"limit" => {
                         limits = Some(parse_limit(&e)?);
                     }
-                    _ => {} // skip unknown optional elements
+                    _ => {}
                 }
             }
             Event::End(e) => {

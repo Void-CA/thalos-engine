@@ -9,6 +9,8 @@ pub use crate::robot::{
     link::Link,
     segment::Segment,
     serial_chain::SerialChain,
+    definition::RobotDefinition,
+    profile::{RobotProfile, SkillBinding, SkillBindingSource},
     capability::{
         CapabilityMatch, JointObservationCapability, JointObservationRequirement,
         JointStateComponent, ObservationConstraint, ObservationDeficiency,
@@ -21,6 +23,10 @@ pub use crate::robot::{
         RobotHardwareBinding, SensorContract, SensorKind, StateAggregator, StateSource,
     },
     io::{CommandSink, DeviceIOError, FakeRobotAdapter, FakeRobotScenario, ObservationSource},
+    executor::{
+        ClosedLoopExecutor, DriftReport, ExecutionClock, ExecutionCycle, ExecutionError,
+        ExecutionStatus, FakeExecutionClock, JointDrift, SystemExecutionClock,
+    },
     state::{JointState, RobotState, StateDeviation, StateRequirement, StateSatisfactionError},
 };
 
@@ -69,8 +75,8 @@ pub use crate::program::{
 
 pub use crate::skill::{
     Condition, ConditionEvaluator, ConditionResult, NativeSkillId, Parameter, ProgramFragment,
-    RobotSkill, SkillContract, SkillEvaluationResult, SkillImplementation, SkillPlanner,
-    SkillRegistry,
+    RobotSkill, SkillCapability, SkillContract, SkillEvaluationResult, SkillImplementation,
+    SkillPlanner, SkillRegistry,
 };
 
 pub use crate::operation::{

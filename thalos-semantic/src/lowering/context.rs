@@ -17,6 +17,8 @@ pub struct LoweringContext<'a> {
     /// The knowledge provider for resolving semantic resource IDs into
     /// geometric frames and plans.
     pub provider: &'a dyn KnowledgeProvider,
+    /// Optional declarative definition of the active target robot.
+    pub robot: Option<&'a thalos_core::robot::definition::RobotDefinition>,
     /// The registry of available skills for skill resolution during lowering.
     pub skills: Option<&'a thalos_core::skill::SkillRegistry>,
     /// The default tool to use when an operation specifies `tool: None`.
@@ -36,6 +38,7 @@ impl<'a> LoweringContext<'a> {
     pub fn new(provider: &'a dyn KnowledgeProvider) -> Self {
         Self {
             provider,
+            robot: None,
             skills: None,
             default_tool: None,
             default_profile: MotionProfile {
@@ -47,8 +50,28 @@ impl<'a> LoweringContext<'a> {
         }
     }
 
+    pub fn with_robot(mut self, robot: &'a thalos_core::robot::definition::RobotDefinition) -> Self {
+        self.robot = Some(robot);
+        self
+    }
+
     pub fn with_skills(mut self, skills: &'a thalos_core::skill::SkillRegistry) -> Self {
         self.skills = Some(skills);
+        self
+    }
+
+    pub fn with_default_tool(mut self, tool: Option<ToolId>) -> Self {
+        self.default_tool = tool;
+        self
+    }
+
+    pub fn with_default_profile(mut self, profile: MotionProfile) -> Self {
+        self.default_profile = profile;
+        self
+    }
+
+    pub fn with_default_cartesian_profile(mut self, profile: Option<MotionProfile>) -> Self {
+        self.default_cartesian_profile = profile;
         self
     }
 
@@ -67,6 +90,7 @@ impl Clone for LoweringContext<'_> {
     fn clone(&self) -> Self {
         LoweringContext {
             provider: self.provider,
+            robot: self.robot,
             skills: self.skills,
             default_tool: self.default_tool.clone(),
             default_profile: self.default_profile.clone(),
@@ -116,6 +140,7 @@ mod tests {
         let provider = sample_provider();
         let ctx = LoweringContext {
             provider: &provider,
+            robot: None,
             skills: None,
             default_tool: None,
             default_profile: sample_profile(),
@@ -131,6 +156,7 @@ mod tests {
         let provider = sample_provider();
         let ctx = LoweringContext {
             provider: &provider,
+            robot: None,
             skills: None,
             default_tool: Some(ToolId("gripper-1".to_string())),
             default_profile: sample_profile(),
@@ -144,6 +170,7 @@ mod tests {
         let provider = sample_provider();
         let ctx = LoweringContext {
             provider: &provider,
+            robot: None,
             skills: None,
             default_tool: None,
             default_profile: sample_profile(),
@@ -158,6 +185,7 @@ mod tests {
         let profile = sample_profile();
         let ctx = LoweringContext {
             provider: &provider,
+            robot: None,
             skills: None,
             default_tool: None,
             default_profile: profile.clone(),
@@ -177,6 +205,7 @@ mod tests {
         let profile = sample_profile();
         let ctx = LoweringContext {
             provider: &provider,
+            robot: None,
             skills: None,
             default_tool: None,
             default_profile: profile.clone(),
@@ -198,6 +227,7 @@ mod tests {
         };
         let ctx = LoweringContext {
             provider: &provider,
+            robot: None,
             skills: None,
             default_tool: None,
             default_profile: joint.clone(),
@@ -214,6 +244,7 @@ mod tests {
         let provider = sample_provider();
         let ctx = LoweringContext {
             provider: &provider,
+            robot: None,
             skills: None,
             default_tool: None,
             default_profile: sample_profile(),
@@ -229,6 +260,7 @@ mod tests {
         let provider = sample_provider();
         let ctx = LoweringContext {
             provider: &provider,
+            robot: None,
             skills: None,
             default_tool: None,
             default_profile: sample_profile(),

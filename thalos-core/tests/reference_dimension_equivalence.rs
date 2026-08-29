@@ -19,7 +19,7 @@ use std::path::PathBuf;
 use thalos_core::models::scara::ScaraSpec;
 use thalos_core::robot::adapter;
 use thalos_core::robot::scale::{manipulability_reference_dimension, scene_reference_dimension};
-use thalos_models::urdf::parser::parse_robot;
+use thalos_importer::import_urdf;
 
 fn fixture_path() -> PathBuf {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -31,7 +31,7 @@ fn fixture_path() -> PathBuf {
 
 fn load_urdf_scara_chain() -> thalos_core::robot::serial_chain::SerialChain {
     let source = fs::read_to_string(fixture_path()).expect("SCARA fixture file not found");
-    let robot = parse_robot(&source).expect("SCARA should parse");
+    let robot = import_urdf(&source).expect("SCARA should parse");
     adapter::from_tip(&robot, "tool0").expect("from_tip with tool0")
 }
 

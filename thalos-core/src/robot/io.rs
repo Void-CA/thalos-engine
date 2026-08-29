@@ -1,3 +1,4 @@
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
@@ -58,50 +59,78 @@ pub enum FakeRobotScenario {
 #[derive(Debug, Clone)]
 pub struct FakeRobotAdapter {
     pub dof: usize,
-    pub scenario: FakeRobotScenario,
-    pub current_target: Option<RobotState>,
-    pub timestamp: f64,
+    pub scenario: Arc<Mutex<FakeRobotScenario>>,
+    pub current_target: Arc<Mutex<Option<RobotState>>>,
+    pub timestamp: Arc<Mutex<f64>>,
 }
 
 impl FakeRobotAdapter {
     pub fn new(dof: usize) -> Self {
         Self {
             dof,
-            scenario: FakeRobotScenario::Nominal,
-            current_target: None,
-            timestamp: 0.0,
+            scenario: Arc::new(Mutex::new(FakeRobotScenario::Nominal)),
+            current_target: Arc::new(Mutex::new(None)),
+            timestamp: Arc::new(Mutex::new(0.0)),
         }
     }
 
-    pub fn with_scenario(mut self, scenario: FakeRobotScenario) -> Self {
-        self.scenario = scenario;
+    pub fn with_scenario(self, scenario: FakeRobotScenario) -> Self {
+        if let Ok(mut lock) = self.scenario.lock() {
+            *lock = scenario;
+        }
         self
+    }
+
+    pub fn set_scenario(&self, scenario: FakeRobotScenario) {
+        if let Ok(mut lock) = self.scenario.lock() {
+            *lock = scenario;
+        }
     }
 }
 
 impl CommandSink for FakeRobotAdapter {
     fn send_command(&mut self, target: &RobotState) -> Result<(), DeviceIOError> {
-        if matches!(self.scenario, FakeRobotScenario::CommunicationFailure) {
+        let active_scenario = self
+            .scenario
+            .lock()
+            .ok()
+            .map(|s| s.clone())
+            .unwrap_or(FakeRobotScenario::Nominal);
+
+        if matches!(active_scenario, FakeRobotScenario::CommunicationFailure) {
             return Err(DeviceIOError::CommunicationFailed("Simulated bus error".into()));
         }
-        self.current_target = Some(target.clone());
-        self.timestamp = target.timestamp;
+        if let Ok(mut lock) = self.current_target.lock() {
+            *lock = Some(target.clone());
+        }
+        if let Ok(mut lock) = self.timestamp.lock() {
+            *lock = target.timestamp;
+        }
         Ok(())
     }
 }
 
 impl ObservationSource for FakeRobotAdapter {
     fn read_observation(&mut self) -> Result<RobotState, DeviceIOError> {
-        if matches!(self.scenario, FakeRobotScenario::CommunicationFailure) {
+        let active_scenario = self
+            .scenario
+            .lock()
+            .ok()
+            .map(|s| s.clone())
+            .unwrap_or(FakeRobotScenario::Nominal);
+
+        if matches!(active_scenario, FakeRobotScenario::CommunicationFailure) {
             return Err(DeviceIOError::CommunicationFailed("Simulated bus error".into()));
         }
 
         let target = self
             .current_target
-            .clone()
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone())
             .unwrap_or_else(|| RobotState::zero(self.dof));
 
-        match self.scenario {
+        match active_scenario {
             FakeRobotScenario::Nominal => Ok(target),
             FakeRobotScenario::PositionDeviation(offset) => {
                 let mut joints = target.joints.clone();
@@ -121,7 +150,7 @@ impl ObservationSource for FakeRobotAdapter {
                 Ok(RobotState::new(target.timestamp, joints))
             }
             FakeRobotScenario::StaleObservation(staleness) => {
-                let stale_ts = (target.timestamp - staleness.as_secs_f64()).max(0.0);
+                let stale_ts = target.timestamp - staleness.as_secs_f64();
                 Ok(RobotState::new(stale_ts, target.joints))
             }
             FakeRobotScenario::MissingObservation => {

@@ -132,7 +132,7 @@ fn oracle_icebot_not_force_promoted_and_scale_artifact_gone() {
         env!("CARGO_MANIFEST_DIR"),
         "/tests/fixtures/icebot.urdf"
     ));
-    let robot = thalos_models::urdf::parser::parse_robot(src).expect("icebot URDF");
+    let robot = thalos_importer::import_urdf(src).expect("icebot URDF");
     let chain = adapter::auto(&robot).expect("icebot chain");
 
     // Moving-only L_ref (remediation): the fixed tcp_joint (0.12 m) is

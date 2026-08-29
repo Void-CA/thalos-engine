@@ -1,7 +1,6 @@
 use std::collections::HashMap;
+use thalos_importer::import_urdf;
 use thalos_models::Robot as ModelRobot;
-use thalos_models::urdf::UrdfError;
-use thalos_models::urdf::parser::parse_robot;
 
 use crate::robot::joint::{FixedJoint, JointLimits, JointType, PrismaticJoint, RevoluteJoint};
 use crate::robot::link::Link as CoreLink;
@@ -47,16 +46,10 @@ impl std::fmt::Display for AdapterError {
 
 impl std::error::Error for AdapterError {}
 
-impl From<UrdfError> for AdapterError {
-    fn from(e: UrdfError) -> Self {
-        AdapterError::Parse(e.to_string())
-    }
-}
-
 // ─── Public API ─────────────────────────────────────────────────
 
 pub fn from_urdf(source: &str) -> Result<SerialChain, AdapterError> {
-    let robot = parse_robot(source)?;
+    let robot = import_urdf(source).map_err(|e| AdapterError::Parse(e.to_string()))?;
     auto(&robot)
 }
 
@@ -103,10 +96,6 @@ pub fn from_robot(robot: &ModelRobot) -> Result<SerialChain, AdapterError> {
             }
         })?;
 
-        // Primer segmento: parent es World en vez del link root.
-        // El FK evaluador solo almacena segment.child + World en su mapa de poses;
-        // si usáramos FrameId(root_link) el SceneBuilder paniquearía al buscar
-        // fk.pose(&segment.parent) porque ese frame no está en FKResult.
         let parent_frame = if idx == 0 {
             FrameId::World
         } else {
@@ -117,8 +106,6 @@ pub fn from_robot(robot: &ModelRobot) -> Result<SerialChain, AdapterError> {
         let joint_type = build_joint_type(joint, &mut joint_counter)?;
 
         let core_link = CoreLink::new(child_id, Transform3D::identity());
-        // TODO: map models Link collision geometry → core CollisionGeometry
-        // when we add collision support.
 
         segments.push(Segment::new(
             parent_frame,
@@ -128,7 +115,6 @@ pub fn from_robot(robot: &ModelRobot) -> Result<SerialChain, AdapterError> {
         ));
     }
 
-    // End effector = child frame of the last joint in BFS order.
     let last_joint = ordered.last().unwrap();
     let ee_id = link_ids.get(last_joint.child.as_str()).copied().unwrap();
     let end_effector = FrameId::new(ee_id as u64);
@@ -139,6 +125,7 @@ pub fn from_robot(robot: &ModelRobot) -> Result<SerialChain, AdapterError> {
         end_effector,
     })
 }
+
 pub fn from_tip(robot: &ModelRobot, target_name: &str) -> Result<SerialChain, AdapterError> {
     use thalos_models::graph::RobotGraph;
 
@@ -162,21 +149,15 @@ pub fn from_tip(robot: &ModelRobot, target_name: &str) -> Result<SerialChain, Ad
     let mut joint_counter: u32 = 0;
     let mut segments = Vec::new();
 
-    // Create frames for all links in the path.
     for &link_id in &path.links {
         let name = graph.link_name(link_id).unwrap_or("unknown");
         registry.create(name);
     }
 
-    // Build a segment for each joint in the path.
     for (i, &joint_id) in path.joints.iter().enumerate() {
         let parent_link = path.links[i];
         let child_link = path.links[i + 1];
 
-        // Primer segmento: parent es World en vez del link root.
-        // El FK evaluador solo almacena segment.child + World en su mapa de poses;
-        // si usáramos FrameId(root_link) el SceneBuilder paniquearía al buscar
-        // fk.pose(&segment.parent) porque ese frame no está en FKResult.
         let parent_frame = if i == 0 {
             FrameId::World
         } else {
@@ -210,6 +191,7 @@ pub fn from_tip(robot: &ModelRobot, target_name: &str) -> Result<SerialChain, Ad
         end_effector,
     })
 }
+
 pub fn auto(robot: &ModelRobot) -> Result<SerialChain, AdapterError> {
     use thalos_models::graph::RobotGraph;
 
@@ -220,8 +202,6 @@ pub fn auto(robot: &ModelRobot) -> Result<SerialChain, AdapterError> {
         return Err(AdapterError::EmptyRobot);
     }
 
-    // Prefer a leaf named "tool0" or "tcp" (common URDF conventions).
-    // Fall back to the leaf with the most actuated joints.
     let best = {
         let named = leaves.iter().find(|&&leaf| {
             graph
@@ -247,7 +227,6 @@ pub fn auto(robot: &ModelRobot) -> Result<SerialChain, AdapterError> {
     from_tip(robot, target_name)
 }
 
-// ─── Internal helpers ───────────────────────────────────────────
 pub(crate) fn build_joint_type(
     joint: &thalos_models::Joint,
     counter: &mut u32,
@@ -263,9 +242,6 @@ pub(crate) fn build_joint_type(
             let axis = joint.axis.ok_or_else(|| AdapterError::MissingAxis {
                 joint: joint.name.clone(),
             })?;
-            // Continuous joints without an explicit <limit> have no
-            // mechanical bounds — mark the limits as disabled so
-            // validators and IK solvers know to skip enforcement.
             let limits = if matches!(joint.kind, thalos_models::JointKind::Continuous)
                 && joint.limits.is_none()
             {
@@ -281,7 +257,7 @@ pub(crate) fn build_joint_type(
             let axis = joint.axis.ok_or_else(|| AdapterError::MissingAxis {
                 joint: joint.name.clone(),
             })?;
-            let dir = axis; // prismatic direction
+            let dir = axis;
             Ok(JointType::Prismatic(PrismaticJoint::new(
                 id, dir, limits, origin,
             )))
@@ -293,8 +269,6 @@ pub(crate) fn build_joint_type(
         }),
     }
 }
-
-// ─── Tests ──────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -402,7 +376,6 @@ mod tests {
         let chain = from_urdf(source).unwrap();
         assert_eq!(chain.segments.len(), 3);
 
-        // Verify joint types
         assert!(matches!(chain.segments[0].joint, JointType::Revolute(_)));
         assert!(matches!(chain.segments[1].joint, JointType::Revolute(_)));
         assert!(matches!(chain.segments[2].joint, JointType::Prismatic(_)));

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use crate::ids::{SkillId, TargetId};
+use crate::ids::{ObjectId, SkillId, TargetId};
 
 /// Core values passed to skill calls or instructions.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -9,11 +9,13 @@ pub enum Value {
     Number(f64),
     Boolean(bool),
     Target(TargetId),
+    Object(ObjectId),
 }
 
 /// Primitive motion instruction.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum MotionInstruction {
+    Move { target: TargetId },
     MoveJoint { target: TargetId },
     MoveLinear { target: TargetId },
     Approach { target: TargetId, distance: f64 },

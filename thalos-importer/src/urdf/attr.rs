@@ -1,13 +1,8 @@
-//! Attribute parsing helpers for URDF elements.
-
 use quick_xml::events::BytesStart;
-
 use crate::urdf::error::UrdfError;
 use thalos_math::{UnitQuaternion, Vector3};
+use thalos_models::material::Color;
 
-use crate::material::Color;
-
-/// Retrieve an attribute value from a `BytesStart`.
 pub fn attr(elem: &BytesStart<'_>, name: &[u8]) -> Result<Option<String>, UrdfError> {
     match elem.try_get_attribute(name) {
         Ok(Some(a)) => Ok(Some(
@@ -20,7 +15,6 @@ pub fn attr(elem: &BytesStart<'_>, name: &[u8]) -> Result<Option<String>, UrdfEr
     }
 }
 
-/// Retrieve a required attribute or return [`MissingAttribute`](UrdfError::MissingAttribute).
 pub fn required_attr(
     elem: &BytesStart<'_>,
     name: &[u8],
@@ -32,7 +26,6 @@ pub fn required_attr(
     })
 }
 
-/// Parse a space-separated list of `n` floats.
 pub fn parse_n_floats(s: &str, n: usize, context: &str) -> Result<Vec<f64>, UrdfError> {
     let parts: Vec<&str> = s.split_whitespace().collect();
     if parts.len() != n {
@@ -53,25 +46,21 @@ pub fn parse_n_floats(s: &str, n: usize, context: &str) -> Result<Vec<f64>, Urdf
         .collect()
 }
 
-/// Parse `xyz="x y z"`.
 pub fn parse_xyz(s: &str, context: &str) -> Result<Vector3, UrdfError> {
     let v = parse_n_floats(s, 3, context)?;
     Ok(Vector3::new(v[0], v[1], v[2]))
 }
 
-/// Parse `rpy="roll pitch yaw"` (radians).
 pub fn parse_rpy(s: &str, context: &str) -> Result<UnitQuaternion, UrdfError> {
     let v = parse_n_floats(s, 3, context)?;
     Ok(UnitQuaternion::from_euler(v[0], v[1], v[2]))
 }
 
-/// Parse `rgba="r g b a"`.
 pub fn parse_rgba(s: &str, context: &str) -> Result<Color, UrdfError> {
     let v = parse_n_floats(s, 4, context)?;
     Ok(Color::new(v[0], v[1], v[2], v[3]))
 }
 
-/// Parse an `<origin>` element (self-closing).
 pub fn parse_origin(elem: &BytesStart<'_>) -> Result<thalos_math::Transform3D, UrdfError> {
     let translation = match attr(elem, b"xyz")? {
         Some(s) => parse_xyz(&s, "origin")?,

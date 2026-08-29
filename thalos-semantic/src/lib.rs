@@ -28,6 +28,7 @@ pub mod ir;
 pub mod knowledge;
 pub mod lowering;
 pub mod operation;
+pub mod profile;
 pub mod program;
 pub mod resource;
 pub mod script;
