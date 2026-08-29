@@ -1,0 +1,17 @@
+[package]
+name = "thalos-language-service"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+thalos-core = { path = "../thalos-core" }
+thalos-lang = { path = "../thalos-lang" }
+thalos-semantic = { path = "../thalos-semantic" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+[dev-dependencies]

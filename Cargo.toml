@@ -11,6 +11,7 @@ members = [
     "thalos-planning",
     "thalos-importer",
     "thalos-lang",
+    "thalos-language-service",
 ]
 resolver = "3"
 
