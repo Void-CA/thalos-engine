@@ -23,15 +23,21 @@
 //! - `lowering` — `SemanticLowering::lower()` and `LoweringContext`
 //! - `validation` — Two-level validation pipeline (Level 1: sequence rules, Level 2: resource resolution)
 
+pub mod builtins;
+pub mod checker;
 pub mod execution;
 pub mod ir;
 pub mod knowledge;
 pub mod lowering;
 pub mod operation;
+pub mod operators;
 pub mod profile;
 pub mod program;
 pub mod resource;
+pub mod scope;
 pub mod script;
+pub mod symbols;
+pub mod types;
 pub mod validation;
 
 
