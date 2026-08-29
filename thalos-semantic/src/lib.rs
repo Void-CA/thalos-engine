@@ -25,15 +25,19 @@
 
 pub mod builtins;
 pub mod checker;
+pub mod compiler;
+pub mod evaluator;
 pub mod execution;
 pub mod ir;
 pub mod knowledge;
 pub mod lowering;
+pub mod model;
 pub mod operation;
 pub mod operators;
 pub mod profile;
 pub mod program;
 pub mod resource;
+pub mod resolver;
 pub mod scope;
 pub mod script;
 pub mod symbols;
