@@ -12,7 +12,6 @@ thiserror = "2"
 chrono = { version = "0.4", features = ["serde"] }
 rand = "0.8"
 tokio = { version = "1", features = ["sync", "rt", "rt-multi-thread", "macros", "net", "io-util", "fs", "time"] }
-tokio-serial = "5"
 async-trait = "0.1"
 arc-swap = "1"
 serde = { version = "1", features = ["derive"] }
@@ -24,5 +23,8 @@ tracing = "0.1"
 
 [dev-dependencies]
 thalos-engine = { path = "../thalos-engine", features = ["test-support"] }
+thalos_transport = { path = "../thalos-transport" }
 thalos-persistence = { path = "../../thalos-industrial/backend/crates/thalos-persistence" }
+
 tempfile = "3"
+

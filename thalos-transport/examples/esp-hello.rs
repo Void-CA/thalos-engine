@@ -23,7 +23,8 @@
 use std::env;
 use std::time::Duration;
 
-use thalos_runtime::backends::transport::{SerialTransport, Transport};
+use thalos_transport::{SerialTransport, Transport};
+
 
 #[tokio::main]
 async fn main() {

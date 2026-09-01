@@ -31,8 +31,9 @@ use thalos_engine::core::spatial::pose::Pose;
 use thalos_engine::math::Transform3D;
 use thalos_engine::planning::execution_plan_builder::ExecutionPlanBuilder;
 use thalos_engine::planning::motion::program::{CompiledPlan, PlannedSegment};
-use thalos_runtime::backends::esp32::protocol::Esp32Protocol;
 use thalos_runtime::execution_boundary::manifest_builder::ExecutionManifestBuilder;
+use thalos_transport::esp32::codec::Esp32Codec;
+
 
 // ---------------------------------------------------------------------------
 // Fixtures — same style as `plan_with_movej_segment` (thalos-planning) and the
@@ -112,12 +113,29 @@ fn evenly_spaced_movej_plan() -> CompiledPlan {
 fn wire_lines(plan: &CompiledPlan) -> Vec<String> {
     let execution = ExecutionPlanBuilder::build(plan).expect("plan must build");
     let manifest = ExecutionManifestBuilder::build(&execution).expect("manifest must build");
-    // These fixtures are DOF=2 → derived chunk = 64 (3072 / (19+20)).
-    Esp32Protocol::encode_manifest(&manifest, 64)
-        .iter()
-        .map(|b| String::from_utf8_lossy(b).into_owned())
-        .collect()
+    let mut lines = Vec::new();
+    lines.push(Esp32Codec::encode_manifest_full(
+        manifest.metadata.dof_count,
+        manifest.metadata.total_samples,
+        manifest.metadata.duration_us,
+        64,
+        1,
+    ));
+    for (i, seg) in manifest.segments.iter().enumerate() {
+        let inst = match seg.instruction {
+            thalos_runtime::execution_boundary::ManifestInstruction::MoveJ => "movej",
+            thalos_runtime::execution_boundary::ManifestInstruction::MoveL => "movel",
+        };
+        lines.push(Esp32Codec::encode_segment(i, inst, seg.sample_start, seg.sample_count));
+    }
+    for wp in &manifest.samples {
+        lines.push(Esp32Codec::encode_sample(&wp.joints, wp.dt_us));
+    }
+    lines.push(Esp32Codec::encode_end_upload());
+    lines
 }
+
+
 
 // ---------------------------------------------------------------------------
 // Spec scenario: integration_compiled_plan_to_wire_output

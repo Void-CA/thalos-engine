@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+thalos-core = { path = "../thalos-core" }
 thalos_ports = { path = "../thalos-ports", features = ["test-support"] }
 async-trait = "0.1"
 tokio = { version = "1", features = ["sync", "rt", "net", "io-util", "time"] }
@@ -15,4 +16,8 @@ hex = "0.4"
 sha2 = "0.10"
 
 [dev-dependencies]
+thalos-engine = { path = "../thalos-engine", features = ["test-support"] }
+thalos_runtime = { path = "../thalos-runtime" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+

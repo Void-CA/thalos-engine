@@ -1,9 +1,7 @@
 use std::collections::VecDeque;
-use thalos_ports::robot::{
-    RobotCommand, RobotObservation, RobotTransport, TransportError, TransportState,
-};
+use super::transport::{RobotCommand, RobotObservation, RobotTransport, TransportError, TransportState};
 
-/// In-memory fake RobotTransport for runtime testing & simulation (L2 Test Double).
+/// In-memory fake RobotTransport for testing & simulation (L1 Test Double).
 pub struct FakeRobotTransport {
     pub state: TransportState,
     pub sent_commands: Vec<RobotCommand>,

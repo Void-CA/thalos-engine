@@ -1,5 +1,2 @@
-pub mod fake_device_transport;
-pub mod fake_robot_transport;
-
-pub use fake_device_transport::FakeDeviceTransport;
-pub use fake_robot_transport::FakeRobotTransport;
+pub use thalos_ports::device::FakeDeviceTransport;
+pub use thalos_ports::robot::FakeRobotTransport;

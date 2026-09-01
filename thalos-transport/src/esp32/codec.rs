@@ -37,6 +37,33 @@ impl Esp32Codec {
         format!("MANIFEST {} {} {}\n", dof, count, duration_us)
     }
 
+    /// Format full MANIFEST initialization header with chunking and version.
+    pub fn encode_manifest_full(
+        dof: usize,
+        count: usize,
+        duration_us: u64,
+        chunk_size: usize,
+        version: u32,
+    ) -> String {
+        format!("MANIFEST {} {} {} {} {}\n", dof, count, duration_us, chunk_size, version)
+    }
+
+    /// Format SEGMENT command frame.
+    pub fn encode_segment(
+        index: usize,
+        instruction: &str,
+        start_sample: usize,
+        sample_count: usize,
+    ) -> String {
+        format!("SEGMENT {} {} {} {}\n", index, instruction, start_sample, sample_count)
+    }
+
+    /// Format END_UPLOAD frame.
+    pub fn encode_end_upload() -> String {
+        "END_UPLOAD\n".to_string()
+    }
+
+
     /// Format SAMPLE command frame for motion playback: `SAMPLE <v0> <v1> ... <dt_us>`
     pub fn encode_sample(values: &[f64], dt_us: u32) -> String {
         let mut parts = vec!["SAMPLE".to_string()];

@@ -1,10 +1,8 @@
 use std::collections::{HashSet, VecDeque};
-use thalos_ports::device::{
-    ChannelId, ChannelObservation, ChannelSubscription, DeviceTransport, DeviceTransportError,
-};
-use thalos_ports::robot::TransportState;
+use super::transport::{ChannelId, ChannelObservation, ChannelSubscription, DeviceTransport, DeviceTransportError};
+use crate::robot::TransportState;
 
-/// In-memory fake DeviceTransport for acquisition runtime testing (L2 Test Double).
+/// In-memory fake DeviceTransport for acquisition testing (L1 Test Double).
 pub struct FakeDeviceTransport {
     pub state: TransportState,
     pub active_subscriptions: HashSet<ChannelSubscription>,

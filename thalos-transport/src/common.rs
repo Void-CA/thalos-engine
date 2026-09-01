@@ -56,7 +56,31 @@ pub trait Transport: Send + Sync {
     }
 }
 
+#[async_trait]
+impl<T: Transport + ?Sized> Transport for Box<T> {
+    async fn connect(&mut self) -> Result<(), TransportError> {
+        (**self).connect().await
+    }
+
+    async fn disconnect(&mut self) -> Result<(), TransportError> {
+        (**self).disconnect().await
+    }
+
+    async fn send(&mut self, data: &[u8]) -> Result<(), TransportError> {
+        (**self).send(data).await
+    }
+
+    async fn receive(&mut self) -> Result<Vec<u8>, TransportError> {
+        (**self).receive().await
+    }
+
+    async fn drain(&mut self) -> Result<(), TransportError> {
+        (**self).drain().await
+    }
+}
+
 /// Transporte simulado de bytes para pruebas de infraestructura.
+
 pub struct FakeTransport {
     sent: std::sync::Mutex<Vec<Vec<u8>>>,
     responses: std::sync::Mutex<Vec<Vec<u8>>>,

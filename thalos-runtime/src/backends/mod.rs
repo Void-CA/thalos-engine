@@ -1,8 +1,6 @@
 pub mod controller;
-pub mod esp32;
 mod internal;
 pub mod manager;
-pub mod transport;
 
 pub use internal::InternalBackend;
 pub use manager::{BackendEntry, BackendManager};
@@ -20,3 +18,4 @@ pub trait RobotBackend: Send + Sync {
     /// Resolve a robot model by its string identifier.
     fn resolve_model(&self, id: &str) -> Result<RobotModel, RuntimeError>;
 }
+

@@ -1340,7 +1340,15 @@ async fn tick_ignores_unsupported_capability_from_advance() {
 #[tokio::test]
 async fn start_execution_without_controller_returns_not_connected() {
     let manager = Arc::new(BackendManager::new());
-    manager.register_esp32("/dev/ttyUSB0").await;
+    manager
+        .register(crate::backends::manager::BackendEntry {
+            id: "esp32".into(),
+            name: "Hardware (ESP32)".into(),
+            controller: None,
+            port: Some("/dev/ttyUSB0".into()),
+        })
+        .await;
+
     manager.activate("esp32").await.unwrap();
     assert!(
         manager.get_controller().await.is_none(),
