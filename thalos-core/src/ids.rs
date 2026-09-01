@@ -72,4 +72,6 @@ id_newtype!(TargetName);
 id_newtype!(StationId);
 id_newtype!(ResourceId);
 id_newtype!(ChannelId);
+id_newtype!(OperationalSessionId);
+
 

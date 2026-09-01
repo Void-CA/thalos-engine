@@ -64,10 +64,11 @@ pub use crate::collision::{
 };
 
 pub use crate::ids::{
-    ChannelId, ExecutionSessionId, LocationId, MotionPlanId, ObjectId, OperationId, ProgramName,
-    ResourceId, RobotId, SceneId, SemanticProgramId, SkillId, StationId, TargetId, TargetName,
-    TaskDocumentId, ToolId,
+    ChannelId, ExecutionSessionId, LocationId, MotionPlanId, ObjectId, OperationId,
+    OperationalSessionId, ProgramName, ResourceId, RobotId, SceneId, SemanticProgramId, SkillId,
+    StationId, TargetId, TargetName, TaskDocumentId, ToolId,
 };
+
 
 pub use crate::capability::{CapabilityRequirement, ResourceRequirement};
 pub use crate::resource::{Resource, ResourceKind, ResourceRef};
