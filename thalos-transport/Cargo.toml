@@ -1,0 +1,18 @@
+[package]
+name = "thalos_transport"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+thalos_ports = { path = "../thalos-ports", features = ["test-support"] }
+async-trait = "0.1"
+tokio = { version = "1", features = ["sync", "rt", "net", "io-util", "time"] }
+tokio-serial = "5"
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+tracing = "0.1"
+hex = "0.4"
+sha2 = "0.10"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

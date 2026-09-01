@@ -1,0 +1,173 @@
+---
+source: crates/thalos-visual/tests/scene_snapshots.rs
+expression: scene
+---
+{
+  "frames": [
+    {
+      "id": "world",
+      "parent": null,
+      "translation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "style": {
+        "axis_length": 0.2,
+        "axis_radius": 0.006,
+        "origin_radius": 0.0,
+        "show_labels": false,
+        "color_x": [
+          1.0,
+          0.5,
+          0.0
+        ],
+        "color_y": [
+          0.0,
+          0.8,
+          0.0
+        ],
+        "color_z": [
+          0.0,
+          0.5,
+          1.0
+        ]
+      }
+    },
+    {
+      "id": "link_1",
+      "parent": "world",
+      "translation": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "rotation": [
+        0.707107,
+        0.0,
+        0.0,
+        0.707107
+      ],
+      "style": {
+        "axis_length": 0.2,
+        "axis_radius": 0.006,
+        "origin_radius": 0.0,
+        "show_labels": false,
+        "color_x": [
+          1.0,
+          0.5,
+          0.0
+        ],
+        "color_y": [
+          0.0,
+          0.8,
+          0.0
+        ],
+        "color_z": [
+          0.0,
+          0.5,
+          1.0
+        ]
+      }
+    },
+    {
+      "id": "link_2",
+      "parent": "link_1",
+      "translation": [
+        0.0,
+        2.0,
+        0.0
+      ],
+      "rotation": [
+        0.707107,
+        0.0,
+        0.0,
+        0.707107
+      ],
+      "style": {
+        "axis_length": 0.2,
+        "axis_radius": 0.006,
+        "origin_radius": 0.0,
+        "show_labels": false,
+        "color_x": [
+          1.0,
+          0.5,
+          0.0
+        ],
+        "color_y": [
+          0.0,
+          0.8,
+          0.0
+        ],
+        "color_z": [
+          0.0,
+          0.5,
+          1.0
+        ]
+      }
+    }
+  ],
+  "links": [
+    {
+      "id": 0,
+      "start": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "end": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    },
+    {
+      "id": 1,
+      "start": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "end": [
+        0.0,
+        2.0,
+        0.0
+      ]
+    }
+  ],
+  "joint_axes": [
+    {
+      "origin": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "origin": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "axis": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  ],
+  "twists": [],
+  "primitives": [],
+  "reference_dimension": 2.0
+}

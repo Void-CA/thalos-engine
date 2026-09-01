@@ -9,8 +9,6 @@ use thalos_core::robot::definition::RobotDefinition;
 use thalos_core::robot::profile::{RobotProfile, SkillBinding, SkillBindingSource};
 use thalos_core::skill::{RobotSkill, SkillCapability, SkillImplementation, SkillRegistry};
 
-use crate::script::parse_fragment;
-
 /// Errors that can occur during `RobotProfile` loading and skill materialization.
 #[derive(Debug, Error)]
 pub enum ProfileLoadError {
@@ -26,8 +24,8 @@ pub enum ProfileLoadError {
         #[source]
         source: toml::de::Error,
     },
-    #[error("Skill script parse error in {path}: {message}")]
-    ScriptParse { path: String, message: String },
+    #[error("Unsupported skill binding source type '{source_type}' in profile (expected 'native' or 'planner')")]
+    UnsupportedBindingSource { source_type: String },
 }
 
 #[derive(Debug, Deserialize)]
@@ -43,7 +41,6 @@ struct TomlRobotProfile {
 struct TomlSkillBinding {
     skill: String,
     source_type: String,
-    path: Option<String>,
     native_id: Option<String>,
     policy: Option<String>,
 }
@@ -87,22 +84,21 @@ impl RobotProfileLoader {
             .into_iter()
             .map(|s| {
                 let binding_source = match s.source_type.as_str() {
-                    "script" => SkillBindingSource::Script {
-                        path: s.path.unwrap_or_default(),
-                    },
                     "native" => SkillBindingSource::Native {
                         native_id: s.native_id.unwrap_or_default(),
                     },
                     "planner" => SkillBindingSource::Planner {
                         policy: s.policy.unwrap_or_default(),
                     },
-                    _ => SkillBindingSource::Script {
-                        path: s.path.unwrap_or_default(),
-                    },
+                    other => {
+                        return Err(ProfileLoadError::UnsupportedBindingSource {
+                            source_type: other.to_string(),
+                        })
+                    }
                 };
-                SkillBinding::new(SkillId(s.skill), binding_source)
+                Ok(SkillBinding::new(SkillId(s.skill), binding_source))
             })
-            .collect();
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(RobotProfile::new(
             RobotId(toml_prof.id),
@@ -111,38 +107,15 @@ impl RobotProfileLoader {
         ))
     }
 
-    /// Materialize a `SkillRegistry` from a loaded `RobotProfile` and base directory.
+    /// Materialize a `SkillRegistry` from a loaded `RobotProfile`.
     pub fn materialize_skills(
         profile: &RobotProfile,
-        base_dir: impl AsRef<Path>,
+        _base_dir: impl AsRef<Path>,
     ) -> Result<SkillRegistry, ProfileLoadError> {
         let mut registry = SkillRegistry::new();
-        let base = base_dir.as_ref();
 
         for binding in &profile.skill_bindings {
             let impl_strategy = match &binding.source {
-                SkillBindingSource::Script { path } => {
-                    let script_path = base.join(path);
-                    let script_content =
-                        fs::read_to_string(&script_path).map_err(|e| ProfileLoadError::Io {
-                            path: script_path.display().to_string(),
-                            source: e,
-                        })?;
-
-                    let fragment = parse_fragment(&script_content).map_err(|errs| {
-                        let msg = errs
-                            .iter()
-                            .map(|e| e.to_string())
-                            .collect::<Vec<_>>()
-                            .join("; ");
-                        ProfileLoadError::ScriptParse {
-                            path: script_path.display().to_string(),
-                            message: msg,
-                        }
-                    })?;
-
-                    SkillImplementation::Program(fragment)
-                }
                 SkillBindingSource::Native { native_id } => {
                     SkillImplementation::Native(thalos_core::skill::NativeSkillId(native_id.clone()))
                 }

@@ -5,8 +5,6 @@ use crate::robot::definition::RobotDefinition;
 /// Source location or mechanism for resolving a skill implementation within a `RobotProfile`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SkillBindingSource {
-    /// Skill behavior defined via a referenced `.thalos` script file or relative path.
-    Script { path: String },
     /// Built-in driver or native hardware skill identifier (e.g. "driver.digital_gripper").
     Native { native_id: String },
     /// External planning policy reference.

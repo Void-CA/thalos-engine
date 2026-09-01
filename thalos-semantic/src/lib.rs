@@ -39,7 +39,6 @@ pub mod program;
 pub mod resource;
 pub mod resolver;
 pub mod scope;
-pub mod script;
 pub mod symbols;
 pub mod types;
 pub mod validation;

@@ -1,0 +1,2 @@
+# Commit insta baselines (.snap); only pending accept files stay ignored.
+*.snap.new

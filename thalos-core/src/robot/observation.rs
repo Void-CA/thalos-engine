@@ -1,8 +1,20 @@
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
+use crate::device::SignalQuality;
 use crate::robot::capability::{ObservationConstraint, ObservationRequirement};
 use crate::robot::state::RobotState;
+
+/// Telemetry observation event from a physical or simulated robot (L0 Domain).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RobotObservation {
+    pub sampled_at_ns: u64,
+    pub sequence: u64,
+    pub joint_positions_rad: Vec<f64>,
+    pub joint_velocities_rad_s: Vec<f64>,
+    pub tcp_pose: Option<[f64; 7]>,
+    pub signal_quality: SignalQuality,
+}
 
 /// Discrete observation quality classification for a single joint state variable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
