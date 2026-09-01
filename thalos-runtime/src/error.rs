@@ -136,6 +136,14 @@ pub enum RuntimeError {
     #[error("no active plan to execute")]
     NoActivePlan,
 
+    /// A requested plan execution was refused because the plan revision does not match the active program revision.
+    #[error("stale plan revision: expected revision {expected}, plan has revision {actual}")]
+    StalePlanRevision { expected: u64, actual: u64 },
+
+    /// A requested plan execution was refused because the plan source fingerprint does not match the current program source.
+    #[error("stale plan fingerprint: expected {expected}, plan has {actual}")]
+    StalePlanFingerprint { expected: String, actual: String },
+
     #[error("{message}")]
     InvalidUrdf { message: String },
 
@@ -253,6 +261,8 @@ impl RuntimeError {
             RuntimeError::UndoVersionMismatch { .. } => "undo_version_mismatch",
             RuntimeError::ControllerFailed { source } => source.error_code(),
             RuntimeError::NoActivePlan => "no_active_plan",
+            RuntimeError::StalePlanRevision { .. } => "stale_plan_revision",
+            RuntimeError::StalePlanFingerprint { .. } => "stale_plan_fingerprint",
             RuntimeError::InvalidUrdf { .. } => "invalid_urdf",
             RuntimeError::UrdfChainError { .. } => "urdf_chain_error",
             RuntimeError::CompileFailed { .. } => "compile_failed",
@@ -264,4 +274,15 @@ impl RuntimeError {
             RuntimeError::WorkspaceNotFound { .. } => "workspace_not_found",
         }
     }
+
+    /// Returns `true` if this error represents a stale execution artifact (plan or undo state).
+    pub fn is_stale(&self) -> bool {
+        matches!(
+            self,
+            RuntimeError::StalePlanRevision { .. }
+                | RuntimeError::StalePlanFingerprint { .. }
+                | RuntimeError::StaleUndo
+        )
+    }
 }
+

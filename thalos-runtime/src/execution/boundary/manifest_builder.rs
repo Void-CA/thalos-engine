@@ -232,7 +232,11 @@ mod tests {
             waypoints,
             segments,
             duration,
-    repeat_count: 1,
+            repeat_count: 1,
+            program_id: None,
+            program_revision: None,
+            source_fingerprint: None,
+            robot_id: None,
         }
     }
 

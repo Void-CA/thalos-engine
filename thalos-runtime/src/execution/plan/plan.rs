@@ -19,6 +19,9 @@ pub struct ActiveMotionPlan {
     pub created_at: DateTime<Utc>,
     pub started_at: Option<DateTime<Utc>>,
     pub completed_at: Option<DateTime<Utc>>,
+    pub program_id: Option<String>,
+    pub program_revision: Option<u64>,
+    pub source_fingerprint: Option<String>,
 }
 
 impl ActiveMotionPlan {
@@ -38,6 +41,9 @@ impl ActiveMotionPlan {
             created_at: now,
             started_at: Some(now),
             completed_at: Some(now),
+            program_id: None,
+            program_revision: None,
+            source_fingerprint: None,
         }
     }
 
@@ -54,6 +60,9 @@ impl ActiveMotionPlan {
             created_at: Utc::now(),
             started_at: None,
             completed_at: None,
+            program_id: None,
+            program_revision: None,
+            source_fingerprint: None,
         }
     }
 
@@ -72,7 +81,22 @@ impl ActiveMotionPlan {
             created_at: Utc::now(),
             started_at: None,
             completed_at: None,
+            program_id: None,
+            program_revision: None,
+            source_fingerprint: None,
         }
+    }
+
+    pub fn with_provenance(
+        mut self,
+        program_id: Option<String>,
+        program_revision: Option<u64>,
+        source_fingerprint: Option<String>,
+    ) -> Self {
+        self.program_id = program_id;
+        self.program_revision = program_revision;
+        self.source_fingerprint = source_fingerprint;
+        self
     }
 
     pub fn start(&mut self) {

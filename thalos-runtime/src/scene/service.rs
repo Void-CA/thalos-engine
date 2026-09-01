@@ -350,6 +350,33 @@ impl SceneService {
         Ok(Self::build_snapshot(&runtime, None))
     }
 
+    pub async fn set_program_provenance(
+        &self,
+        program_id: impl Into<String>,
+        revision: u64,
+        fingerprint: impl Into<String>,
+    ) {
+        let mut runtime = self.runtime.write().await;
+        runtime.set_program_provenance(program_id, revision, fingerprint);
+    }
+
+    /// Load a compiled plan for preview only (leaves active_plan = None).
+    pub async fn preview_plan(
+        &self,
+        compiled: CompiledPlan,
+    ) -> Result<RuntimeSnapshot, RuntimeError> {
+        let mut runtime = self.runtime.write().await;
+        runtime.preview_plan(compiled);
+        Ok(Self::build_snapshot(&runtime, None))
+    }
+
+    /// Explicitly activate the previewed/scheduled plan for execution.
+    pub async fn activate_plan(&self) -> Result<RuntimeSnapshot, RuntimeError> {
+        let mut runtime = self.runtime.write().await;
+        runtime.activate_plan()?;
+        Ok(Self::build_snapshot(&runtime, None))
+    }
+
     // ── Scene write-back (PR4 — design-first, D4/D5) ──
 
     /// Toggle the scene-writeback feature flag (design D5).
@@ -453,13 +480,11 @@ impl SceneService {
     /// the scheduled-plan builder fails — the caller's `has_wps` guard then
     /// skips the controller call (Once-without-plan behavior preserved).
     fn build_execution_plan(runtime: &SceneRuntime) -> Option<ExecutionPlan> {
-        if let Some(ref compiled) = runtime.scheduled_plan {
+        if runtime.active_plan.is_none() {
+            return None;
+        }
+        let base_plan = if let Some(ref compiled) = runtime.scheduled_plan {
             let mut plan = ExecutionPlanBuilder::build(compiled).ok()?;
-            // The pure chain maps segments 1:1 from the compiled plan. A
-            // compiled plan WITHOUT segment metadata (legacy single-shot
-            // fixtures) would hand the ESP32 a manifest with ZERO segments
-            // → SEGMENT_COVERAGE rejection. The legacy shim always emitted
-            // a single MoveJ segment; preserve that for segment-less plans.
             if plan.segments.is_empty() && !plan.waypoints.is_empty() {
                 let n = plan.waypoints.len();
                 plan.segments.push(ExecutionSegment {
@@ -469,56 +494,73 @@ impl SceneService {
                     waypoint_range: 0..n,
                 });
             }
-            // Per-joint velocity re-timer (planning bugfix): MoveL IK can emit
-            // per-joint velocities above the firmware channel ceiling. Re-time
-            // before the manifest is generated so the scheduler's VELOCITY_EXCEEDED
-            // rejection never fires on spatial-trapezoidal MoveL. Spatial joints
-            // are preserved; only violating dt gaps are stretched.
-            return Some(VelocityRetimer::retime(&plan));
-        }
-        let active = runtime.active_plan.as_ref()?;
-        let traj = &active.trajectory;
-        if traj.is_empty() {
-            return None;
-        }
-        let waypoints: Vec<ExecutionWaypoint> = traj
-            .waypoints()
-            .iter()
-            .map(|tp| ExecutionWaypoint {
-                joints: tp.joints().to_vec(),
-                timestamp: tp.timestamp(),
-            })
-            .collect();
-        let n = waypoints.len();
-        let segments: Vec<ExecutionSegment> = match &active.segments {
-            Some(segments) if !segments.is_empty() => segments
+            plan
+        } else if let Some(ref active) = runtime.active_plan {
+            let traj = &active.trajectory;
+            if traj.is_empty() {
+                return None;
+            }
+            let waypoints: Vec<ExecutionWaypoint> = traj
+                .waypoints()
                 .iter()
-                .enumerate()
-                .map(|(idx, seg)| ExecutionSegment {
-                    index: idx,
-                    planned_segment_index: idx,
-                    instruction: match &seg.source {
-                        MotionSegment::MoveJ { .. } => PlanInstruction::MoveJ,
-                        MotionSegment::MoveL { .. } => PlanInstruction::MoveL,
-                        MotionSegment::MoveLPosition { .. } => PlanInstruction::MoveL,
-                    },
-                    waypoint_range: seg.waypoint_range.clone(),
+                .map(|tp| ExecutionWaypoint {
+                    joints: tp.joints().to_vec(),
+                    timestamp: tp.timestamp(),
                 })
-                .collect(),
-            // No segment metadata → one MoveJ segment over every waypoint.
-            _ => vec![ExecutionSegment {
-                index: 0,
-                planned_segment_index: 0,
-                instruction: PlanInstruction::MoveJ,
-                waypoint_range: 0..n,
-            }],
+                .collect();
+            let n = waypoints.len();
+            let segments: Vec<ExecutionSegment> = match &active.segments {
+                Some(segments) if !segments.is_empty() => segments
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, seg)| ExecutionSegment {
+                        index: idx,
+                        planned_segment_index: idx,
+                        instruction: match &seg.source {
+                            MotionSegment::MoveJ { .. } => PlanInstruction::MoveJ,
+                            MotionSegment::MoveL { .. } => PlanInstruction::MoveL,
+                            MotionSegment::MoveLPosition { .. } => PlanInstruction::MoveL,
+                        },
+                        waypoint_range: seg.waypoint_range.clone(),
+                    })
+                    .collect(),
+                _ => vec![ExecutionSegment {
+                    index: 0,
+                    planned_segment_index: 0,
+                    instruction: PlanInstruction::MoveJ,
+                    waypoint_range: 0..n,
+                }],
+            };
+            ExecutionPlan {
+                waypoints,
+                segments,
+                duration: traj.duration(),
+                repeat_count: 1,
+                program_id: None,
+                program_revision: None,
+                source_fingerprint: None,
+                robot_id: None,
+            }
+        } else {
+            return None;
         };
-        Some(VelocityRetimer::retime(&ExecutionPlan {
-            waypoints,
-            segments,
-            duration: traj.duration(),
-    repeat_count: 1,
-        }))
+
+        let plan = if let Some(ref active) = runtime.active_plan {
+            if active.program_revision.is_some() || active.source_fingerprint.is_some() {
+                base_plan.with_provenance(
+                    active.program_id.clone().unwrap_or_default(),
+                    active.program_revision.unwrap_or(0),
+                    active.source_fingerprint.clone().unwrap_or_default(),
+                    Some(runtime.robot_id.clone()),
+                )
+            } else {
+                base_plan
+            }
+        } else {
+            base_plan
+        };
+
+        Some(VelocityRetimer::retime(&plan))
     }
 
     pub async fn start_execution(&self) -> Result<RuntimeSnapshot, RuntimeError> {
@@ -535,10 +577,33 @@ impl SceneService {
         &self,
         mode: ExecutionMode,
     ) -> Result<RuntimeSnapshot, RuntimeError> {
-        if matches!(mode, ExecutionMode::Repeat { .. }) {
+        {
             let runtime = self.runtime.read().await;
-            if runtime.scheduled_plan.is_none() && runtime.active_plan.is_none() {
+            if runtime.active_plan.is_none() && (runtime.scheduled_plan.is_some() || matches!(mode, ExecutionMode::Repeat { .. }) || runtime.active_program_revision.is_some()) {
                 return Err(RuntimeError::NoActivePlan);
+            }
+            if let (Some(expected_rev), Some(expected_fp)) = (
+                runtime.active_program_revision,
+                runtime.active_source_fingerprint.as_ref(),
+            ) {
+                if runtime.active_plan.is_none() {
+                    return Err(RuntimeError::NoActivePlan);
+                }
+                if let Some(plan) = Self::build_execution_plan(&runtime) {
+                    if plan.is_stale_for(expected_rev, expected_fp) {
+                        if plan.program_revision != Some(expected_rev) {
+                            return Err(RuntimeError::StalePlanRevision {
+                                expected: expected_rev,
+                                actual: plan.program_revision.unwrap_or(0),
+                            });
+                        } else {
+                            return Err(RuntimeError::StalePlanFingerprint {
+                                expected: expected_fp.clone(),
+                                actual: plan.source_fingerprint.clone().unwrap_or_default(),
+                            });
+                        }
+                    }
+                }
             }
         }
 

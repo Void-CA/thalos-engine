@@ -65,6 +65,45 @@ pub struct ExecutionPlan {
     /// re-upload between passes. Simulation/Replay keep 1 and repeat via the
     /// host completion gate.
     pub repeat_count: u32,
+    /// Program identifier for provenance tracking.
+    pub program_id: Option<String>,
+    /// Revision counter of the source program when this plan was built.
+    pub program_revision: Option<u64>,
+    /// Cryptographic fingerprint (SHA-256) of the source code that generated this plan.
+    pub source_fingerprint: Option<String>,
+    /// Robot identifier targeted by this plan.
+    pub robot_id: Option<String>,
+}
+
+impl ExecutionPlan {
+    pub fn with_provenance(
+        mut self,
+        program_id: impl Into<String>,
+        program_revision: u64,
+        source_fingerprint: impl Into<String>,
+        robot_id: Option<String>,
+    ) -> Self {
+        self.program_id = Some(program_id.into());
+        self.program_revision = Some(program_revision);
+        self.source_fingerprint = Some(source_fingerprint.into());
+        self.robot_id = robot_id;
+        self
+    }
+
+    /// Checks if the plan is stale with respect to a current program revision and source fingerprint.
+    pub fn is_stale_for(&self, current_revision: u64, current_fingerprint: &str) -> bool {
+        if let Some(rev) = self.program_revision {
+            if rev != current_revision {
+                return true;
+            }
+        }
+        if let Some(ref fp) = self.source_fingerprint {
+            if fp != current_fingerprint {
+                return true;
+            }
+        }
+        false
+    }
 }
 
 /// Error produced by the pure builders of the execution chain
@@ -102,6 +141,10 @@ mod tests {
             }],
             duration: 0.0,
             repeat_count: 1,
+            program_id: Some("prog-1".to_string()),
+            program_revision: Some(12),
+            source_fingerprint: Some("hash-abc".to_string()),
+            robot_id: Some("robot-1".to_string()),
         };
 
         assert_eq!(plan.waypoints.len(), 1);

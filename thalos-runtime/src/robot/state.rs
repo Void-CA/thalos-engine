@@ -61,6 +61,11 @@ pub struct SceneRuntime {
     /// Active plan for snapshot backward compatibility.
     pub active_plan: Option<ActiveMotionPlan>,
 
+    /// Program provenance metadata tracked for current active source.
+    pub active_program_id: Option<String>,
+    pub active_program_revision: Option<u64>,
+    pub active_source_fingerprint: Option<String>,
+
     /// Feature gate for the scene write-back surface (design D5).
     ///
     /// OFF by default. `replace_active_plan` refuses to mutate the runtime
@@ -92,6 +97,9 @@ impl SceneRuntime {
             active_tcp: None,
             scheduled_plan: None,
             active_plan: None,
+            active_program_id: None,
+            active_program_revision: None,
+            active_source_fingerprint: None,
             scene_writeback_enabled: false,
             command_history: CommandHistory::new(),
             next_plan_id: 0,
@@ -158,11 +166,46 @@ impl SceneRuntime {
 
     // ── Multi-segment program (Preview / Execution) ──
 
+    pub fn set_program_provenance(
+        &mut self,
+        program_id: impl Into<String>,
+        revision: u64,
+        fingerprint: impl Into<String>,
+    ) {
+        self.active_program_id = Some(program_id.into());
+        self.active_program_revision = Some(revision);
+        self.active_source_fingerprint = Some(fingerprint.into());
+    }
+
+    /// Store a compiled plan for preview only (visual trajectory), without making it active.
+    pub fn preview_plan(&mut self, compiled: CompiledPlan) {
+        self.scheduled_plan = Some(compiled);
+        self.active_plan = None;
+    }
+
+    /// Transition a previewed/scheduled plan into the active plan.
+    pub fn activate_plan(&mut self) -> Result<(), RuntimeError> {
+        let compiled = self.scheduled_plan.clone().ok_or(RuntimeError::NoActivePlan)?;
+        let tid = self.next_plan_id();
+        let active = ActiveMotionPlan::from_compiled_plan(tid, compiled).with_provenance(
+            self.active_program_id.clone(),
+            self.active_program_revision,
+            self.active_source_fingerprint.clone(),
+        );
+        self.active_plan = Some(active);
+        Ok(())
+    }
+
     /// Schedule a compiled multi-segment program for preview and optional execution.
     pub fn schedule_plan(&mut self, compiled: CompiledPlan) {
         let tid = self.next_plan_id();
         self.scheduled_plan = Some(compiled.clone());
-        self.active_plan = Some(ActiveMotionPlan::from_compiled_plan(tid, compiled));
+        let active = ActiveMotionPlan::from_compiled_plan(tid, compiled).with_provenance(
+            self.active_program_id.clone(),
+            self.active_program_revision,
+            self.active_source_fingerprint.clone(),
+        );
+        self.active_plan = Some(active);
     }
 
     pub fn clear_plan(&mut self) {

@@ -1,27 +1,54 @@
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use thalos_language_service::{Diagnostic, DiagnosticSeverity, SourceSpan};
 
+use thalos_engine::core::execution::plan::ExecutionPlan;
 use thalos_engine::core::execution::runtime::RuntimeProgram;
 use thalos_engine::core::kinematics::{forward::ForwardKinematics, inverse::DampedLeastSquaresSolver};
 use thalos_engine::core::motion::segment::MotionSegment;
+use thalos_engine::core::robot::serial_chain::SerialChain;
 use thalos_engine::core::robot::state::RobotState;
+use thalos_engine::core::robot::tool_frame::ToolFrame;
 use thalos_engine::core::{
     ids::OperationId,
     operation::{Operation, OperationConstraints},
     spatial::{frame::FrameId, pose::Pose},
 };
+use thalos_engine::lang::parser::parse_source;
 use thalos_engine::math::{Quaternion, Transform3D, UnitQuaternion, Vector3};
 use thalos_engine::planning::error::CompileError;
+use thalos_engine::planning::input::PlanningInput;
 use thalos_engine::planning::motion::compiler::{DefaultPlannerDispatcher, PlanCompiler};
 use thalos_engine::planning::motion::planner::PlanningContext;
 use thalos_engine::planning::motion::program::PlanningProgram;
+use thalos_engine::semantic::compiler::SemanticCompiler;
+use thalos_engine::semantic::model::MotionTarget;
+use thalos_engine::semantic::resolver::SemanticResolver;
 
 use crate::error::RuntimeError;
-use crate::services::scene::SceneService;
 use crate::scene::RuntimeSnapshot;
+use crate::services::scene::SceneService;
 
 const IK_MAX_ITERS: usize = 500;
 const IK_TOLERANCE: f64 = 1e-6;
 const IK_LAMBDA: f64 = 0.1;
+
+/// Active robot planning context extracted from SceneRuntime or constructed for offline/CLI planning.
+#[derive(Debug, Clone)]
+pub struct RobotPlanningContext {
+    pub robot_id: String,
+    pub chain: SerialChain,
+    pub initial_positions: Vec<f64>,
+    pub tcp: Option<ToolFrame>,
+}
+
+/// Result of contextual planning facade.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "payload")]
+pub enum PlanResult {
+    Planned(ExecutionPlan),
+    Diagnostics(Vec<Diagnostic>),
+}
 
 // ── Motion plan request DTOs ──
 
@@ -243,6 +270,8 @@ use std::sync::Arc;
 
 // ── Planning Application Service ──
 
+use thalos_engine::planning::motion::program::CompiledPlan;
+
 pub struct PlanningService {
     scene: Arc<SceneService>,
 }
@@ -250,6 +279,227 @@ pub struct PlanningService {
 impl PlanningService {
     pub fn new(scene: Arc<SceneService>) -> Self {
         Self { scene }
+    }
+
+    /// Pure facade / application orchestrator for planning THLS source against an explicit robot context.
+    /// Does NOT depend on SceneRuntime directly, allowing usage in tests, CLI, and offline planning.
+    pub fn plan_thls_source_with_context(
+        source: &str,
+        program_id: &str,
+        revision: u64,
+        context: &RobotPlanningContext,
+    ) -> PlanResult {
+        let (result, _) = Self::plan_thls_source_internal(source, program_id, revision, context);
+        result
+    }
+
+    fn plan_thls_source_internal(
+        source: &str,
+        program_id: &str,
+        revision: u64,
+        context: &RobotPlanningContext,
+    ) -> (PlanResult, Option<CompiledPlan>) {
+        // 1. Calculate source fingerprint directly on raw source input
+        let mut hasher = Sha256::new();
+        hasher.update(source.as_bytes());
+        let source_fingerprint = format!("{:x}", hasher.finalize());
+
+        // 2. Parse source
+        let ast = match parse_source(source) {
+            Ok(ast) => ast,
+            Err(parse_errors) => {
+                let diags = parse_errors
+                    .into_iter()
+                    .map(|err| {
+                        let span = err.span();
+                        Diagnostic {
+                            severity: DiagnosticSeverity::Error,
+                            code: Some("THL_SYNTAX_ERROR".into()),
+                            message: err.to_string(),
+                            span: SourceSpan::new(span.start as u32, span.end as u32),
+                        }
+                    })
+                    .collect();
+                return (PlanResult::Diagnostics(diags), None);
+            }
+        };
+
+        // 3. Semantic compile
+        let sem_program = match SemanticCompiler::compile(&ast) {
+            Ok(p) => p,
+            Err(errors) => {
+                let diags = errors
+                    .into_iter()
+                    .map(|msg| Diagnostic {
+                        severity: DiagnosticSeverity::Error,
+                        code: Some("THL_SEMANTIC_ERROR".into()),
+                        message: msg,
+                        span: SourceSpan::new(0, source.len() as u32),
+                    })
+                    .collect();
+                return (PlanResult::Diagnostics(diags), None);
+            }
+        };
+
+        // 4. Semantic resolve
+        let resolved = match SemanticResolver::resolve(&sem_program) {
+            Ok(r) => r,
+            Err(errors) => {
+                let diag = Diagnostic {
+                    severity: DiagnosticSeverity::Error,
+                    code: Some("THL_RESOLUTION_ERROR".into()),
+                    message: errors.join("; "),
+                    span: SourceSpan::new(0, source.len() as u32),
+                };
+                return (PlanResult::Diagnostics(vec![diag]), None);
+            }
+        };
+
+        // 5. Build PlanningInput & check DOF / kinematic invariants
+        let planning_input = PlanningInput::from_resolved(&resolved);
+        for motion in &planning_input.motions {
+            if let MotionTarget::Joints(ref j) = motion.target {
+                if j.values.len() != context.chain.dof_count() {
+                    let span = motion.provenance.span.as_ref().map_or(
+                        SourceSpan::new(0, source.len() as u32),
+                        |s| SourceSpan::new(s.start as u32, s.end as u32),
+                    );
+                    let diag = Diagnostic {
+                        severity: DiagnosticSeverity::Error,
+                        code: Some("THL_DOF_MISMATCH".into()),
+                        message: format!(
+                            "Joint target has {} degrees of freedom, but robot '{}' has {}",
+                            j.values.len(),
+                            context.robot_id,
+                            context.chain.dof_count()
+                        ),
+                        span,
+                    };
+                    return (PlanResult::Diagnostics(vec![diag]), None);
+                }
+            }
+        }
+
+        // 6. Instantiate SegmentPlanningContext with active robot kinematics
+        let fk = ForwardKinematics::new(context.chain.clone());
+        let solver = DampedLeastSquaresSolver::new(
+            fk,
+            *context.chain.end_effector(),
+            IK_MAX_ITERS,
+            IK_TOLERANCE,
+            IK_LAMBDA,
+        );
+        let robot_state = RobotState::from_positions(context.initial_positions.clone());
+        let ctx = PlanningContext {
+            robot: &context.chain,
+            current_state: &robot_state,
+            ik_solver: &solver,
+            tcp: context.tcp.as_ref(),
+        };
+
+        let compiler = PlanCompiler::new(Box::new(DefaultPlannerDispatcher::default()));
+        let program = planning_input.to_program();
+
+        // 7. Compile plan and map errors to Diagnostics with SourceSpan
+        let compiled = match compiler.compile(&program, &ctx) {
+            Ok(c) => c,
+            Err(err_with_ctx) => {
+                let seg_idx = err_with_ctx.segment_index;
+                let span = planning_input
+                    .motions
+                    .get(seg_idx)
+                    .and_then(|m| m.provenance.span.as_ref())
+                    .map_or(SourceSpan::new(0, source.len() as u32), |s| {
+                        SourceSpan::new(s.start as u32, s.end as u32)
+                    });
+                let diag = Diagnostic {
+                    severity: DiagnosticSeverity::Error,
+                    code: Some("THL_UNREACHABLE_TARGET".into()),
+                    message: format!("Kinematic planning error in segment {}: {}", seg_idx, err_with_ctx.source),
+                    span,
+                };
+                return (PlanResult::Diagnostics(vec![diag]), None);
+            }
+        };
+
+        // 8. Build ExecutionPlan and freeze provenance
+        let base_plan: ExecutionPlan = match thalos_engine::planning::execution_plan_builder::ExecutionPlanBuilder::build(&compiled) {
+            Ok(p) => p,
+            Err(e) => {
+                let diag = Diagnostic {
+                    severity: DiagnosticSeverity::Error,
+                    code: Some("THL_PLAN_BUILD_ERROR".into()),
+                    message: e.to_string(),
+                    span: SourceSpan::new(0, source.len() as u32),
+                };
+                return (PlanResult::Diagnostics(vec![diag]), None);
+            }
+        };
+
+        let plan = base_plan.with_provenance(
+            program_id.to_string(),
+            revision,
+            source_fingerprint,
+            Some(context.robot_id.clone()),
+        );
+
+        (PlanResult::Planned(plan), Some(compiled))
+    }
+
+    /// Orchestrates planning for THLS source using the active robot context from SceneService.
+    pub async fn plan_thls_source(
+        &self,
+        source: &str,
+        program_id: &str,
+        revision: u64,
+    ) -> Result<PlanResult, RuntimeError> {
+        let snapshot = self.scene.snapshot().await?;
+        let context = RobotPlanningContext {
+            robot_id: snapshot.robot_id.clone(),
+            chain: snapshot.chain.clone(),
+            initial_positions: snapshot.joints.clone(),
+            tcp: snapshot.active_tcp.clone(),
+        };
+        Ok(Self::plan_thls_source_with_context(source, program_id, revision, &context))
+    }
+
+    /// Orchestrates planning for THLS source and previews the result in SceneService if successful.
+    pub async fn preview_thls_source(
+        &self,
+        source: &str,
+        program_id: &str,
+        revision: u64,
+    ) -> Result<(PlanResult, RuntimeSnapshot), RuntimeError> {
+        let snapshot = self.scene.snapshot().await?;
+        let context = RobotPlanningContext {
+            robot_id: snapshot.robot_id.clone(),
+            chain: snapshot.chain.clone(),
+            initial_positions: snapshot.joints.clone(),
+            tcp: snapshot.active_tcp.clone(),
+        };
+
+        let (plan_result, compiled_plan_opt) = Self::plan_thls_source_internal(source, program_id, revision, &context);
+
+        match plan_result {
+            PlanResult::Planned(plan) => {
+                if let Some(compiled) = compiled_plan_opt {
+                    self.scene.set_program_provenance(
+                        program_id,
+                        revision,
+                        plan.source_fingerprint.clone().unwrap_or_default(),
+                    ).await;
+                    let updated_snapshot = self.scene.preview_plan(compiled).await?;
+                    Ok((PlanResult::Planned(plan), updated_snapshot))
+                } else {
+                    let updated_snapshot = self.scene.snapshot().await?;
+                    Ok((PlanResult::Planned(plan), updated_snapshot))
+                }
+            }
+            PlanResult::Diagnostics(diags) => {
+                let updated_snapshot = self.scene.snapshot().await?;
+                Ok((PlanResult::Diagnostics(diags), updated_snapshot))
+            }
+        }
     }
 
     /// Compile a motion plan request and schedule it on the scene.

@@ -100,6 +100,10 @@ impl VelocityRetimer {
             segments: plan.segments.clone(),
             duration,
             repeat_count: plan.repeat_count,
+            program_id: plan.program_id.clone(),
+            program_revision: plan.program_revision,
+            source_fingerprint: plan.source_fingerprint.clone(),
+            robot_id: plan.robot_id.clone(),
         }
     }
 }
@@ -132,6 +136,10 @@ mod tests {
             }],
             duration,
             repeat_count: 1,
+            program_id: None,
+            program_revision: None,
+            source_fingerprint: None,
+            robot_id: None,
         }
     }
 

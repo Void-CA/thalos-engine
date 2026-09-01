@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 thalos-engine = { path = "../thalos-engine" }
+thalos-language-service = { path = "../thalos-language-service" }
 thalos-importer = { path = "../thalos-importer" }
 thalos-document = { path = "../thalos-document" }
 thalos_ports = { path = "../thalos-ports", features = ["test-support"] }

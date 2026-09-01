@@ -45,6 +45,10 @@ impl ExecutionPlanBuilder {
             segments,
             duration: plan.duration,
             repeat_count: 1,
+            program_id: None,
+            program_revision: None,
+            source_fingerprint: None,
+            robot_id: None,
         })
     }
 }
