@@ -32,7 +32,7 @@ use crate::error::RuntimeError;
 use crate::execution_boundary::velocity_retimer::VelocityRetimer;
 use crate::execution_boundary::ExecutionSample as ProtocolSample;
 use crate::motion_recorder::MotionRecorder;
-use crate::plan::{ExecutionMode, PlanState, SessionStatus};
+use crate::plan::{ActiveMotionPlan, ExecutionMode, PlanState, SessionStatus};
 use crate::services::command_history::{AppliedCommand, CommandMetrics};
 use crate::session::{ExecutionSource, SessionManager};
 use super::snapshot::{RuntimeSnapshot, TickDelta};
@@ -166,6 +166,10 @@ impl SceneService {
     fn build_snapshot(runtime: &SceneRuntime, ik_result: Option<IKResult>) -> RuntimeSnapshot {
         let fk_result = Self::compute_fk(&runtime.active_robot.chain, &runtime.active_robot.joints);
 
+        let scheduled_plan = runtime.scheduled_plan.as_ref().map(|sp| {
+            ActiveMotionPlan::from_compiled_plan("preview", sp.clone())
+        });
+
         RuntimeSnapshot {
             robot: runtime.active_robot.model,
             robot_source: runtime.robot_source.clone(),
@@ -177,6 +181,7 @@ impl SceneService {
             fk_result,
             ik_result,
             active_plan: runtime.active_plan.clone(),
+            scheduled_plan,
             execution: None,
             active_tcp: runtime.active_tcp.clone(),
             generated_at: chrono::Utc::now(),
@@ -224,6 +229,10 @@ impl SceneService {
             }
         }
 
+        let scheduled_plan = rt.scheduled_plan.as_ref().map(|sp| {
+            ActiveMotionPlan::from_compiled_plan("preview", sp.clone())
+        });
+
         RuntimeSnapshot {
             robot: rt.active_robot.model,
             robot_source: rt.robot_source.clone(),
@@ -235,6 +244,7 @@ impl SceneService {
             fk_result,
             ik_result: None,
             active_plan: rt.active_plan.clone(),
+            scheduled_plan,
             execution,
             active_tcp: rt.active_tcp.clone(),
             generated_at: chrono::Utc::now(),

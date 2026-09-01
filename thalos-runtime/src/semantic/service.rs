@@ -350,6 +350,7 @@ mod tests {
             fk_result,
             ik_result: None,
             active_plan: None,
+            scheduled_plan: None,
             execution: None,
             active_tcp,
             generated_at: chrono::Utc::now(),

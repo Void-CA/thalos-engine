@@ -229,3 +229,34 @@ async fn test_f2_07_diagnostic_span_traceability() {
         PlanResult::Planned(_) => panic!("Expected diagnostic for unreachable target"),
     }
 }
+
+#[tokio::test]
+async fn test_f2_08_preview_vs_active_plan_separation() {
+    let scene = Arc::new(make_test_service(RobotModel::Planar2R).await);
+    let planner = PlanningService::new(scene.clone());
+
+    let source = r#"
+        target p1 = joints(45deg, 30deg)
+        fn main() {
+            movej(p1)
+        }
+    "#;
+
+    // Phase 1: Preview/Schedule plan
+    let (res, snapshot) = planner
+        .preview_thls_source(source, "prog_sep", 1)
+        .await
+        .expect("Preview should succeed");
+
+    assert!(matches!(res, PlanResult::Planned(_)));
+    // Invariant: Previewing populates scheduled_plan, but active_plan remains None!
+    assert!(snapshot.active_plan.is_none(), "active_plan MUST remain None during preview/scheduled state");
+    assert!(snapshot.scheduled_plan.is_some(), "scheduled_plan MUST be populated during preview state");
+
+    // Phase 2: Activate plan
+    scene.activate_plan().await.expect("Activation should succeed");
+    let active_snapshot = scene.snapshot().await.expect("Snapshot should succeed");
+
+    // Invariant: After activation, active_plan is populated!
+    assert!(active_snapshot.active_plan.is_some(), "active_plan MUST be populated after activation");
+}

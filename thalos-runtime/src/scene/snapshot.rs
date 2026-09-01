@@ -46,6 +46,8 @@ pub struct RuntimeSnapshot {
     pub fk_result: FKResult,
     pub ik_result: Option<IKResult>,
     pub active_plan: Option<ActiveMotionPlan>,
+    /// Scheduled/preview plan waiting for authorization or activation.
+    pub scheduled_plan: Option<ActiveMotionPlan>,
     pub execution: Option<ExecutionSession>,
     /// Active Tool Center Point (TCP) frame.
     ///
@@ -84,6 +86,7 @@ impl RuntimeSnapshot {
             fk_result,
             ik_result: None,
             active_plan,
+            scheduled_plan: None,
             execution,
             active_tcp,
             generated_at: Utc::now(),

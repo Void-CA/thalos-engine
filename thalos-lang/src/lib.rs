@@ -13,23 +13,15 @@ pub use units::*;
 /// Fuente única de verdad del starter en el lenguaje oficial `.thls`.
 /// El editor debe importar esta constante (`thalos_engine::lang::DEFAULT_PROGRAM`)
 /// en lugar de hardcodear su propia copia.
-pub const DEFAULT_PROGRAM: &str = r#"
-const APPROACH_HEIGHT = [0mm, 0mm, 150mm]
+pub const DEFAULT_PROGRAM: &str = r#"const CLEARANCE = [0mm, 0mm, 150mm]
 
-target home = joints(0deg, 0deg, 0deg, 0deg, 0deg, 0deg)
-
-target pick = position([420mm, 180mm, 80mm])
-
-fn above(p: Position) -> Position {
-    p + APPROACH_HEIGHT
-}
+target PARK = joints(0deg, -30deg, -25deg, 0deg)
+target PICK = position([1320mm, 140mm, 80mm])
 
 fn main() {
-    movej(home)
-    movej(pick)
-    movel(above(pick))
-    wait(200ms)
-    movel(above(pick))
-    movej(home)
+    movej(PARK)
+    movel(PICK)
+    wait(500ms)
+    movej(PARK)
 }
 "#;
