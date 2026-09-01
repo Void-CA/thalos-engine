@@ -138,6 +138,13 @@ impl GoalResolver {
         ctx: &PlanningContext,
         target: &[f64],
     ) -> Result<ValidatedGoal<JointGoal>, PlanningError> {
+        if target.len() != ctx.robot.dof_count() {
+            return Err(PlanningError::JointCountMismatch {
+                expected: ctx.robot.dof_count(),
+                got: target.len(),
+            });
+        }
+
         let mut metadata = GoalMetadata::default();
 
         if self.config.check_joint_limits {
@@ -178,6 +185,12 @@ impl GoalResolver {
         for segment in &ctx.robot.segments {
             if segment.joint.dof() == 0 {
                 continue;
+            }
+            if joint_idx >= q.len() {
+                return Err(PlanningError::JointCountMismatch {
+                    expected: ctx.robot.dof_count(),
+                    got: q.len(),
+                });
             }
             let limits = segment.joint.limits();
 

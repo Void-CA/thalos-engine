@@ -32,6 +32,12 @@ pub enum PlanningError {
     #[error("Invalid goal: {0}")]
     InvalidGoal(String),
 
+    #[error("Joint count mismatch: expected {expected} DOF for robot, got {got} joints")]
+    JointCountMismatch {
+        expected: usize,
+        got: usize,
+    },
+
     #[error("Goal unreachable: {reason}")]
     UnreachableGoal { reason: String },
 

@@ -6,7 +6,7 @@ use thalos_document::program_document::ProgramDocument;
 use thalos_engine::core::analysis::location::Location;
 use thalos_engine::core::analysis::observation::{Observation, Severity};
 use thalos_engine::core::{
-    execution::program::ExecutionProgram,
+    execution::{program::ExecutionProgram, runtime::RuntimeProgram},
     kinematics::{
         forward::ForwardKinematics, inverse::DampedLeastSquaresSolver, inverse::IKConfig,
     },
@@ -226,6 +226,61 @@ impl SemanticService {
             waypoints: waypoints_json,
             event_count,
             warnings,
+        })
+    }
+
+    /// Compile + plan + schedule + load semantic source code directly into active scene runtime.
+    pub async fn run_source(&self, source: &str) -> Result<SemanticRunOutput, RuntimeError> {
+        let snapshot = self.scene.snapshot().await?;
+        let chain = snapshot.chain.clone();
+        let initial_joints = snapshot.joints.clone();
+
+        let ast = thalos_engine::lang::parse_source(source)
+            .map_err(|errs| RuntimeError::SemanticValidationError {
+                message: errs.into_iter().map(|e| format!("{}", e)).collect::<Vec<_>>().join("; "),
+            })?;
+
+        let sem_program = thalos_engine::semantic::compiler::SemanticCompiler::compile(&ast)
+            .map_err(|errs| RuntimeError::SemanticValidationError {
+                message: errs.join("; "),
+            })?;
+
+        let resolved = thalos_engine::semantic::resolver::SemanticResolver::resolve(&sem_program)
+            .map_err(|errs| RuntimeError::SemanticValidationError {
+                message: errs.join("; "),
+            })?;
+
+        let planning_input = thalos_engine::planning::input::PlanningInput::from_resolved(&resolved);
+
+        let fk = ForwardKinematics::new(chain.clone());
+        let ik_solver = DampedLeastSquaresSolver::from_config(fk, *chain.end_effector(), IK_CONFIG);
+        let current_state = RobotState::from_positions(initial_joints.clone());
+        let seg_ctx = build_seg_ctx(&snapshot, &chain, &current_state, &ik_solver);
+
+        let compiler = PlanCompiler::new(Box::new(DefaultPlannerDispatcher::default()));
+        let compiled = compiler
+            .compile(&planning_input.to_program(), &seg_ctx)
+            .map_err(|e| RuntimeError::Planning(e.into()))?;
+
+        let wps_json: Vec<serde_json::Value> = compiled
+            .merged_trajectory
+            .waypoints()
+            .iter()
+            .map(|p| serde_json::json!({"time_secs": p.timestamp(), "joints": p.joints()}))
+            .collect();
+
+        let duration_secs = compiled.duration;
+        let segment_count = compiled.segments.len();
+
+        let runtime_program = RuntimeProgram { events: vec![] };
+        self.scene.schedule_program(compiled, runtime_program).await?;
+
+        Ok(SemanticRunOutput {
+            segment_count,
+            duration_secs,
+            waypoints: wps_json,
+            event_count: 0,
+            warnings: vec![],
         })
     }
 }
