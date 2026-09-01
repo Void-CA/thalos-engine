@@ -64,3 +64,12 @@ id_newtype!(TargetId);
 id_newtype!(SkillId);
 id_newtype!(ProgramName);
 id_newtype!(TargetName);
+
+// ---------------------------------------------------------------------------
+// Station Operational Model identifiers (ADR-014)
+// ---------------------------------------------------------------------------
+
+id_newtype!(StationId);
+id_newtype!(ResourceId);
+id_newtype!(ChannelId);
+
