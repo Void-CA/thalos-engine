@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use thalos_engine::prelude::*;
 use super::registry::ResourceRegistry;
+use super::reservation::ResourceReservationManager;
 
 /// ResourceResolutionError (ADR-014)
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -34,6 +35,22 @@ pub struct ResolvedResources {
 pub struct ResourceResolver;
 
 impl ResourceResolver {
+    /// Resolve program resource requirements considering active reservations.
+    pub fn resolve_available(
+        station: &Station,
+        registry: &ResourceRegistry,
+        reservation_manager: &ResourceReservationManager,
+        requirements: &[ResourceRequirement],
+    ) -> Result<ResolvedResources, ResourceResolutionError> {
+        let mut available_registry = ResourceRegistry::new();
+        for res in registry.list() {
+            if !reservation_manager.is_reserved(&res.id) {
+                available_registry.register(res.clone());
+            }
+        }
+        Self::resolve(station, &available_registry, requirements)
+    }
+
     /// Resolve program resource requirements against station context and global registry.
     pub fn resolve(
         station: &Station,

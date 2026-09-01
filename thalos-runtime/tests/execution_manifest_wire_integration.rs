@@ -9,7 +9,7 @@
 //! ExecutionPlan
 //!     ↓ ExecutionManifestBuilder    (thalos-runtime::execution_boundary)
 //! ExecutionManifest
-//!     ↓ Esp32Protocol::encode_manifest  (thalos-runtime::backends::esp32)
+//!     ↓ Esp32Codec::encode_manifest_full  (thalos-transport::esp32::codec)
 //! wire lines: MANIFEST / SEGMENT / SAMPLE / END_UPLOAD
 //! ```
 //!
