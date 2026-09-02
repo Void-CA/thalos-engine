@@ -118,6 +118,10 @@ impl StationService {
         self.stations.lock().unwrap().get(id).cloned()
     }
 
+    pub fn list_stations(&self) -> Vec<Station> {
+        self.stations.lock().unwrap().values().cloned().collect()
+    }
+
     /// Resuelve el `ExecutionTarget` comprobando la existencia de la Station, el RoboticsModule y que pertenezcan a la misma celda.
     pub fn resolve_binding<A, R>(
         &self,
