@@ -9,6 +9,7 @@ thalos-language-service = { path = "../thalos-language-service" }
 thalos-importer = { path = "../thalos-importer" }
 thalos-document = { path = "../thalos-document" }
 thalos_ports = { path = "../thalos-ports", features = ["test-support"] }
+thalos-core = { path = "../thalos-core" }
 thiserror = "2"
 chrono = { version = "0.4", features = ["serde"] }
 rand = "0.8"
