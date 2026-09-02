@@ -189,7 +189,12 @@ impl StationService {
         );
 
         // 3. Crear la sesión en el coordinador de dominio
-        let session_id = coordinator.create_session(program_id, config);
+        let session_id = coordinator.create_session_with_target(
+            target.station_id.0.clone(),
+            target.robotics_module_id.0.clone(),
+            program_id,
+            config,
+        );
 
         Ok((session_id, runner))
     }

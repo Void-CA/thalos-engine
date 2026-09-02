@@ -234,6 +234,8 @@ pub enum ExecutionDomainError {
 pub struct ExecutionSession {
     pub id: ExecutionSessionId,
     pub program_id: String,
+    pub station_id: Option<String>,
+    pub robotics_module_id: Option<String>,
     pub configuration: ExecutionConfiguration,
     pub lifecycle: LifecycleState,
     pub state: SessionState,
@@ -246,6 +248,8 @@ impl ExecutionSession {
         Self {
             id: ExecutionSessionId::generate(),
             program_id: program_id.into(),
+            station_id: None,
+            robotics_module_id: None,
             configuration,
             lifecycle: initial_state.clone(),
             state: SessionState::default(),
@@ -499,6 +503,35 @@ impl DomainExecutionCoordinator {
     ) -> ExecutionSessionId {
         let prog = program_id.into();
         let session = ExecutionSession::new(prog.clone(), config);
+        let id = self.registry.register(session);
+
+        let now_us = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_micros() as u64;
+
+        self.event_bus.publish(super::events::ExecutionEvent::SessionCreated {
+            session_id: id.clone(),
+            program_id: prog,
+            timestamp_us: now_us,
+        });
+
+        id
+    }
+
+    pub fn create_session_with_target(
+        &self,
+        station_id: impl Into<String>,
+        robotics_module_id: impl Into<String>,
+        program_id: impl Into<String>,
+        config: ExecutionConfiguration,
+    ) -> ExecutionSessionId {
+        let st_id = station_id.into();
+        let rob_id = robotics_module_id.into();
+        let prog = program_id.into();
+        let mut session = ExecutionSession::new(prog.clone(), config);
+        session.station_id = Some(st_id);
+        session.robotics_module_id = Some(rob_id);
         let id = self.registry.register(session);
 
         let now_us = std::time::SystemTime::now()
