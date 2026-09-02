@@ -87,6 +87,10 @@ pub enum SemanticExpr {
         member: String,
         args: Vec<SemanticExpr>,
     },
+    ChannelAccess {
+        module: String,
+        channel: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -116,6 +120,12 @@ pub enum SemanticStatement {
     Call {
         function: String,
         args: Vec<SemanticExpr>,
+        provenance: Provenance,
+    },
+    If {
+        condition: SemanticExpr,
+        then_branch: Vec<SemanticStatement>,
+        else_branch: Option<Vec<SemanticStatement>>,
         provenance: Provenance,
     },
     Expr(SemanticExpr),

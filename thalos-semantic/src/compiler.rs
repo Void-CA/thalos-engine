@@ -212,144 +212,7 @@ impl SemanticCompiler {
                 let mut local_names = Vec::new();
 
                 for stmt in &f.body {
-                    match stmt {
-                        AstStatement::Let { name, value, .. } => {
-                            local_names.push(name.clone());
-                            let sem_expr = lower_expr(value, &evaluator, &param_names, &local_names, &const_names);
-                            body.push(SemanticStatement::Let {
-                                name: name.clone(),
-                                value: sem_expr,
-                                provenance: Provenance::new(Some(name.clone()), None),
-                            });
-                        }
-                        AstStatement::MoveJ { target } => {
-                            let source_name = match target {
-                                AstExpr::Identifier(id) => Some(id.clone()),
-                                _ => None,
-                            };
-                            let sem_expr = lower_expr(target, &evaluator, &param_names, &local_names, &const_names);
-                            body.push(SemanticStatement::Motion(SemanticMotion {
-                                kind: MotionKind::MoveJ,
-                                target: sem_expr,
-                                provenance: Provenance::new(source_name, None),
-                            }));
-                        }
-                        AstStatement::MoveL { target } => {
-                            let source_name = match target {
-                                AstExpr::Identifier(id) => Some(id.clone()),
-                                _ => None,
-                            };
-                            let sem_expr = lower_expr(target, &evaluator, &param_names, &local_names, &const_names);
-                            body.push(SemanticStatement::Motion(SemanticMotion {
-                                kind: MotionKind::MoveL,
-                                target: sem_expr,
-                                provenance: Provenance::new(source_name, None),
-                            }));
-                        }
-                        AstStatement::Wait(dur_expr) => {
-                            let sem_expr = lower_expr(dur_expr, &evaluator, &param_names, &local_names, &const_names);
-                            body.push(SemanticStatement::Wait {
-                                duration: sem_expr,
-                                provenance: Provenance::new(None, None),
-                            });
-                        }
-                        AstStatement::MoveC { via, target } => {
-                            let source_name = match target {
-                                AstExpr::Identifier(id) => Some(id.clone()),
-                                _ => None,
-                            };
-                            let sem_target = lower_expr(target, &evaluator, &param_names, &local_names, &const_names);
-                            let via_target = match evaluator.eval_expr(via) {
-                                EvalResult::Value(CompileTimeValue::Position(p)) => MotionTarget::Position(p),
-                                EvalResult::Value(CompileTimeValue::Pose(p)) => MotionTarget::Pose(p),
-                                _ => MotionTarget::Position(Position { point: thalos_math::Vector3::zero() }),
-                            };
-                            body.push(SemanticStatement::Motion(SemanticMotion {
-                                kind: MotionKind::MoveC { via: via_target },
-                                target: sem_target,
-                                provenance: Provenance::new(source_name, None),
-                            }));
-                        }
-                        AstStatement::SetOutput { output, value } => {
-                            let val_bool = match evaluator.eval_expr(value) {
-                                EvalResult::Value(CompileTimeValue::Bool(b)) => b,
-                                _ => false,
-                            };
-                            body.push(SemanticStatement::SetOutput {
-                                name: output.clone(),
-                                value: val_bool,
-                                provenance: Provenance::new(Some(output.clone()), None),
-                            });
-                        }
-                        AstStatement::Expr(AstExpr::Call { callee, args }) => {
-                            match callee.as_str() {
-                                "set_output" => {
-                                    let name = match args.first().map(|a| evaluator.eval_expr(a)) {
-                                        Some(EvalResult::Value(CompileTimeValue::String(s))) => s,
-                                        _ => "output".to_string(),
-                                    };
-                                    let value = match args.get(1).map(|a| evaluator.eval_expr(a)) {
-                                        Some(EvalResult::Value(CompileTimeValue::Bool(b))) => b,
-                                        _ => false,
-                                    };
-                                    body.push(SemanticStatement::SetOutput {
-                                        name: name.clone(),
-                                        value,
-                                        provenance: Provenance::new(Some(name), None),
-                                    });
-                                }
-                                "movej" => {
-                                    if let Some(target_expr) = args.first() {
-                                        let source_name = match target_expr {
-                                            AstExpr::Identifier(id) => Some(id.clone()),
-                                            _ => None,
-                                        };
-                                        let sem_expr = lower_expr(target_expr, &evaluator, &param_names, &local_names, &const_names);
-                                        body.push(SemanticStatement::Motion(SemanticMotion {
-                                            kind: MotionKind::MoveJ,
-                                            target: sem_expr,
-                                            provenance: Provenance::new(source_name, None),
-                                        }));
-                                    }
-                                }
-                                "movel" => {
-                                    if let Some(target_expr) = args.first() {
-                                        let source_name = match target_expr {
-                                            AstExpr::Identifier(id) => Some(id.clone()),
-                                            _ => None,
-                                        };
-                                        let sem_expr = lower_expr(target_expr, &evaluator, &param_names, &local_names, &const_names);
-                                        body.push(SemanticStatement::Motion(SemanticMotion {
-                                            kind: MotionKind::MoveL,
-                                            target: sem_expr,
-                                            provenance: Provenance::new(source_name, None),
-                                        }));
-                                    }
-                                }
-                                "wait" => {
-                                    if let Some(dur_expr) = args.first() {
-                                        let sem_expr = lower_expr(dur_expr, &evaluator, &param_names, &local_names, &const_names);
-                                        body.push(SemanticStatement::Wait {
-                                            duration: sem_expr,
-                                            provenance: Provenance::new(None, None),
-                                        });
-                                    }
-                                }
-                                _ => {
-                                    let sem_args = args.iter().map(|a| lower_expr(a, &evaluator, &param_names, &local_names, &const_names)).collect();
-                                    body.push(SemanticStatement::Call {
-                                        function: callee.clone(),
-                                        args: sem_args,
-                                        provenance: Provenance::new(Some(callee.clone()), None),
-                                    });
-                                }
-                            }
-                        }
-                        AstStatement::Expr(e) => {
-                            let sem_expr = lower_expr(e, &evaluator, &param_names, &local_names, &const_names);
-                            body.push(SemanticStatement::Expr(sem_expr));
-                        }
-                    }
+                    body.push(lower_statement(stmt, &evaluator, &param_names, &mut local_names, &const_names));
                 }
 
                 let tail_expr = f
@@ -382,6 +245,170 @@ impl SemanticCompiler {
     }
 }
 
+fn lower_statement(
+    stmt: &AstStatement,
+    evaluator: &Evaluator,
+    params: &[String],
+    locals: &mut Vec<String>,
+    consts: &std::collections::HashSet<String>,
+) -> SemanticStatement {
+    match stmt {
+        AstStatement::Let { name, value, .. } => {
+            locals.push(name.clone());
+            let sem_expr = lower_expr(value, evaluator, params, locals, consts);
+            SemanticStatement::Let {
+                name: name.clone(),
+                value: sem_expr,
+                provenance: Provenance::new(Some(name.clone()), None),
+            }
+        }
+        AstStatement::MoveJ { target } => {
+            let source_name = match target {
+                AstExpr::Identifier(id) => Some(id.clone()),
+                _ => None,
+            };
+            let sem_expr = lower_expr(target, evaluator, params, locals, consts);
+            SemanticStatement::Motion(SemanticMotion {
+                kind: MotionKind::MoveJ,
+                target: sem_expr,
+                provenance: Provenance::new(source_name, None),
+            })
+        }
+        AstStatement::MoveL { target } => {
+            let source_name = match target {
+                AstExpr::Identifier(id) => Some(id.clone()),
+                _ => None,
+            };
+            let sem_expr = lower_expr(target, evaluator, params, locals, consts);
+            SemanticStatement::Motion(SemanticMotion {
+                kind: MotionKind::MoveL,
+                target: sem_expr,
+                provenance: Provenance::new(source_name, None),
+            })
+        }
+        AstStatement::Wait(dur_expr) => {
+            let sem_expr = lower_expr(dur_expr, evaluator, params, locals, consts);
+            SemanticStatement::Wait {
+                duration: sem_expr,
+                provenance: Provenance::new(None, None),
+            }
+        }
+        AstStatement::MoveC { via, target } => {
+            let source_name = match target {
+                AstExpr::Identifier(id) => Some(id.clone()),
+                _ => None,
+            };
+            let sem_target = lower_expr(target, evaluator, params, locals, consts);
+            let via_target = match evaluator.eval_expr(via) {
+                EvalResult::Value(CompileTimeValue::Position(p)) => MotionTarget::Position(p),
+                EvalResult::Value(CompileTimeValue::Pose(p)) => MotionTarget::Pose(p),
+                _ => MotionTarget::Position(Position { point: thalos_math::Vector3::zero() }),
+            };
+            SemanticStatement::Motion(SemanticMotion {
+                kind: MotionKind::MoveC { via: via_target },
+                target: sem_target,
+                provenance: Provenance::new(source_name, None),
+            })
+        }
+        AstStatement::SetOutput { output, value } => {
+            let val_bool = match evaluator.eval_expr(value) {
+                EvalResult::Value(CompileTimeValue::Bool(b)) => b,
+                _ => false,
+            };
+            SemanticStatement::SetOutput {
+                name: output.clone(),
+                value: val_bool,
+                provenance: Provenance::new(Some(output.clone()), None),
+            }
+        }
+        AstStatement::If { condition, then_branch, else_branch } => {
+            let sem_cond = lower_expr(condition, evaluator, params, locals, consts);
+            let sem_then = then_branch
+                .iter()
+                .map(|s| lower_statement(s, evaluator, params, locals, consts))
+                .collect();
+            let sem_else = else_branch.as_ref().map(|stmts| {
+                stmts
+                    .iter()
+                    .map(|s| lower_statement(s, evaluator, params, locals, consts))
+                    .collect()
+            });
+
+            SemanticStatement::If {
+                condition: sem_cond,
+                then_branch: sem_then,
+                else_branch: sem_else,
+                provenance: Provenance::new(None, None),
+            }
+        }
+        AstStatement::Expr(AstExpr::Call { callee, args }) => {
+            match callee.as_str() {
+                "set_output" => {
+                    let name = match args.first().map(|a| evaluator.eval_expr(a)) {
+                        Some(EvalResult::Value(CompileTimeValue::String(s))) => s,
+                        _ => "output".to_string(),
+                    };
+                    let value = match args.get(1).map(|a| evaluator.eval_expr(a)) {
+                        Some(EvalResult::Value(CompileTimeValue::Bool(b))) => b,
+                        _ => false,
+                    };
+                    SemanticStatement::SetOutput {
+                        name: name.clone(),
+                        value,
+                        provenance: Provenance::new(Some(name), None),
+                    }
+                }
+                "movej" => {
+                    let target_expr = args.first().cloned().unwrap_or(AstExpr::Identifier("default".into()));
+                    let source_name = match &target_expr {
+                        AstExpr::Identifier(id) => Some(id.clone()),
+                        _ => None,
+                    };
+                    let sem_expr = lower_expr(&target_expr, evaluator, params, locals, consts);
+                    SemanticStatement::Motion(SemanticMotion {
+                        kind: MotionKind::MoveJ,
+                        target: sem_expr,
+                        provenance: Provenance::new(source_name, None),
+                    })
+                }
+                "movel" => {
+                    let target_expr = args.first().cloned().unwrap_or(AstExpr::Identifier("default".into()));
+                    let source_name = match &target_expr {
+                        AstExpr::Identifier(id) => Some(id.clone()),
+                        _ => None,
+                    };
+                    let sem_expr = lower_expr(&target_expr, evaluator, params, locals, consts);
+                    SemanticStatement::Motion(SemanticMotion {
+                        kind: MotionKind::MoveL,
+                        target: sem_expr,
+                        provenance: Provenance::new(source_name, None),
+                    })
+                }
+                "wait" => {
+                    let dur_expr = args.first().cloned().unwrap_or(AstExpr::Number(0.0));
+                    let sem_expr = lower_expr(&dur_expr, evaluator, params, locals, consts);
+                    SemanticStatement::Wait {
+                        duration: sem_expr,
+                        provenance: Provenance::new(None, None),
+                    }
+                }
+                _ => {
+                    let sem_args = args.iter().map(|a| lower_expr(a, evaluator, params, locals, consts)).collect();
+                    SemanticStatement::Call {
+                        function: callee.clone(),
+                        args: sem_args,
+                        provenance: Provenance::new(Some(callee.clone()), None),
+                    }
+                }
+            }
+        }
+        AstStatement::Expr(e) => {
+            let sem_expr = lower_expr(e, evaluator, params, locals, consts);
+            SemanticStatement::Expr(sem_expr)
+        }
+    }
+}
+
 fn lower_expr(
     expr: &AstExpr,
     evaluator: &Evaluator,
@@ -389,47 +416,53 @@ fn lower_expr(
     locals: &[String],
     consts: &std::collections::HashSet<String>,
 ) -> SemanticExpr {
-    match evaluator.eval_expr(expr) {
-        EvalResult::Value(val) => SemanticExpr::Constant(val),
-        _ => match expr {
-            AstExpr::Identifier(id) => {
-                if params.contains(id) {
-                    SemanticExpr::ParameterRef(id.clone())
-                } else if locals.contains(id) {
-                    SemanticExpr::LocalRef(id.clone())
-                } else if consts.contains(id) {
-                    SemanticExpr::ConstRef(id.clone())
-                } else {
-                    SemanticExpr::TargetRef(id.clone())
+    match expr {
+        AstExpr::MemberAccess { object, member } => SemanticExpr::ChannelAccess {
+            module: object.clone(),
+            channel: member.clone(),
+        },
+        _ => match evaluator.eval_expr(expr) {
+            EvalResult::Value(val) => SemanticExpr::Constant(val),
+            _ => match expr {
+                AstExpr::Identifier(id) => {
+                    if params.contains(id) {
+                        SemanticExpr::ParameterRef(id.clone())
+                    } else if locals.contains(id) {
+                        SemanticExpr::LocalRef(id.clone())
+                    } else if consts.contains(id) {
+                        SemanticExpr::ConstRef(id.clone())
+                    } else {
+                        SemanticExpr::TargetRef(id.clone())
+                    }
                 }
-            }
-            AstExpr::Binary { left, op, right } => SemanticExpr::Binary {
-                left: Box::new(lower_expr(left, evaluator, params, locals, consts)),
-                op: *op,
-                right: Box::new(lower_expr(right, evaluator, params, locals, consts)),
+                AstExpr::Binary { left, op, right } => SemanticExpr::Binary {
+                    left: Box::new(lower_expr(left, evaluator, params, locals, consts)),
+                    op: *op,
+                    right: Box::new(lower_expr(right, evaluator, params, locals, consts)),
+                },
+                AstExpr::Call { callee, args } => SemanticExpr::Call {
+                    function: callee.clone(),
+                    args: args
+                        .iter()
+                        .map(|a| lower_expr(a, evaluator, params, locals, consts))
+                        .collect(),
+                },
+                AstExpr::MemberCall { object, method, args } => SemanticExpr::MemberCall {
+                    object: Box::new(lower_expr(
+                        &AstExpr::Identifier(object.clone()),
+                        evaluator,
+                        params,
+                        locals,
+                        consts,
+                    )),
+                    member: method.clone(),
+                    args: args
+                        .iter()
+                        .map(|a| lower_expr(a, evaluator, params, locals, consts))
+                        .collect(),
+                },
+                _ => SemanticExpr::ParameterRef(format!("{:?}", expr)),
             },
-            AstExpr::Call { callee, args } => SemanticExpr::Call {
-                function: callee.clone(),
-                args: args
-                    .iter()
-                    .map(|a| lower_expr(a, evaluator, params, locals, consts))
-                    .collect(),
-            },
-            AstExpr::MemberCall { object, method, args } => SemanticExpr::MemberCall {
-                object: Box::new(lower_expr(
-                    &AstExpr::Identifier(object.clone()),
-                    evaluator,
-                    params,
-                    locals,
-                    consts,
-                )),
-                member: method.clone(),
-                args: args
-                    .iter()
-                    .map(|a| lower_expr(a, evaluator, params, locals, consts))
-                    .collect(),
-            },
-            _ => SemanticExpr::ParameterRef(format!("{:?}", expr)),
         },
     }
 }

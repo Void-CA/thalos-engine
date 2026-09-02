@@ -24,6 +24,10 @@ pub enum Expr {
         method: String,
         args: Vec<Expr>,
     },
+    MemberAccess {
+        object: String,
+        member: String,
+    },
     Binary {
         left: Box<Expr>,
         op: BinaryOp,
@@ -37,4 +41,10 @@ pub enum BinaryOp {
     Sub,
     Mul,
     Div,
+    Gt,
+    Lt,
+    Gte,
+    Lte,
+    Eq,
+    Neq,
 }

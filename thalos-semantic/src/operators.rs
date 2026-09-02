@@ -44,6 +44,13 @@ impl BinaryOpRule {
             (Type::Duration, BinaryOp::Mul, Type::Float | Type::Int) => Ok(Type::Duration),
             (Type::Float | Type::Int, BinaryOp::Mul, Type::Duration) => Ok(Type::Duration),
 
+            // Comparisons
+            (Type::Float | Type::Int, BinaryOp::Gt | BinaryOp::Lt | BinaryOp::Gte | BinaryOp::Lte | BinaryOp::Eq | BinaryOp::Neq, Type::Float | Type::Int) => Ok(Type::Bool),
+            (Type::Length, BinaryOp::Gt | BinaryOp::Lt | BinaryOp::Gte | BinaryOp::Lte | BinaryOp::Eq | BinaryOp::Neq, Type::Length) => Ok(Type::Bool),
+            (Type::Angle, BinaryOp::Gt | BinaryOp::Lt | BinaryOp::Gte | BinaryOp::Lte | BinaryOp::Eq | BinaryOp::Neq, Type::Angle) => Ok(Type::Bool),
+            (Type::Duration, BinaryOp::Gt | BinaryOp::Lt | BinaryOp::Gte | BinaryOp::Lte | BinaryOp::Eq | BinaryOp::Neq, Type::Duration) => Ok(Type::Bool),
+            (Type::Bool, BinaryOp::Eq | BinaryOp::Neq, Type::Bool) => Ok(Type::Bool),
+
             // Primitive Scalar operations
             (Type::Float, _, Type::Float) => Ok(Type::Float),
             (Type::Int, _, Type::Int) => Ok(Type::Int),

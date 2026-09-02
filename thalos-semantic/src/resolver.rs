@@ -67,93 +67,140 @@ impl SemanticResolver {
         let mut local_env = env.clone();
 
         for stmt in &func.body {
-            match stmt {
-                SemanticStatement::Let { name, value, .. } => {
-                    match Self::eval_value(value, &local_env, targets, functions) {
-                        Ok(val) => {
-                            local_env.insert(name.clone(), val);
-                        }
-                        Err(e) => errors.push(e),
-                    }
-                }
-                SemanticStatement::Motion(SemanticMotion { kind, target, provenance }) => {
-                    match Self::eval_expr(target, &local_env, targets, functions) {
-                        Ok(target_val) => {
-                            let mut merged_prov = provenance.clone();
-                            merged_prov.call_stack = call_stack.clone();
-                            out.push(ResolvedStatement::Motion(ResolvedMotion {
-                                kind: kind.clone(),
-                                target: target_val,
-                                provenance: merged_prov,
-                            }));
-                        }
-                        Err(err) => errors.push(err),
-                    }
-                }
-                SemanticStatement::Wait { duration, provenance } => {
-                    if let Ok(secs) = Self::eval_scalar(duration, &local_env) {
-                        let mut merged_prov = provenance.clone();
-                        merged_prov.call_stack = call_stack.clone();
-                        out.push(ResolvedStatement::Wait {
-                            seconds: secs,
-                            provenance: merged_prov,
-                        });
-                    } else {
-                        errors.push("Could not evaluate wait duration".to_string());
-                    }
-                }
-                SemanticStatement::SetOutput { name, value, provenance } => {
-                    let mut merged_prov = provenance.clone();
-                    merged_prov.call_stack = call_stack.clone();
-                    out.push(ResolvedStatement::SetOutput {
-                        name: name.clone(),
-                        value: *value,
-                        provenance: merged_prov,
-                    });
-                }
-                SemanticStatement::Call { function, args, provenance: _ } => {
-                    if let Some(target_fn) = functions.get(function) {
-                        let mut arg_vals = Vec::new();
-                        for arg in args {
-                            match Self::eval_value(arg, &local_env, targets, functions) {
-                                Ok(val) => arg_vals.push(val),
-                                Err(e) => errors.push(e),
-                            }
-                        }
-
-                        if target_fn.params.len() != arg_vals.len() {
-                            errors.push(format!(
-                                "Function '{}' expected {} arguments, got {}",
-                                function,
-                                target_fn.params.len(),
-                                arg_vals.len()
-                            ));
-                            continue;
-                        }
-
-                        let mut new_env = HashMap::new();
-                        for (param, val) in target_fn.params.iter().zip(arg_vals) {
-                            new_env.insert(param.clone(), val);
-                        }
-
-                        Self::resolve_function(
-                            target_fn,
-                            &new_env,
-                            targets,
-                            functions,
-                            call_stack,
-                            out,
-                            errors,
-                        );
-                    } else {
-                        errors.push(format!("Unresolved function call '{}'", function));
-                    }
-                }
-                SemanticStatement::Expr(_) => {}
-            }
+            Self::resolve_statement(
+                stmt,
+                &mut local_env,
+                targets,
+                functions,
+                call_stack,
+                out,
+                errors,
+            );
         }
 
         call_stack.pop();
+    }
+
+    fn resolve_statement(
+        stmt: &SemanticStatement,
+        local_env: &mut HashMap<String, CompileTimeValue>,
+        targets: &HashMap<String, MotionTarget>,
+        functions: &HashMap<String, &SemanticFunction>,
+        call_stack: &mut Vec<CallSite>,
+        out: &mut Vec<ResolvedStatement>,
+        errors: &mut Vec<String>,
+    ) {
+        match stmt {
+            SemanticStatement::Let { name, value, .. } => {
+                match Self::eval_value(value, local_env, targets, functions) {
+                    Ok(val) => {
+                        local_env.insert(name.clone(), val);
+                    }
+                    Err(e) => errors.push(e),
+                }
+            }
+            SemanticStatement::Motion(SemanticMotion { kind, target, provenance }) => {
+                match Self::eval_expr(target, local_env, targets, functions) {
+                    Ok(target_val) => {
+                        let mut merged_prov = provenance.clone();
+                        merged_prov.call_stack = call_stack.clone();
+                        out.push(ResolvedStatement::Motion(ResolvedMotion {
+                            kind: kind.clone(),
+                            target: target_val,
+                            provenance: merged_prov,
+                        }));
+                    }
+                    Err(err) => errors.push(err),
+                }
+            }
+            SemanticStatement::Wait { duration, provenance } => {
+                if let Ok(secs) = Self::eval_scalar(duration, local_env) {
+                    let mut merged_prov = provenance.clone();
+                    merged_prov.call_stack = call_stack.clone();
+                    out.push(ResolvedStatement::Wait {
+                        seconds: secs,
+                        provenance: merged_prov,
+                    });
+                } else {
+                    errors.push("Could not evaluate wait duration".to_string());
+                }
+            }
+            SemanticStatement::SetOutput { name, value, provenance } => {
+                let mut merged_prov = provenance.clone();
+                merged_prov.call_stack = call_stack.clone();
+                out.push(ResolvedStatement::SetOutput {
+                    name: name.clone(),
+                    value: *value,
+                    provenance: merged_prov,
+                });
+            }
+            SemanticStatement::If { condition, then_branch, else_branch, .. } => {
+                let cond_val = Self::eval_value(condition, local_env, targets, functions);
+                match cond_val {
+                    Ok(CompileTimeValue::Bool(true)) => {
+                        for s in then_branch {
+                            Self::resolve_statement(s, local_env, targets, functions, call_stack, out, errors);
+                        }
+                    }
+                    Ok(CompileTimeValue::Bool(false)) => {
+                        if let Some(else_stmts) = else_branch {
+                            for s in else_stmts {
+                                Self::resolve_statement(s, local_env, targets, functions, call_stack, out, errors);
+                            }
+                        }
+                    }
+                    _ => {
+                        for s in then_branch {
+                            Self::resolve_statement(s, local_env, targets, functions, call_stack, out, errors);
+                        }
+                        if let Some(else_stmts) = else_branch {
+                            for s in else_stmts {
+                                Self::resolve_statement(s, local_env, targets, functions, call_stack, out, errors);
+                            }
+                        }
+                    }
+                }
+            }
+            SemanticStatement::Call { function, args, provenance: _ } => {
+                if let Some(target_fn) = functions.get(function) {
+                    let mut arg_vals = Vec::new();
+                    for arg in args {
+                        match Self::eval_value(arg, local_env, targets, functions) {
+                            Ok(val) => arg_vals.push(val),
+                            Err(e) => errors.push(e),
+                        }
+                    }
+
+                    if target_fn.params.len() != arg_vals.len() {
+                        errors.push(format!(
+                            "Function '{}' expected {} arguments, got {}",
+                            function,
+                            target_fn.params.len(),
+                            arg_vals.len()
+                        ));
+                        return;
+                    }
+
+                    let mut new_env = HashMap::new();
+                    for (param, val) in target_fn.params.iter().zip(arg_vals) {
+                        new_env.insert(param.clone(), val);
+                    }
+
+                    Self::resolve_function(
+                        target_fn,
+                        &new_env,
+                        targets,
+                        functions,
+                        call_stack,
+                        out,
+                        errors,
+                    );
+                } else {
+                    errors.push(format!("Unresolved function call '{}'", function));
+                }
+            }
+            SemanticStatement::Expr(_) => {}
+        }
     }
 
     fn eval_value(

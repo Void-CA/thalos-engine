@@ -26,6 +26,8 @@ tracing = "0.1"
 thalos-engine = { path = "../thalos-engine", features = ["test-support"] }
 thalos_transport = { path = "../thalos-transport" }
 thalos-persistence = { path = "../../thalos-industrial/backend/crates/thalos-persistence" }
+thalos-lang = { path = "../thalos-lang" }
+thalos-semantic = { path = "../thalos-semantic" }
 
 tempfile = "3"
 

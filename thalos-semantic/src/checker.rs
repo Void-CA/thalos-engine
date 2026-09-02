@@ -181,6 +181,11 @@ impl<'a> TypeChecker<'a> {
                     }
                 }
             }
+            Expr::MemberAccess { .. } => TypedExpr {
+                expr: expr.clone(),
+                ty: Type::Float,
+                span: None,
+            },
             _ => TypedExpr {
                 expr: expr.clone(),
                 ty: Type::Unit,
@@ -191,6 +196,23 @@ impl<'a> TypeChecker<'a> {
 
     pub fn check_statement(&mut self, stmt: &Statement) {
         match stmt {
+            Statement::If { condition, then_branch, else_branch } => {
+                let typed_cond = self.infer_expr(condition);
+                if typed_cond.ty != Type::Bool {
+                    self.diagnostics.push(SemanticDiagnostic {
+                        message: format!("if condition expected Bool, got {:?}", typed_cond.ty),
+                        span: None,
+                    });
+                }
+                for s in then_branch {
+                    self.check_statement(s);
+                }
+                if let Some(else_stmts) = else_branch {
+                    for s in else_stmts {
+                        self.check_statement(s);
+                    }
+                }
+            }
             Statement::Let { name, type_ann, value } => {
                 let typed_val = self.infer_expr(value);
                 if let Some(ann) = type_ann {

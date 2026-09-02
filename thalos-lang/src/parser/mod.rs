@@ -84,6 +84,11 @@ pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
             .delimited_by(just('"'), just('"'))
             .map(Expr::StringLiteral);
 
+        let member_access = ident
+            .then_ignore(just('.'))
+            .then(ident)
+            .map(|(object, member)| Expr::MemberAccess { object, member });
+
         let literal_expr = choice((
             duration_expr,
             length_expr,
@@ -92,12 +97,19 @@ pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
             string_expr,
             just("true").map(|_| Expr::Boolean(true)),
             just("false").map(|_| Expr::Boolean(false)),
+            member_access,
             ident.map(Expr::Identifier),
         ));
 
         let atom = choice((vector3_expr, call_expr, literal_expr)).padded();
 
         let op = choice((
+            just(">=").map(|_| BinaryOp::Gte),
+            just("<=").map(|_| BinaryOp::Lte),
+            just("==").map(|_| BinaryOp::Eq),
+            just("!=").map(|_| BinaryOp::Neq),
+            just('>').map(|_| BinaryOp::Gt),
+            just('<').map(|_| BinaryOp::Lt),
             just('+').map(|_| BinaryOp::Add),
             just('-').map(|_| BinaryOp::Sub),
             just('*').map(|_| BinaryOp::Mul),
@@ -118,45 +130,68 @@ pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
 
     let type_ann = just(':').padded().ignore_then(ident.padded());
 
-    let let_stmt = just("let")
-        .ignore_then(ident.padded())
-        .then(type_ann.clone().or_not())
-        .then_ignore(just('=').padded())
-        .then(expr.clone())
-        .then_ignore(just(';').or_not())
-        .map(|((name, type_ann), value)| Statement::Let {
-            name,
-            type_ann,
-            value,
-        });
+    let stmt_parser = recursive(|stmt| {
+        let let_stmt = just("let")
+            .ignore_then(ident.padded())
+            .then(type_ann.clone().or_not())
+            .then_ignore(just('=').padded())
+            .then(expr.clone())
+            .then_ignore(just(';').or_not())
+            .map(|((name, type_ann), value)| Statement::Let {
+                name,
+                type_ann,
+                value,
+            });
 
-    let movej_stmt = just("movej")
-        .ignore_then(expr.clone().delimited_by(just('('), just(')')))
-        .then_ignore(just(';').or_not())
-        .map(|target| Statement::MoveJ { target });
+        let movej_stmt = just("movej")
+            .ignore_then(expr.clone().delimited_by(just('('), just(')')))
+            .then_ignore(just(';').or_not())
+            .map(|target| Statement::MoveJ { target });
 
-    let movel_stmt = just("movel")
-        .ignore_then(expr.clone().delimited_by(just('('), just(')')))
-        .then_ignore(just(';').or_not())
-        .map(|target| Statement::MoveL { target });
+        let movel_stmt = just("movel")
+            .ignore_then(expr.clone().delimited_by(just('('), just(')')))
+            .then_ignore(just(';').or_not())
+            .map(|target| Statement::MoveL { target });
 
-    let wait_stmt = just("wait")
-        .ignore_then(expr.clone().delimited_by(just('('), just(')')))
-        .then_ignore(just(';').or_not())
-        .map(Statement::Wait);
+        let wait_stmt = just("wait")
+            .ignore_then(expr.clone().delimited_by(just('('), just(')')))
+            .then_ignore(just(';').or_not())
+            .map(Statement::Wait);
 
-    let stmt_with_semi = choice((
-        let_stmt,
-        movej_stmt,
-        movel_stmt,
-        wait_stmt,
-        expr.clone()
-            .then_ignore(just(';'))
-            .map(Statement::Expr),
-    ))
-    .padded();
+        let block = stmt
+            .clone()
+            .repeated()
+            .delimited_by(just('{').padded(), just('}').padded());
 
-    let fn_body = stmt_with_semi
+        let else_branch = just("else")
+            .padded()
+            .ignore_then(block.clone());
+
+        let if_stmt = just("if")
+            .padded()
+            .ignore_then(expr.clone())
+            .then(block)
+            .then(else_branch.or_not())
+            .map(|((condition, then_branch), else_branch)| Statement::If {
+                condition,
+                then_branch,
+                else_branch,
+            });
+
+        choice((
+            if_stmt,
+            let_stmt,
+            movej_stmt,
+            movel_stmt,
+            wait_stmt,
+            expr.clone()
+                .then_ignore(just(';'))
+                .map(Statement::Expr),
+        ))
+        .padded()
+    });
+
+    let fn_body = stmt_parser
         .repeated()
         .then(expr.clone().or_not())
         .delimited_by(just('{').padded(), just('}').padded());

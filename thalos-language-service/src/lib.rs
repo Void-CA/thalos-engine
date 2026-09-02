@@ -294,6 +294,22 @@ fn extract_statement_provenance(
                 kind: ProvenanceKind::Declaration,
             });
         }
+        Statement::If { then_branch, else_branch, .. } => {
+            let span = find_keyword_span(source, "if");
+            provenance.push(ProvenanceEntry {
+                id: prov_id,
+                span,
+                kind: ProvenanceKind::Instruction,
+            });
+            for s in then_branch {
+                extract_statement_provenance(source, s, provenance_id_counter, provenance);
+            }
+            if let Some(else_stmts) = else_branch {
+                for s in else_stmts {
+                    extract_statement_provenance(source, s, provenance_id_counter, provenance);
+                }
+            }
+        }
         Statement::Expr(_) => {
             let span = SourceSpan::new(0, 0);
             provenance.push(ProvenanceEntry {

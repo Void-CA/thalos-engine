@@ -23,5 +23,10 @@ pub enum Statement {
         output: String,
         value: Expr,
     },
+    If {
+        condition: Expr,
+        then_branch: Vec<Statement>,
+        else_branch: Option<Vec<Statement>>,
+    },
     Expr(Expr),
 }
