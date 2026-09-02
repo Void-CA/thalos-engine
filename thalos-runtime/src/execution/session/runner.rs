@@ -86,6 +86,7 @@ impl RobotObservationProvider for SharedRobotObservation {
 }
 
 /// Runner modular que combina un `AcquisitionProvider` y un `RobotObservationProvider`.
+#[derive(Debug)]
 pub struct TelemetryExecutionRunner<A, R>
 where
     A: AcquisitionProvider,

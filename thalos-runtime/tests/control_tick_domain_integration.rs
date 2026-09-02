@@ -1,10 +1,10 @@
 use thalos_runtime::execution::session::{
     Action, AcquisitionSnapshot, Decision, DomainExecutionCoordinator,
     DomainExecutionSession as ExecutionSession, Environment, EventSubscriber,
-    ExecutionConfiguration, ExecutionDomainError, ExecutionEvent, ExecutionEventBus, ExpectedState,
-    InMemoryAcquisitionRegistry, LifecycleState, PhysicalRunner, Reactivity, RobotState,
-    SharedRobotObservation, SimulationRunner, TelemetryExecutionRunner, TerminationPolicy,
-    TickContext, TickOutcome, TickResult,
+    ExecutionConfiguration, ExecutionDomainError, ExecutionEvent, ExecutionEventBus, ExecutionHistory,
+    ExecutionHistoryStore, ExpectedState, InMemoryAcquisitionRegistry, LifecycleState, PhysicalRunner,
+    Reactivity, RobotState, SharedRobotObservation, SimulationRunner, TelemetryExecutionRunner,
+    TerminationPolicy, TickContext, TickOutcome, TickResult,
 };
 
 #[test]
@@ -396,4 +396,164 @@ fn test_telemetry_execution_runner_dynamic_channel_and_robot_observation() {
     );
     assert_eq!(res1.tick.robot.joints, vec![0.0, 10.0, 0.0]);
     assert_eq!(res2.tick.robot.joints, vec![50.0, 10.0, 0.0]);
+}
+
+struct TestEventCollector {
+    events: std::sync::Arc<std::sync::Mutex<Vec<ExecutionEvent>>>,
+}
+
+impl EventSubscriber for TestEventCollector {
+    fn on_event(&self, event: &ExecutionEvent) {
+        self.events.lock().unwrap().push(event.clone());
+    }
+}
+
+#[test]
+fn test_execution_event_bus_pub_sub_and_temporal_invariants() {
+    let bus = ExecutionEventBus::new();
+    let events = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let collector = std::sync::Arc::new(TestEventCollector {
+        events: events.clone(),
+    });
+
+    bus.subscribe(collector);
+
+    let coordinator = DomainExecutionCoordinator::with_event_bus(bus);
+
+    // 1. Create Session -> SessionCreated
+    let session_id = coordinator.create_session("event_test_program", ExecutionConfiguration::default());
+
+    // 2. Initialize -> LifecycleChanged (Created -> Initializing)
+    coordinator.initialize(&session_id).unwrap();
+
+    // 3. Start -> LifecycleChanged (Initializing -> Running)
+    coordinator.start(&session_id).unwrap();
+
+    // 4. Tick -> TickEvaluated
+    let mut acq = AcquisitionSnapshot::default();
+    acq.timestamp_us = 1_700_000_000_000_000;
+    acq.channels.insert("sensor_a".to_string(), 42.0);
+
+    let ctx = TickContext::new(acq, RobotState::default(), ExpectedState::default());
+
+    let _res = coordinator
+        .tick(&session_id, ctx, |_acq, _rob| (Decision::Continue, Action::None))
+        .unwrap();
+
+    let captured = events.lock().unwrap().clone();
+    assert_eq!(captured.len(), 4, "Debe haber capturado 4 eventos");
+
+    // Event 0: SessionCreated
+    match &captured[0] {
+        ExecutionEvent::SessionCreated { program_id, .. } => {
+            assert_eq!(program_id, "event_test_program");
+        }
+        other => panic!("Esperado SessionCreated, recibido: {:?}", other),
+    }
+
+    // Event 1: LifecycleChanged (Created -> Initializing)
+    match &captured[1] {
+        ExecutionEvent::LifecycleChanged { previous, current, .. } => {
+            assert_eq!(*previous, LifecycleState::Created);
+            assert_eq!(*current, LifecycleState::Initializing);
+        }
+        other => panic!("Esperado LifecycleChanged, recibido: {:?}", other),
+    }
+
+    // Event 2: LifecycleChanged (Initializing -> Running)
+    match &captured[2] {
+        ExecutionEvent::LifecycleChanged { previous, current, .. } => {
+            assert_eq!(*previous, LifecycleState::Initializing);
+            assert_eq!(*current, LifecycleState::Running);
+        }
+        other => panic!("Esperado LifecycleChanged, recibido: {:?}", other),
+    }
+
+    // Event 3: TickEvaluated con TemporalInvariants
+    match &captured[3] {
+        ExecutionEvent::TickEvaluated { result, temporal, .. } => {
+            assert_eq!(result.tick.index, 1);
+            assert_eq!(result.decision, Decision::Continue);
+            // Validar separación explícita de relojes:
+            assert_eq!(temporal.sampled_at_us, 1_700_000_000_000_000);
+            assert!(temporal.received_at_us >= temporal.sampled_at_us);
+            assert!(temporal.evaluated_at_us >= temporal.received_at_us);
+        }
+        other => panic!("Esperado TickEvaluated, recibido: {:?}", other),
+    }
+}
+
+#[test]
+fn test_execution_history_reconstruction_from_event_bus() {
+    let bus = ExecutionEventBus::new();
+    let history_store = std::sync::Arc::new(ExecutionHistoryStore::new());
+
+    bus.subscribe(history_store.clone());
+
+    let coordinator = DomainExecutionCoordinator::with_event_bus(bus);
+
+    // 1. Crear sesión
+    let session_id = coordinator.create_session("assembly_line_v2", ExecutionConfiguration::default());
+
+    // 2. Transiciones de ciclo de vida
+    coordinator.initialize(&session_id).unwrap();
+    coordinator.start(&session_id).unwrap();
+
+    // 3. Ejecutar Ticks con SimulationRunner
+    let mut acq = AcquisitionSnapshot::default();
+    acq.timestamp_us = 1_700_000_000_100_000;
+    acq.channels.insert("line_speed".to_string(), 1.2);
+
+    let mut sim_runner = SimulationRunner::new(TickContext::new(
+        acq,
+        RobotState::default(),
+        ExpectedState::default(),
+    ));
+
+    let _res1 = coordinator
+        .tick_with_runner(&session_id, &mut sim_runner, |_acq, _rob| {
+            (
+                Decision::MotionAction {
+                    motion_type: "conveyor_sync".to_string(),
+                    target_name: "p1".to_string(),
+                },
+                Action::DispatchMotion {
+                    kind: "conveyor_sync".to_string(),
+                    target: "p1".to_string(),
+                },
+            )
+        })
+        .unwrap();
+
+    // Detener sesión
+    coordinator.stop(&session_id).unwrap();
+
+    // 4. Verificar la reconstrucción de ExecutionHistory desde el Store
+    let history: ExecutionHistory = history_store
+        .get_history(&session_id)
+        .expect("ExecutionHistory debe haber sido reconstruida");
+
+    assert_eq!(history.session_id, session_id);
+    assert_eq!(history.program_id, "assembly_line_v2");
+    assert_eq!(history.final_lifecycle, LifecycleState::Stopped);
+    assert!(history.completed_at_us.is_some());
+
+    // Reconstrucción de transiciones
+    assert_eq!(history.lifecycle_transitions.len(), 3);
+    assert_eq!(history.lifecycle_transitions[0].current, LifecycleState::Initializing);
+    assert_eq!(history.lifecycle_transitions[1].current, LifecycleState::Running);
+    assert_eq!(history.lifecycle_transitions[2].current, LifecycleState::Stopped);
+
+    // Reconstrucción de ticks
+    assert_eq!(history.ticks.len(), 1);
+    let record = &history.ticks[0];
+    assert_eq!(record.result.tick.index, 1);
+    assert_eq!(
+        record.result.decision,
+        Decision::MotionAction {
+            motion_type: "conveyor_sync".to_string(),
+            target_name: "p1".to_string()
+        }
+    );
+    assert_eq!(record.temporal.sampled_at_us, 1_700_000_000_100_000);
 }

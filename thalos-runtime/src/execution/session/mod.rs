@@ -1,6 +1,7 @@
 pub mod domain;
 pub mod events;
 pub mod execution_source;
+pub mod history;
 pub mod manager;
 pub mod runner;
 pub mod session_data;
@@ -14,6 +15,10 @@ pub use domain::{
 };
 pub use events::{EventSubscriber, ExecutionEvent, ExecutionEventBus, TemporalInvariants};
 pub use execution_source::ExecutionSource;
+pub use history::{
+    ExecutionHistory, ExecutionHistoryStore, HistoricalFaultRecord, HistoricalLifecycleTransition,
+    HistoricalTickRecord,
+};
 pub use manager::SessionManager;
 pub use runner::{
     AcquisitionProvider, ExecutionRunner, InMemoryAcquisitionRegistry, PhysicalRunner,

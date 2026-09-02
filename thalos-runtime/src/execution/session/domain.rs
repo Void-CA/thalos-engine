@@ -89,6 +89,15 @@ pub enum LifecycleState {
     Faulted(String),
 }
 
+impl LifecycleState {
+    pub fn is_terminal(&self) -> bool {
+        matches!(
+            self,
+            Self::Completed | Self::Stopped | Self::Faulted(_)
+        )
+    }
+}
+
 /// Estado de las variables y puntero de programa DSL.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ProgramState {
@@ -443,6 +452,10 @@ impl SessionRegistry {
 
     pub fn get(&self, id: &ExecutionSessionId) -> Option<ExecutionSession> {
         self.sessions.lock().unwrap().get(id).cloned()
+    }
+
+    pub fn list_sessions(&self) -> Vec<ExecutionSessionId> {
+        self.sessions.lock().unwrap().keys().cloned().collect()
     }
 
     pub fn with_session_mut<F, R>(&self, id: &ExecutionSessionId, f: F) -> Result<R, ExecutionDomainError>
