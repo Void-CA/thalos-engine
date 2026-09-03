@@ -232,7 +232,20 @@ fn parse_visual<R: BufRead>(
     loop {
         buf.clear();
         match reader.read_event_into(buf)? {
-            Event::Start(e) | Event::Empty(e) => {
+            Event::Empty(e) => {
+                let tag = e.name().as_ref().to_ascii_lowercase();
+                match tag.as_slice() {
+                    b"origin" => {
+                        origin = parse_origin(&e)?;
+                    }
+                    b"material" => {
+                        let name = attr(&e, b"name")?.unwrap_or_default();
+                        material = Some(Material { name, color: None, texture: None });
+                    }
+                    _ => {}
+                }
+            }
+            Event::Start(e) => {
                 let tag = e.name().as_ref().to_ascii_lowercase();
                 match tag.as_slice() {
                     b"origin" => {
@@ -276,10 +289,19 @@ fn parse_visual<R: BufRead>(
 fn parse_visual_material<R: BufRead>(
     reader: &mut Reader<R>,
     buf: &mut Vec<u8>,
-    _start: quick_xml::events::BytesStart<'_>,
+    start: quick_xml::events::BytesStart<'_>,
 ) -> Result<Material, UrdfError> {
-    let name = String::new();
+    let name = required_attr(&start, b"name", "material").unwrap_or_default();
     let mut color = None;
+
+    // Self-closing <material name="..."/> — no children to parse
+    if start.is_empty() {
+        return Ok(Material {
+            name,
+            color,
+            texture: None,
+        });
+    }
 
     loop {
         buf.clear();
