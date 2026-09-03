@@ -1,12 +1,16 @@
+use std::path::Path;
 use std::sync::Arc;
 
 use thalos_engine::core::models::{RobotMetadata, RobotModel, RobotSpec};
 use thalos_engine::core::robot::adapter;
 use thalos_importer::import_urdf;
+use thalos_importer::import_urdf_resolved;
+use thalos_importer::assets::resolver::Resolution;
 
 use crate::error::RuntimeError;
 use crate::ports::{PersistenceError, RobotRecord, RobotRepository, RobotSource};
 use crate::robot::catalog::RobotCatalog;
+use crate::robot::importer::{ImportError, RobotImporter};
 
 /// Application service for robot resource lifecycle.
 ///
@@ -43,26 +47,180 @@ impl RobotService {
         self.catalog.definitions().to_vec()
     }
 
-    /// Carga una definición del catálogo directamente en la escena.
+    /// Import a URDF with materialization: copies assets to workspace, persists record + assets.
     ///
-    /// Punto único por el que un `robot_definition_id` se convierte en el robot
-    /// activo: resuelve → parsea URDF → construye chain → SceneService.
-    /// El DOF derivado del chain dimensiona el controlador en `SceneService::execute`.
+    /// This is the primary import path for new robots. The URDF and all referenced
+    /// meshes are materialized into the workspace directory, and both the robot record
+    /// and asset metadata are persisted to SQLite.
+    pub async fn import_urdf_materialized(
+        &self,
+        workspace_root: &Path,
+        urdf_xml: &str,
+        source_label: Option<&str>,
+        extra_roots: &[std::path::PathBuf],
+    ) -> Result<RobotRecord, RuntimeError> {
+        let result = RobotImporter::import_urdf(workspace_root, urdf_xml, source_label, extra_roots)
+            .map_err(|e| match e {
+                ImportError::InvalidUrdf(msg) => RuntimeError::InvalidUrdf { message: msg },
+                ImportError::ChainError(msg) => RuntimeError::UrdfChainError { message: msg },
+                ImportError::MissingAssets(missing) => RuntimeError::InvalidUrdf {
+                    message: format!("Missing assets: {:?}", missing),
+                },
+                other => RuntimeError::InvalidUrdf {
+                    message: other.to_string(),
+                },
+            })?;
+
+        // Persist record + assets to SQLite
+        let repo = self.repo.as_ref().ok_or_else(|| RuntimeError::Persistence {
+            message: "No robot repository configured".to_string(),
+        })?;
+        repo.save(&result.record).await.map_err(|e| RuntimeError::Persistence {
+            message: e.to_string(),
+        })?;
+        repo.save_assets(&result.robot_id, &result.assets).await.map_err(|e| RuntimeError::Persistence {
+            message: e.to_string(),
+        })?;
+
+        Ok(result.record)
+    }
+
+    /// Import a robot package with materialization.
+    pub async fn import_package_materialized(
+        &self,
+        workspace_root: &Path,
+        package_dir: &Path,
+    ) -> Result<RobotRecord, RuntimeError> {
+        let result = RobotImporter::import_package(workspace_root, package_dir)
+            .map_err(|e| match e {
+                ImportError::InvalidUrdf(msg) => RuntimeError::InvalidUrdf { message: msg },
+                ImportError::ChainError(msg) => RuntimeError::UrdfChainError { message: msg },
+                ImportError::MissingAssets(missing) => RuntimeError::InvalidUrdf {
+                    message: format!("Missing assets: {:?}", missing),
+                },
+                other => RuntimeError::InvalidUrdf {
+                    message: other.to_string(),
+                },
+            })?;
+
+        let repo = self.repo.as_ref().ok_or_else(|| RuntimeError::Persistence {
+            message: "No robot repository configured".to_string(),
+        })?;
+        repo.save(&result.record).await.map_err(|e| RuntimeError::Persistence {
+            message: e.to_string(),
+        })?;
+        repo.save_assets(&result.robot_id, &result.assets).await.map_err(|e| RuntimeError::Persistence {
+            message: e.to_string(),
+        })?;
+
+        Ok(result.record)
+    }
+
+    /// Load a materialized robot from workspace filesystem.
+    ///
+    /// Reads the URDF and assets from the workspace directory, builds the
+    /// kinematic chain, and loads into SceneService.
+    pub async fn load_materialized_robot(
+        &self,
+        id: &str,
+        workspace_root: &Path,
+        scene: &crate::scene::service::SceneService,
+    ) -> Result<crate::scene::snapshot::RuntimeSnapshot, RuntimeError> {
+        let record = self.get_record(id).await?;
+
+        // Try filesystem first (materialized robot)
+        let urdf_path = workspace_root.join("robots").join(id).join("robot.urdf");
+        if urdf_path.exists() {
+            let urdf_xml = std::fs::read_to_string(&urdf_path)
+                .map_err(|e| RuntimeError::InvalidUrdf {
+                    message: format!("Cannot read URDF: {e}"),
+                })?;
+
+            // Load assets from SQLite and build resolution
+            let repo = self.repo.as_ref().ok_or_else(|| RuntimeError::Persistence {
+                message: "No robot repository configured".to_string(),
+            })?;
+            let assets = repo.get_assets(id).await.unwrap_or_default();
+
+            let resolution = if assets.is_empty() {
+                Resolution::default()
+            } else {
+                build_resolution_from_assets(&assets, workspace_root)
+            };
+
+            let result = import_urdf_resolved(&urdf_xml, &resolution)
+                .map_err(|e| RuntimeError::InvalidUrdf {
+                    message: format!("Invalid URDF: {e}"),
+                })?;
+
+            let chain = adapter::auto(&result.robot).map_err(|e| RuntimeError::UrdfChainError {
+                message: format!("Cannot build chain: {e}"),
+            })?;
+
+            return scene
+                .load_urdf_robot_command(
+                    result.robot,
+                    chain,
+                    record.name.clone(),
+                    id,
+                )
+                .await;
+        }
+
+        // Fallback: legacy robot with urdf_xml in SQLite
+        #[allow(deprecated)]
+        let urdf_xml = record.urdf_xml.ok_or_else(|| RuntimeError::InvalidUrdf {
+            message: format!("Robot '{id}' has no URDF on filesystem and no legacy URDF in database"),
+        })?;
+        scene.load_urdf_robot(&urdf_xml).await
+    }
+
+    /// Load a catalog definition into the scene, materializing it to the workspace.
     pub async fn load_definition_into_scene(
         &self,
         definition_id: &str,
+        workspace_root: &Path,
         scene: &crate::scene::service::SceneService,
     ) -> Result<crate::scene::snapshot::RuntimeSnapshot, RuntimeError> {
-        let (resolution, chain, robot) = self
+        // Check if already materialized in workspace
+        let repo = self.repo.as_ref().ok_or_else(|| RuntimeError::Persistence {
+            message: "No robot repository configured".to_string(),
+        })?;
+
+        // Look for existing record with this definition_id
+        if let Ok(Some(_record)) = repo.get(definition_id).await {
+            // Already materialized — load from filesystem
+            return self.load_materialized_robot(definition_id, workspace_root, scene).await;
+        }
+
+        // Not yet materialized — materialize from catalog
+        let resolution = self
             .catalog
             .load_catalog_entry(definition_id)
             .map_err(|e| RuntimeError::RobotDefinition(e))?;
+
+        let result = RobotImporter::import_package(
+            workspace_root,
+            &resolution.0.definition.asset_root,
+        )
+        .map_err(|e| RuntimeError::InvalidUrdf {
+            message: format!("Failed to materialize catalog robot: {e}"),
+        })?;
+
+        // Persist
+        repo.save(&result.record).await.map_err(|e| RuntimeError::Persistence {
+            message: e.to_string(),
+        })?;
+        repo.save_assets(&result.robot_id, &result.assets).await.map_err(|e| RuntimeError::Persistence {
+            message: e.to_string(),
+        })?;
+
         scene
             .load_urdf_robot_command(
-                robot,
-                chain,
-                resolution.definition.display_name,
-                definition_id,
+                result.robot,
+                result.chain,
+                result.record.name.clone(),
+                &result.robot_id,
             )
             .await
     }
@@ -131,9 +289,11 @@ impl RobotService {
         RobotModel::from_id(id).ok().map(|m| m.default_spec())
     }
 
-    /// Import a URDF XML, validate it, persist the record, and return its metadata.
+    /// LEGACY: Import a URDF XML without materialization.
     ///
-    /// Flow: URDF XML → parse → validate chain → persist → return record.
+    /// Prefer `import_urdf_materialized` for new imports. This method is retained
+    /// for backward compatibility with code that doesn't have a workspace root.
+    #[deprecated(note = "Use import_urdf_materialized for new imports")]
     pub async fn import_urdf(&self, urdf_xml: &str) -> Result<RobotRecord, RuntimeError> {
         // 1. Parse the URDF to validate structure
         let robot = import_urdf(urdf_xml).map_err(|e| RuntimeError::InvalidUrdf {
@@ -175,10 +335,28 @@ impl RobotService {
         tracing::info!(
             robot_id = %id,
             robot_name = %robot.name,
-            "Imported URDF robot into persistence"
+            "Imported URDF robot into persistence (legacy)"
         );
 
         Ok(record)
+    }
+
+    /// Load a robot (canonical engine model or imported persistence record) into `SceneService`.
+    pub async fn load_robot_into_scene(
+        &self,
+        id: &str,
+        scene: &crate::scene::service::SceneService,
+    ) -> Result<crate::scene::snapshot::RuntimeSnapshot, RuntimeError> {
+        if let Ok(model) = RobotModel::from_id(id) {
+            scene.execute(crate::commands::Command::LoadRobot(model)).await
+        } else {
+            let record = self.get_record(id).await?;
+            #[allow(deprecated)]
+            let urdf_xml = record.urdf_xml.ok_or_else(|| RuntimeError::InvalidUrdf {
+                message: format!("Record '{id}' contains no URDF XML"),
+            })?;
+            scene.load_urdf_robot(&urdf_xml).await
+        }
     }
 
     /// Delete a robot record from persistence.
@@ -194,26 +372,25 @@ impl RobotService {
             })
     }
 
-    /// Load a robot (canonical engine model or imported persistence record) into `SceneService`.
-    pub async fn load_robot_into_scene(
-        &self,
-        id: &str,
-        scene: &crate::scene::service::SceneService,
-    ) -> Result<crate::scene::snapshot::RuntimeSnapshot, RuntimeError> {
-        if let Ok(model) = RobotModel::from_id(id) {
-            scene.execute(crate::commands::Command::LoadRobot(model)).await
-        } else {
-            let record = self.get_record(id).await?;
-            let urdf_xml = record.urdf_xml.ok_or_else(|| RuntimeError::InvalidUrdf {
-                message: format!("Record '{id}' contains no URDF XML"),
-            })?;
-            scene.load_urdf_robot(&urdf_xml).await
-        }
-    }
-
     /// Check if persistence is available.
     pub fn has_persistence(&self) -> bool {
         self.repo.is_some()
+    }
+}
+
+/// Build a Resolution from persisted RobotAsset entries.
+fn build_resolution_from_assets(
+    assets: &[thalos_models::robot_asset::RobotAsset],
+    workspace_root: &Path,
+) -> Resolution {
+    let mut resolved = std::collections::HashMap::new();
+    for asset in assets {
+        let absolute = workspace_root.join(&asset.stored_path);
+        resolved.insert(asset.original_uri.clone(), absolute);
+    }
+    Resolution {
+        resolved,
+        missing: vec![],
     }
 }
 

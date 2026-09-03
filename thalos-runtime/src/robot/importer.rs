@@ -8,7 +8,6 @@ use thalos_importer::assets::resolver::{Resolution, UriResolver};
 use thalos_importer::import_urdf_resolved;
 use thalos_models::robot::Robot;
 use thalos_models::robot_asset::RobotAsset;
-use thalos_engine::core::models::RobotSpec;
 use thalos_engine::core::robot::adapter;
 use thalos_engine::core::robot::serial_chain::SerialChain;
 
@@ -124,10 +123,12 @@ impl RobotImporter {
         }
 
         // 1. Auto-discover URDF in the package
-        let urdf_xml = Self::discover_urdf_in_package(package_dir)
+        let urdf_path = find_urdf_in_package(package_dir)
             .ok_or_else(|| ImportError::InvalidUrdf(
                 format!("No URDF file found in {}", package_dir.display())
             ))?;
+        let urdf_xml = std::fs::read_to_string(&urdf_path)
+            .map_err(|e| ImportError::InvalidUrdf(e.to_string()))?;
 
         // 2. Discover asset references
         let discovery = UrdfAssetDiscovery::new();
@@ -300,7 +301,7 @@ impl RobotImporter {
     /// listing the mismatched files.
     pub fn verify_integrity(
         workspace_root: &Path,
-        robot_id: &str,
+        _robot_id: &str,
         assets: &[RobotAsset],
     ) -> Result<(), Vec<ImportError>> {
         let mut errors = Vec::new();
