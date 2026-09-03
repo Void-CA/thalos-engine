@@ -16,9 +16,26 @@ pub type VisualId = String;
 /// Forma geométrica de un elemento visual primitivo.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum PrimitiveGeometry {
-    Cylinder { radius: f64, height: f64 },
-    Sphere { radius: f64 },
-    Box { width: f64, height: f64, depth: f64 },
+    Cylinder {
+        radius: f64,
+        height: f64,
+    },
+    Sphere {
+        radius: f64,
+    },
+    Box {
+        width: f64,
+        height: f64,
+        depth: f64,
+    },
+    Mesh {
+        filename: String,
+        scale: Option<[f64; 3]>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        vertices: Vec<f32>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        normals: Vec<f32>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
