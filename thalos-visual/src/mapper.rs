@@ -38,24 +38,45 @@ fn to_primitive_with_resolver(
             let mut normals = Vec::new();
 
             if let Some(res) = resolver {
-                if let Ok(resolved_path) = res.resolve(filename) {
-                    let ext = resolved_path
-                        .extension()
-                        .and_then(|e| e.to_str())
-                        .unwrap_or("")
-                        .to_lowercase();
-                    if ext == "stl" {
-                        if let Ok(mesh_data) = load_stl(&resolved_path) {
-                            vertices = mesh_data.vertices;
-                            normals = mesh_data.normals;
-                        }
-                    } else if ext == "dae" {
-                        if let Ok(mesh_data) = load_dae(&resolved_path) {
-                            vertices = mesh_data.vertices;
-                            normals = mesh_data.normals;
+                match res.resolve(filename) {
+                    Ok(resolved_path) => {
+                        let ext = resolved_path
+                            .extension()
+                            .and_then(|e| e.to_str())
+                            .unwrap_or("")
+                            .to_lowercase();
+                        if ext == "stl" {
+                            match load_stl(&resolved_path) {
+                                Ok(mesh_data) => {
+                                    eprintln!("[MeshLoader] ✓ Loaded STL: {} ({} vertices)", resolved_path.display(), mesh_data.vertices.len() / 3);
+                                    vertices = mesh_data.vertices;
+                                    normals = mesh_data.normals;
+                                }
+                                Err(e) => {
+                                    eprintln!("[MeshLoader] ✗ Failed to load STL {}: {}", resolved_path.display(), e);
+                                }
+                            }
+                        } else if ext == "dae" {
+                            match load_dae(&resolved_path) {
+                                Ok(mesh_data) => {
+                                    eprintln!("[MeshLoader] ✓ Loaded DAE: {} ({} vertices)", resolved_path.display(), mesh_data.vertices.len() / 3);
+                                    vertices = mesh_data.vertices;
+                                    normals = mesh_data.normals;
+                                }
+                                Err(e) => {
+                                    eprintln!("[MeshLoader] ✗ Failed to load DAE {}: {}", resolved_path.display(), e);
+                                }
+                            }
+                        } else {
+                            eprintln!("[MeshLoader] ? Unknown mesh format: {} (ext: {})", resolved_path.display(), ext);
                         }
                     }
+                    Err(e) => {
+                        eprintln!("[MeshLoader] ✗ Could not resolve '{}': {}", filename, e);
+                    }
                 }
+            } else {
+                eprintln!("[MeshLoader] ✗ No resolver for '{}'", filename);
             }
 
             Some(PrimitiveGeometry::Mesh {

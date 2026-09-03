@@ -6,7 +6,7 @@ use crate::robot::joint::{FixedJoint, JointLimits, JointType, PrismaticJoint, Re
 use crate::robot::link::Link as CoreLink;
 use crate::robot::segment::Segment;
 use crate::robot::serial_chain::SerialChain;
-use crate::spatial::frame::{FrameId, FrameRegistry};
+use crate::spatial::frame::{Frame, FrameId, FrameRegistry};
 use thalos_math::Transform3D;
 
 // ─── Error ──────────────────────────────────────────────────────
@@ -149,9 +149,13 @@ pub fn from_tip(robot: &ModelRobot, target_name: &str) -> Result<SerialChain, Ad
     let mut joint_counter: u32 = 0;
     let mut segments = Vec::new();
 
+    // Register frames with IDs matching the graph LinkIds (not sequential auto-increment).
+    // This ensures segments and FrameRegistry use the same FrameId numbering.
     for &link_id in &path.links {
         let name = graph.link_name(link_id).unwrap_or("unknown");
-        registry.create(name);
+        let frame_id = FrameId::new(link_id as u64);
+        let frame = Frame::new(frame_id, name.to_string());
+        registry.register(frame);
     }
 
     for (i, &joint_id) in path.joints.iter().enumerate() {
