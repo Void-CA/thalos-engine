@@ -1,99 +1,36 @@
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use thiserror::Error;
-
-#[derive(Debug, Error, PartialEq, Eq)]
-pub enum AssetResolverError {
-    #[error("File not found: {0}")]
-    FileNotFound(PathBuf),
-    #[error("Package not found: {0}")]
-    PackageNotFound(String),
-    #[error("Invalid asset URI: {0}")]
-    InvalidUri(String),
-}
+pub use thalos_importer::UriResolverError;
 
 /// Resolves asset paths (such as `package://package_name/path/to/mesh.stl` or relative paths)
 /// to absolute filesystem paths.
+///
+/// This is a thin wrapper around [`thalos_importer::UriResolver`] that preserves the
+/// original `AssetResolver` API for scene-handling and visual-mapping consumers.
+/// For the canonical implementation and batch resolution, see
+/// [`thalos_importer::UriResolver`] and [`thalos_importer::Resolution`].
 #[derive(Debug, Clone, Default)]
 pub struct AssetResolver {
-    /// Directory of the URDF file or project root.
-    base_dir: Option<PathBuf>,
-    /// Explicit mappings from package name to base directory on disk.
-    package_mappings: HashMap<String, PathBuf>,
+    inner: thalos_importer::UriResolver,
 }
 
 impl AssetResolver {
     pub fn new() -> Self {
-        Self::default()
+        Self { inner: thalos_importer::UriResolver::new() }
     }
 
     pub fn with_base_dir<P: AsRef<Path>>(mut self, base_dir: P) -> Self {
-        self.base_dir = Some(base_dir.as_ref().to_path_buf());
+        self.inner = self.inner.with_base_dir(base_dir);
         self
     }
 
     pub fn register_package<P: AsRef<Path>>(mut self, package_name: impl Into<String>, path: P) -> Self {
-        self.package_mappings.insert(package_name.into(), path.as_ref().to_path_buf());
+        self.inner = self.inner.register_package(package_name, path);
         self
     }
 
     /// Resolve an asset URI or path to an absolute, existing [`PathBuf`].
-    pub fn resolve(&self, uri: &str) -> Result<PathBuf, AssetResolverError> {
-        let path = if let Some(package_path) = uri.strip_prefix("package://") {
-            self.resolve_package_uri(package_path)?
-        } else if let Some(file_path) = uri.strip_prefix("file://") {
-            PathBuf::from(file_path)
-        } else {
-            // Relative path
-            let relative = PathBuf::from(uri);
-            if relative.is_absolute() {
-                relative
-            } else if let Some(base) = &self.base_dir {
-                base.join(relative)
-            } else {
-                relative
-            }
-        };
-
-        if path.exists() {
-            Ok(path)
-        } else {
-            Err(AssetResolverError::FileNotFound(path))
-        }
-    }
-
-    fn resolve_package_uri(&self, package_rel_path: &str) -> Result<PathBuf, AssetResolverError> {
-        let mut parts = package_rel_path.splitn(2, '/');
-        let pkg_name = parts
-            .next()
-            .ok_or_else(|| AssetResolverError::InvalidUri(package_rel_path.to_string()))?;
-        let sub_path = parts.next().unwrap_or("");
-
-        // 1. Check registered package mappings
-        if let Some(pkg_base) = self.package_mappings.get(pkg_name) {
-            return Ok(pkg_base.join(sub_path));
-        }
-
-        // 2. Heuristic check relative to base_dir
-        if let Some(base) = &self.base_dir {
-            // Check if base_dir itself ends with pkg_name or parent contains pkg_name folder
-            let mut curr = Some(base.as_path());
-            while let Some(dir) = curr {
-                if dir.file_name().and_then(|n| n.to_str()) == Some(pkg_name) {
-                    return Ok(dir.join(sub_path));
-                }
-                let candidate = dir.join(pkg_name);
-                if candidate.is_dir() {
-                    return Ok(candidate.join(sub_path));
-                }
-                curr = dir.parent();
-            }
-
-            // Fallback: join directly to base_dir
-            return Ok(base.join(sub_path));
-        }
-
-        Err(AssetResolverError::PackageNotFound(pkg_name.to_string()))
+    pub fn resolve(&self, uri: &str) -> Result<PathBuf, UriResolverError> {
+        self.inner.resolve_uri_strict(uri)
     }
 }
 
@@ -145,6 +82,6 @@ mod tests {
         let dir = tempdir().unwrap();
         let resolver = AssetResolver::new().with_base_dir(dir.path());
         let err = resolver.resolve("non_existent.stl").unwrap_err();
-        assert!(matches!(err, AssetResolverError::FileNotFound(_)));
+        assert!(matches!(err, UriResolverError::FileNotFound(_)));
     }
 }

@@ -11,50 +11,53 @@ const PLANAR_2R: &str = include_str!("fixtures/robots/planar_2r/robot.urdf");
 
 fn sample_references() -> Vec<AssetReference> {
     vec![
-        AssetReference { uri: "package://abb_irb140_support/meshes/base_link.stl".into(), kind: AssetKind::Mesh },
-        AssetReference { uri: "package://abb_irb140_support/meshes/shoulder.stl".into(), kind: AssetKind::Mesh },
-        AssetReference { uri: "package://abb_irb140_support/meshes/upper_arm.stl".into(), kind: AssetKind::Mesh },
-        AssetReference { uri: "package://abb_irb140_support/meshes/forearm.stl".into(), kind: AssetKind::Mesh },
-        AssetReference { uri: "package://abb_irb140_support/meshes/wrist.stl".into(), kind: AssetKind::Mesh },
+        AssetReference { uri: "package://abb_irb140_support/meshes/irb140/visual/base_link.stl".into(), kind: AssetKind::Mesh },
+        AssetReference { uri: "package://abb_irb140_support/meshes/irb140/visual/link_1.stl".into(), kind: AssetKind::Mesh },
+        AssetReference { uri: "package://abb_irb140_support/meshes/irb140/visual/link_2.stl".into(), kind: AssetKind::Mesh },
+        AssetReference { uri: "package://abb_irb140_support/meshes/irb140/visual/link_3.stl".into(), kind: AssetKind::Mesh },
+        AssetReference { uri: "package://abb_irb140_support/meshes/irb140/visual/link_4.stl".into(), kind: AssetKind::Mesh },
     ]
+}
+
+fn rewrite_test_resolution() -> Resolution {
+    let mut resolved = HashMap::new();
+    resolved.insert(
+        "package://abb_irb140_support/meshes/irb140/visual/base_link.stl".into(),
+        PathBuf::from("/data/robots/abb/meshes/visual/base_link.stl"),
+    );
+    Resolution { resolved, missing: vec![] }
 }
 
 #[test]
 fn resolve_candidate_rewrites_mesh_filenames() {
     let candidate = urdf::parse(ABB_IRB140).unwrap();
-
-    let mut resolved = HashMap::new();
-    resolved.insert(
-        "package://abb_irb140_support/meshes/base_link.stl".into(),
-        PathBuf::from("/data/robots/abb/meshes/base_link.stl"),
-    );
-    let resolution = Resolution { resolved, missing: vec![] };
+    let resolution = rewrite_test_resolution();
 
     let (mut candidate, diags) = resolve_candidate(candidate, &resolution);
 
-    // The diagnostics should be empty since we resolved all meshes that are in the resolution
-    // (note: only base_link is resolved, others are missing → warnings emitted).
-    assert!(!diags.is_empty(), "should emit warnings for unresolved meshes");
+    // Other meshes not in the resolution should generate warnings
+    let warnings: Vec<_> = diags.iter().filter(|d| matches!(d, thalos_importer::ImportDiagnostic::Warning { .. })).collect();
+    assert_eq!(warnings.len(), 13, "should emit 13 warnings for 13 unresolved meshes");
 
     // Walk visual/collision and find the base_link mesh — it should be rewritten
     let mut found = false;
     for body in &mut candidate.raw_bodies {
         for visual in &mut body.visual {
             if let thalos_models::geometry::Geometry::Mesh { filename, .. } = &mut visual.geometry {
-                if filename.contains("base") {
-                    assert_eq!(filename, "/data/robots/abb/meshes/base_link.stl");
+                if filename.contains("base_link") && filename.contains("/visual/") {
+                    assert_eq!(filename, "/data/robots/abb/meshes/visual/base_link.stl");
                     found = true;
                 }
             }
         }
     }
-    assert!(found, "base_link mesh should have been rewritten");
+    assert!(found, "base_link visual mesh should have been rewritten");
 
     // Other meshes should remain as original URIs
     for body in &candidate.raw_bodies {
         for visual in &body.visual {
             if let thalos_models::geometry::Geometry::Mesh { filename, .. } = &visual.geometry {
-                if !filename.contains("base") && !filename.is_empty() {
+                if !filename.contains("base_link") || !filename.contains("/visual/") {
                     assert!(filename.starts_with("package://"), "unresolved mesh should keep original URI: {filename}");
                 }
             }
@@ -70,9 +73,9 @@ fn resolve_candidate_emits_warnings_for_missing() {
     let resolution = Resolution::default();
     let (_, diags) = resolve_candidate(candidate, &resolution);
 
-    // Should get one warning per unique mesh URI
+    // Should get one warning per unique mesh URI (14 total)
     let warnings: Vec<_> = diags.iter().filter(|d| matches!(d, thalos_importer::ImportDiagnostic::Warning { .. })).collect();
-    assert_eq!(warnings.len(), 5, "should emit 5 warnings for 5 unique missing meshes");
+    assert_eq!(warnings.len(), 14, "should emit 14 warnings for 14 unique missing meshes");
 }
 
 #[test]
@@ -99,11 +102,12 @@ fn resolve_candidate_preserves_primitives() {
 #[test]
 fn import_urdf_resolved_produces_robot_with_resolved_paths() {
     let mut resolved = HashMap::new();
-    // Simulate full resolution for all ABB IRB 140 meshes
-    for name in &["base_link", "shoulder", "upper_arm", "forearm", "wrist"] {
+    // Simulate full resolution for all ABB IRB 140 visual meshes
+    for i in 0..=6 {
+        let name = if i == 0 { "base_link".to_string() } else { format!("link_{i}") };
         resolved.insert(
-            format!("package://abb_irb140_support/meshes/{name}.stl"),
-            PathBuf::from(format!("/data/robots/abb/meshes/{name}.stl")),
+            format!("package://abb_irb140_support/meshes/irb140/visual/{name}.stl"),
+            PathBuf::from(format!("/data/robots/abb/meshes/visual/{name}.stl")),
         );
     }
     let resolution = Resolution { resolved, missing: vec![] };
