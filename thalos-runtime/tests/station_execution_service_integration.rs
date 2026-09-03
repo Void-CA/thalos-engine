@@ -30,6 +30,7 @@ fn test_end_to_end_station_service_execution_pipeline() {
         station_id: station_id.clone(),
         name: "Main Manipulator".to_string(),
         robot_name: "SCARA-01".to_string(),
+        robot_definition_id: None,
         controller_binding: "simulated_transport".to_string(),
     });
 
@@ -157,6 +158,7 @@ fn test_station_service_transactional_failure_on_invalid_target() {
         station_id: station_a_id.clone(),
         name: "Robot A".to_string(),
         robot_name: "KUKA-01".to_string(),
+        robot_definition_id: None,
         controller_binding: "sim".to_string(),
     });
 

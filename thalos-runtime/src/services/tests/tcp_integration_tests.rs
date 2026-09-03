@@ -4,7 +4,7 @@
 //! (workspace, singularity, manipulability, IK) must reference the
 //! same active TCP when set.
 
-use thalos_engine::math::{Transform3D, UnitQuaternion, Vector3};
+use thalos_engine::math::{Transform3D, Vector3};
 
 use std::sync::Arc;
 

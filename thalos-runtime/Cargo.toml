@@ -21,11 +21,13 @@ serde_json = "1"
 hex = "0.4"
 sha2 = "0.10"
 uuid = { version = "1", features = ["v4", "serde"] }
+thalos_transport = { path = "../thalos-transport" }
 tracing = "0.1"
+[features]
+test-support = []
 
 [dev-dependencies]
 thalos-engine = { path = "../thalos-engine", features = ["test-support"] }
-thalos_transport = { path = "../thalos-transport" }
 thalos-persistence = { path = "../../thalos-industrial/backend/crates/thalos-persistence" }
 thalos-lang = { path = "../thalos-lang" }
 thalos-semantic = { path = "../thalos-semantic" }

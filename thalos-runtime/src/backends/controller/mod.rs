@@ -182,7 +182,7 @@ pub trait RobotController: Send + Sync {
 // TESTS
 // ═════════════════════════════════════════════════════════════════════
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub mod tests {
     use super::*;
     use std::sync::Arc;
@@ -251,7 +251,7 @@ pub mod tests {
 
     /// Build an even-spaced single-segment `ExecutionPlan` — the trait-test
     /// fixture for the `execute(plan)` contract.
-    fn test_plan(waypoints: Vec<Vec<f64>>, duration: f64) -> ExecutionPlan {
+    pub fn test_plan(waypoints: Vec<Vec<f64>>, duration: f64) -> ExecutionPlan {
         let n = waypoints.len();
         let duration_us = (duration * 1_000_000.0) as u64;
         let dt_per_sample = if n > 1 {

@@ -99,7 +99,6 @@ impl ExecutableCommand for Command {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use thalos_engine::core::ids::OperationId;
     use thalos_engine::core::trajectory::TrajectoryPoint;
     use thalos_engine::planning::motion::program::CompiledPlan;
     use thalos_engine::planning::program_edit::ProgramEdit;

@@ -177,7 +177,6 @@ fn sample_rejects_zero_samples() {
 #[test]
 fn sample_with_tcp_uses_tcp_position() {
     use thalos_engine::core::models::RobotRegistry;
-    use thalos_engine::core::robot::serial_chain::SerialChain;
     use thalos_engine::core::robot::tool_frame::ToolFrame;
     use thalos_engine::math::Transform3D;
 

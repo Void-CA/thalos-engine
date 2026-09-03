@@ -28,7 +28,7 @@ impl ExecutionSessionState {
 }
 
 use super::observation::{
-    ExecutionDeviation, ExecutionSnapshot, ObservationSnapshot, RunSnapshot, SignalQuality,
+    ExecutionSnapshot, ObservationSnapshot, RunSnapshot, SignalQuality,
 };
 
 /// ExecutionExecutor (ADR-014)

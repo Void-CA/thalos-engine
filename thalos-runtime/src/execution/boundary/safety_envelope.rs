@@ -38,9 +38,9 @@ pub struct ChannelEnvelope {
     pub velocity_source: LimitSource,
 }
 
-/// The 4-channel enforcement envelope — THE parity contract. Generated from
-/// `config/safety-envelope.toml` (single canonical source) — do not edit by
-/// hand; regenerate with `python3 tools/generate_safety_config.py`.
+// The 4-channel enforcement envelope — THE parity contract. Generated from
+// `config/safety-envelope.toml` (single canonical source) — do not edit by
+// hand; regenerate with `python3 tools/generate_safety_config.py`.
 include!("safety_envelope_generated.rs");
 
 /// Why a joint value was rejected.

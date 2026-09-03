@@ -44,6 +44,17 @@ impl BackendManager {
         self.registered.write().await.push(entry);
     }
 
+    /// Register an ESP32 serial backend entry with a specified port.
+    pub async fn register_esp32(&self, port: &str) {
+        self.register(BackendEntry {
+            id: "esp32".into(),
+            name: "ESP32 Serial".into(),
+            controller: None,
+            port: Some(port.to_string()),
+        })
+        .await;
+    }
+
     /// All registered backends (metadata snapshot; controllers shared via Arc).
     pub async fn list_backends(&self) -> Vec<BackendEntry> {
         self.registered.read().await.clone()
@@ -90,6 +101,62 @@ impl BackendManager {
             *active = connected;
         }
         *self.active_id.write().await = Some(id.to_string());
+        Ok(())
+    }
+
+    /// Connect the hardware backend `id` to `port`.
+    pub async fn connect_with_port(&self, id: &str, port: &str) -> Result<(), ControllerError> {
+        tracing::info!(backend = %id, %port, "connect_with_port — opening serial transport");
+        let transport = thalos_transport::SerialTransport::new(port, 115200);
+        self.connect_with_transport(id, port, Box::new(transport))
+            .await
+    }
+
+    /// Connect with an injected transport — shared implementation behind `connect_with_port`.
+    pub async fn connect_with_transport(
+        &self,
+        id: &str,
+        port: &str,
+        mut transport: Box<dyn thalos_transport::Transport>,
+    ) -> Result<(), ControllerError> {
+        {
+            let entries = self.registered.read().await;
+            if !entries.iter().any(|e| e.id == id) {
+                return Err(ControllerError::NotFound(id.to_string()));
+            }
+        }
+        // Port-level failure (missing/occupied device) → port_in_use.
+        transport.connect().await.map_err(|e| {
+            tracing::error!(backend = %id, %port, error = %e, "connect — serial open failed");
+            ControllerError::PortInUse(e.to_string())
+        })?;
+
+        // Port opened but no firmware answers the HELLO handshake → no_firmware.
+        transport
+            .send(b"HELLO\n")
+            .await
+            .map_err(|e| ControllerError::PortInUse(e.to_string()))?;
+        let resp = transport
+            .receive()
+            .await
+            .map_err(|_| ControllerError::NoFirmware)?;
+        if !resp.starts_with(b"HELLO") {
+            let _ = transport.disconnect().await;
+            drop(transport);
+            return Err(ControllerError::NoFirmware);
+        }
+
+        tracing::info!(backend = %id, %port, "connect — handshake OK, controller stored");
+
+        let mut adapter = thalos_transport::esp32::Esp32RobotAdapter::new(transport);
+        let _ = adapter.connect().await;
+
+        {
+            let mut entries = self.registered.write().await;
+            if let Some(entry) = entries.iter_mut().find(|e| e.id == id) {
+                entry.port = Some(port.to_string());
+            }
+        }
         Ok(())
     }
 
