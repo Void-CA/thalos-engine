@@ -45,7 +45,7 @@ pub use planning::{
 };
 pub use ports::{PersistenceError, RobotRecord, RobotRepository, RobotSource, WorkspaceRepository};
 pub use robot::service::RobotService;
-pub use robot::{RobotCatalog, RobotCatalogError, RobotDefinition, RobotDefinitionResolution};
+pub use robot::{RobotCatalog, RobotCatalogEntry, RobotCatalogError, RobotCatalogResolution};
 pub use workspace::{ActiveWorkspace, OpenedWorkspace, RobotId, Workspace, WorkspaceConfiguration, WorkspaceId, WorkspaceService};
 pub use scene::service::SceneService;
 pub use scene::snapshot::{RuntimeSnapshot, TickDelta};

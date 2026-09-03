@@ -39,7 +39,7 @@ impl RobotService {
     }
 
     /// Lista las definiciones del catálogo (identidad + metadata declarativa).
-    pub fn list_definitions(&self) -> Vec<crate::robot::RobotDefinition> {
+    pub fn list_definitions(&self) -> Vec<crate::robot::RobotCatalogEntry> {
         self.catalog.definitions().to_vec()
     }
 
@@ -55,7 +55,7 @@ impl RobotService {
     ) -> Result<crate::scene::snapshot::RuntimeSnapshot, RuntimeError> {
         let (resolution, chain, robot) = self
             .catalog
-            .load_definition(definition_id)
+            .load_catalog_entry(definition_id)
             .map_err(|e| RuntimeError::RobotDefinition(e))?;
         scene
             .load_urdf_robot_command(

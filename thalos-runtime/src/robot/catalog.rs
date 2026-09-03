@@ -13,7 +13,7 @@ use thalos_importer::import_urdf;
 /// cinemática derivada — solo identidad declarativa y referencias a los assets
 /// (URDF + mallas) desde los que se construyen `SerialChain` y `VisualScene`.
 #[derive(Debug, Clone)]
-pub struct RobotDefinition {
+pub struct RobotCatalogEntry {
     pub id: String,
     pub display_name: String,
     pub manufacturer: String,
@@ -29,12 +29,12 @@ pub struct RobotDefinition {
 /// Resultado de resolver una definición: la definición + su URDF en disco.
 ///
 /// Distinción semántica:
-/// - `RobotDefinition` = **qué robot es** (identidad).
-/// - `RobotDefinitionResolution` = **qué obtuvimos al resolverlo** (URDF accesible).
+/// - `RobotCatalogEntry` = **qué robot es** (identidad).
+/// - `RobotCatalogResolution` = **qué obtuvimos al resolverlo** (URDF accesible).
 /// - `SerialChain` = representación cinemática derivada.
 #[derive(Debug, Clone)]
-pub struct RobotDefinitionResolution {
-    pub definition: RobotDefinition,
+pub struct RobotCatalogResolution {
+    pub definition: RobotCatalogEntry,
     pub urdf_path: PathBuf,
 }
 
@@ -61,7 +61,7 @@ pub enum RobotCatalogError {
 /// cambiar este contrato: el catálogo solo declara qué definiciones existen y
 /// dónde están sus assets.
 pub struct RobotCatalog {
-    definitions: Vec<RobotDefinition>,
+    definitions: Vec<RobotCatalogEntry>,
 }
 
 impl RobotCatalog {
@@ -75,7 +75,7 @@ impl RobotCatalog {
         let root = Self::asset_root();
         Self {
             definitions: vec![
-                RobotDefinition {
+                RobotCatalogEntry {
                     id: "universal_robots_ur10".to_string(),
                     display_name: "Universal Robots UR10".to_string(),
                     manufacturer: "Universal Robots".to_string(),
@@ -86,7 +86,7 @@ impl RobotCatalog {
                     collision_format: "stl".to_string(),
                     asset_root: root.join("universal_robots_ur10"),
                 },
-                RobotDefinition {
+                RobotCatalogEntry {
                     id: "abb_irb1300_10_115".to_string(),
                     display_name: "ABB IRB 1300-10/1.15".to_string(),
                     manufacturer: "ABB".to_string(),
@@ -101,7 +101,7 @@ impl RobotCatalog {
         }
     }
 
-    pub fn definitions(&self) -> &[RobotDefinition] {
+    pub fn definitions(&self) -> &[RobotCatalogEntry] {
         &self.definitions
     }
 
@@ -109,7 +109,7 @@ impl RobotCatalog {
     ///
     /// NO carga el URDF ni construye la cadena — es puramente declarativo.
     /// Devuelve la ruta al URDF para permitir el "load" diferido.
-    pub fn resolve(&self, definition_id: &str) -> Result<RobotDefinitionResolution, RobotCatalogError> {
+    pub fn resolve(&self, definition_id: &str) -> Result<RobotCatalogResolution, RobotCatalogError> {
         let definition = self
             .definitions
             .iter()
@@ -136,7 +136,7 @@ impl RobotCatalog {
             }
         };
 
-        Ok(RobotDefinitionResolution {
+        Ok(RobotCatalogResolution {
             definition,
             urdf_path,
         })
@@ -150,10 +150,10 @@ impl RobotCatalog {
     /// Devuelve además el modelo `Robot` parseado para que el pipeline visual
     /// (mapping de mallas desde `robot_source`) derive de la misma definición
     /// que produjo la cadena cinemática.
-    pub fn load_definition(
+    pub fn load_catalog_entry(
         &self,
         definition_id: &str,
-    ) -> Result<(RobotDefinitionResolution, SerialChain, Robot), RobotCatalogError> {
+    ) -> Result<(RobotCatalogResolution, SerialChain, Robot), RobotCatalogError> {
         let resolution = self.resolve(definition_id)?;
         let urdf_xml = std::fs::read_to_string(&resolution.urdf_path).map_err(|e| {
             RobotCatalogError::InvalidUrdf {
@@ -184,7 +184,7 @@ mod tests {
     fn ur10_resolves_definition_and_derives_6dof_chain() {
         let catalog = RobotCatalog::canonical();
         let (resolution, chain, robot) = catalog
-            .load_definition("universal_robots_ur10")
+            .load_catalog_entry("universal_robots_ur10")
             .expect("UR10 must resolve and load");
 
         assert_eq!(resolution.definition.display_name, "Universal Robots UR10");
@@ -198,7 +198,7 @@ mod tests {
     fn abb_irb1300_resolves_definition_and_derives_6dof_chain() {
         let catalog = RobotCatalog::canonical();
         let (resolution, chain, robot) = catalog
-            .load_definition("abb_irb1300_10_115")
+            .load_catalog_entry("abb_irb1300_10_115")
             .expect("ABB must resolve and load");
 
         assert_eq!(resolution.definition.model, "IRB 1300-10/1.15");

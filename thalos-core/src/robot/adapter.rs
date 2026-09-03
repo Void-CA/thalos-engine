@@ -325,8 +325,8 @@ mod tests {
         "#;
         let err = from_urdf(source).unwrap_err();
         assert!(
-            matches!(err, AdapterError::UnsupportedJointKind { .. }),
-            "expected UnsupportedJointKind, got {err}"
+            matches!(err, AdapterError::Parse(_)),
+            "expected Parse error for unsupported joint type, got {err}"
         );
     }
 

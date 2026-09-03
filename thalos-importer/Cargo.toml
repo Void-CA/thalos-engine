@@ -9,6 +9,7 @@ publish = false
 [dependencies]
 thalos-models = { path = "../thalos-models" }
 thalos-math = { path = "../thalos-math" }
+serde = { version = "1.0", features = ["derive"] }
 quick-xml = "0.37"
 thiserror = "2"
 
