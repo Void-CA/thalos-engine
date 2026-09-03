@@ -8,3 +8,4 @@ publish = false
 
 [dependencies]
 thalos-math = { path = "../thalos-math" }
+serde = { version = "1.0", features = ["derive"] }

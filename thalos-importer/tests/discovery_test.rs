@@ -1,4 +1,4 @@
-use thalos_importer::assets::AssetKind;
+use thalos_importer::assets::{AssetKind, AssetRole};
 use thalos_importer::assets::discovery::{UrdfAssetDiscovery, collect_asset_references};
 use thalos_importer::assets::AssetDiscovery;
 use thalos_importer::{UriResolver, urdf};
@@ -34,14 +34,19 @@ fn discover_returns_empty_for_primitives_only_robot() {
 }
 
 #[test]
-fn discover_deduplicates_across_visual_and_collision() {
+fn discover_deduplicates_within_same_role() {
     let candidate = urdf::parse(ABB_IRB140).unwrap();
     let refs = collect_asset_references(&candidate);
 
-    // The same mesh URI referenced in both visual and collision should appear once.
-    let uris: Vec<&str> = refs.iter().map(|r| r.uri.as_str()).collect();
-    let unique_count = uris.iter().collect::<std::collections::HashSet<_>>().len();
-    assert_eq!(uris.len(), unique_count, "URIs should be deduplicated");
+    // Each URI should appear at most once per role.
+    let mut seen_visual = std::collections::HashSet::new();
+    let mut seen_collision = std::collections::HashSet::new();
+    for asset_ref in &refs {
+        match asset_ref.role {
+            AssetRole::Visual => assert!(seen_visual.insert(asset_ref.uri.clone()), "duplicate visual URI: {}", asset_ref.uri),
+            AssetRole::Collision => assert!(seen_collision.insert(asset_ref.uri.clone()), "duplicate collision URI: {}", asset_ref.uri),
+        }
+    }
 }
 
 #[test]
@@ -99,6 +104,7 @@ fn uri_resolver_batch_resolve_abb_irb140_visual_meshes() {
             thalos_importer::assets::AssetReference {
                 uri: format!("package://abb_irb140_support/meshes/irb140/visual/{name}.stl"),
                 kind: AssetKind::Mesh,
+                role: AssetRole::Visual,
             }
         })
         .collect();

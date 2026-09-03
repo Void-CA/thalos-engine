@@ -8,6 +8,7 @@ use crate::diagnostic::{DiagnosticCode, ImportDiagnostic};
 use crate::error::ImportError;
 use resolver::Resolution;
 use thalos_models::geometry::Geometry;
+pub use thalos_models::robot_asset::AssetRole;
 
 /// The kind of external asset referenced by a URDF geometry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -32,6 +33,8 @@ pub struct AssetReference {
     pub uri: String,
     /// Inferred kind of the asset.
     pub kind: AssetKind,
+    /// Whether this asset is used for visual or collision purposes.
+    pub role: AssetRole,
 }
 
 /// Discovery trait: scans a URDF source and returns the external assets it references.

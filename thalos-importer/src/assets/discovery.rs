@@ -1,13 +1,13 @@
 use std::collections::HashSet;
 
-use crate::assets::{AssetKind, AssetReference};
+use crate::assets::{AssetKind, AssetReference, AssetRole};
 use crate::error::ImportError;
 use crate::urdf;
 
 /// Default URDF asset discovery implementation.
 ///
 /// Parses the URDF source, extracts all mesh filenames from visual and collision
-/// elements, and returns deduplicated [`AssetReference`]s.
+/// elements, and returns deduplicated [`AssetReference`]s with their role.
 pub struct UrdfAssetDiscovery;
 
 impl UrdfAssetDiscovery {
@@ -31,27 +31,43 @@ impl crate::assets::AssetDiscovery for UrdfAssetDiscovery {
 
 /// Collect all asset references from a parsed [`ImportedCandidate`].
 ///
-/// Walks `visual_sources` and `collision_sources` from every body, deduplicates,
-/// and infers [`AssetKind`] from the file extension.
+/// Walks `visual_sources` and `collision_sources` from every body. The same
+/// URI may appear in both roles (unlikely but possible); in that case both
+/// references are kept since they serve different purposes.
 pub fn collect_asset_references(candidate: &crate::ImportedCandidate) -> Vec<AssetReference> {
-    let mut seen = HashSet::new();
+    let mut seen_visual = HashSet::new();
+    let mut seen_collision = HashSet::new();
     let mut refs = Vec::new();
 
     for body in &candidate.raw_bodies {
-        for uri in body.visual_sources.iter().chain(body.collision_sources.iter()) {
-            if seen.insert(uri.clone()) {
-                let kind = uri
-                    .rsplit('.')
-                    .next()
-                    .map(AssetKind::from_extension)
-                    .unwrap_or(AssetKind::Mesh);
+        for uri in &body.visual_sources {
+            if seen_visual.insert(uri.clone()) {
+                let kind = infer_kind(uri);
                 refs.push(AssetReference {
                     uri: uri.clone(),
                     kind,
+                    role: AssetRole::Visual,
+                });
+            }
+        }
+        for uri in &body.collision_sources {
+            if seen_collision.insert(uri.clone()) {
+                let kind = infer_kind(uri);
+                refs.push(AssetReference {
+                    uri: uri.clone(),
+                    kind,
+                    role: AssetRole::Collision,
                 });
             }
         }
     }
 
     refs
+}
+
+fn infer_kind(uri: &str) -> AssetKind {
+    uri.rsplit('.')
+        .next()
+        .map(AssetKind::from_extension)
+        .unwrap_or(AssetKind::Mesh)
 }

@@ -178,7 +178,7 @@ impl UriResolver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::AssetKind;
+    use crate::assets::{AssetKind, AssetRole};
     use std::fs::{create_dir_all, File};
     use tempfile::tempdir;
 
@@ -246,8 +246,8 @@ mod tests {
 
         let resolver = UriResolver::new().with_base_dir(dir.path());
         let references = vec![
-            AssetReference { uri: "meshes/base.stl".into(), kind: AssetKind::Mesh },
-            AssetReference { uri: "meshes/missing.stl".into(), kind: AssetKind::Mesh },
+            AssetReference { uri: "meshes/base.stl".into(), kind: AssetKind::Mesh, role: AssetRole::Visual },
+            AssetReference { uri: "meshes/missing.stl".into(), kind: AssetKind::Mesh, role: AssetRole::Visual },
         ];
         let resolution = resolver.resolve(&references);
 

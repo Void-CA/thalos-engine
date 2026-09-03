@@ -23,6 +23,7 @@ pub mod joint;
 pub mod link;
 pub mod material;
 pub mod robot;
+pub mod robot_asset;
 
 pub use geometry::{Box3D, Collision, CollisionGeometry, Cylinder, Geometry, Mesh, Sphere, Visual};
 pub use graph::{JointId, LinkId, Path, RobotGraph};
@@ -30,3 +31,4 @@ pub use joint::{Joint, JointKind, JointLimits};
 pub use link::{Inertial, Link};
 pub use material::{Color, Material};
 pub use robot::Robot;
+pub use robot_asset::{AssetRole, RobotAsset};

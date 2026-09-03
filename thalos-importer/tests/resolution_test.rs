@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use thalos_importer::assets::{AssetKind, AssetReference};
+use thalos_importer::assets::{AssetKind, AssetReference, AssetRole};
 use thalos_importer::assets::resolver::{Resolution, UriResolver};
 use thalos_importer::assets::resolve_candidate;
 use thalos_importer::{import_urdf_resolved, urdf};
@@ -11,11 +11,11 @@ const PLANAR_2R: &str = include_str!("fixtures/robots/planar_2r/robot.urdf");
 
 fn sample_references() -> Vec<AssetReference> {
     vec![
-        AssetReference { uri: "package://abb_irb140_support/meshes/irb140/visual/base_link.stl".into(), kind: AssetKind::Mesh },
-        AssetReference { uri: "package://abb_irb140_support/meshes/irb140/visual/link_1.stl".into(), kind: AssetKind::Mesh },
-        AssetReference { uri: "package://abb_irb140_support/meshes/irb140/visual/link_2.stl".into(), kind: AssetKind::Mesh },
-        AssetReference { uri: "package://abb_irb140_support/meshes/irb140/visual/link_3.stl".into(), kind: AssetKind::Mesh },
-        AssetReference { uri: "package://abb_irb140_support/meshes/irb140/visual/link_4.stl".into(), kind: AssetKind::Mesh },
+        AssetReference { uri: "package://abb_irb140_support/meshes/irb140/visual/base_link.stl".into(), kind: AssetKind::Mesh, role: AssetRole::Visual },
+        AssetReference { uri: "package://abb_irb140_support/meshes/irb140/visual/link_1.stl".into(), kind: AssetKind::Mesh, role: AssetRole::Visual },
+        AssetReference { uri: "package://abb_irb140_support/meshes/irb140/visual/link_2.stl".into(), kind: AssetKind::Mesh, role: AssetRole::Visual },
+        AssetReference { uri: "package://abb_irb140_support/meshes/irb140/visual/link_3.stl".into(), kind: AssetKind::Mesh, role: AssetRole::Visual },
+        AssetReference { uri: "package://abb_irb140_support/meshes/irb140/visual/link_4.stl".into(), kind: AssetKind::Mesh, role: AssetRole::Visual },
     ]
 }
 
