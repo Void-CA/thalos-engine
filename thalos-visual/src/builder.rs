@@ -267,13 +267,14 @@ impl SceneBuilder {
     fn resolve_visual_id(&self, id: &FrameId) -> VisualId {
         match id {
             FrameId::World => "world".into(),
-            id => self
-                .chain
-                .frames
-                .get(id)
-                .expect("scene contract violation: frame must exist in FrameRegistry")
-                .name()
-                .to_string(),
+            id => {
+                if let Some(frame) = self.chain.frames.get(id) {
+                    frame.name().to_string()
+                } else {
+                    eprintln!("[SceneBuilder] WARNING: frame {:?} not found in registry, using fallback", id);
+                    format!("missing_{}", id)
+                }
+            }
         }
     }
 
