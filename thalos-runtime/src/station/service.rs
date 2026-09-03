@@ -22,6 +22,8 @@ pub struct RoboticsModule {
     pub station_id: StationId,
     pub name: String,
     pub robot_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub robot_definition_id: Option<String>,
     pub controller_binding: String,
 }
 
