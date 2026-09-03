@@ -7,9 +7,9 @@ pub use error::UrdfError;
 pub use parser::parse;
 
 use thalos_models::Robot;
-use crate::candidate::ImportedCandidate;
 use crate::error::ImportError;
-use crate::normalize::{CandidateNormalizer, Normalizer};
+use crate::import_urdf_resolved;
+use crate::assets::resolver::Resolution;
 
 /// Import a URDF XML string into a native [`Robot`](thalos_models::Robot) domain model.
 ///
@@ -19,9 +19,10 @@ use crate::normalize::{CandidateNormalizer, Normalizer};
 ///
 /// Callers receive a fully normalized robot; the intermediate
 /// representation is an implementation detail.
+///
+/// This is equivalent to calling [`import_urdf_resolved`] with an empty
+/// [`Resolution`](crate::assets::resolver::Resolution).
 pub fn import_urdf(source: &str) -> Result<Robot, ImportError> {
-    let candidate: ImportedCandidate = parse(source).map_err(ImportError::from)?;
-    let normalizer = CandidateNormalizer::new();
-    let result = normalizer.normalize(&candidate)?;
+    let result = import_urdf_resolved(source, &Resolution::default())?;
     Ok(result.robot)
 }

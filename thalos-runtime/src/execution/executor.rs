@@ -142,15 +142,25 @@ impl ExecutionExecutor for SimulationExecutor {
             vec![0.0, 0.0, 0.0]
         };
 
-        let obs_snap = ObservationSnapshot {
-            sampled_at_ns: (self.current_time * 1e9) as u64,
+        let now_ns = (self.current_time * 1e9) as u64;
+        let obs_event = super::observation::Observation {
+            session_id: Some(self.session_id.clone()),
+            sequence: (self.current_time * 100.0) as u64,
+            sampled_at_ns: now_ns,
+            received_at_ns: now_ns,
             joint_positions: sim_joints.clone(),
             joint_velocities: sim_velocities,
             tcp_pose: [frac * 200.0, 150.0, 300.0, 1.0, 0.0, 0.0, 0.0],
             signal_quality: SignalQuality::Nominal,
         };
 
-        let dev = RunSnapshot::compute_deviation(&sim_joints, &obs_snap);
+        let obs_snap = ObservationSnapshot {
+            latest: obs_event.clone(),
+            signal_quality: SignalQuality::Nominal,
+            freshness_ns: 0,
+        };
+
+        let dev = RunSnapshot::compute_deviation(&sim_joints, now_ns, &obs_event);
 
         RunSnapshot {
             execution: exec_snap,

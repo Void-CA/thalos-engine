@@ -16,3 +16,4 @@ thiserror = "2"
 [dev-dependencies]
 thalos-models = { path = "../thalos-models" }
 thalos-engine = { path = "../thalos-engine" }
+tempfile = "3"

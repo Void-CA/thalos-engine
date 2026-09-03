@@ -183,31 +183,50 @@ impl<T: RobotTransport> ExecutionExecutor for HardwareExecutor<T> {
             progress: self.progress(),
         };
 
-        let obs_snap = if let Some(ref obs) = self.last_observation {
-            ObservationSnapshot {
-                sampled_at_ns: obs.sampled_at_ns,
-                joint_positions: obs.joint_positions_rad.clone(),
-                joint_velocities: obs.joint_velocities_rad_s.clone(),
-                tcp_pose: obs.tcp_pose.unwrap_or([0.0; 7]),
-                signal_quality: obs.signal_quality,
-            }
+        let (obs_event, quality) = if let Some(ref obs) = self.last_observation {
+            (
+                crate::execution::observation::Observation {
+                    session_id: Some(self.session_id.clone()),
+                    sequence: obs.sequence,
+                    sampled_at_ns: obs.sampled_at_ns,
+                    received_at_ns: (self.elapsed_seconds * 1e9) as u64,
+                    joint_positions: obs.joint_positions_rad.clone(),
+                    joint_velocities: obs.joint_velocities_rad_s.clone(),
+                    tcp_pose: obs.tcp_pose.unwrap_or([0.0; 7]),
+                    signal_quality: obs.signal_quality,
+                },
+                obs.signal_quality,
+            )
         } else {
-            ObservationSnapshot {
-                sampled_at_ns: (self.elapsed_seconds * 1e9) as u64,
-                joint_positions: vec![0.0; 3],
-                joint_velocities: vec![0.0; 3],
-                tcp_pose: [0.0; 7],
-                signal_quality: SignalQuality::Nominal,
-            }
+            let now_ns = (self.elapsed_seconds * 1e9) as u64;
+            (
+                crate::execution::observation::Observation {
+                    session_id: Some(self.session_id.clone()),
+                    sequence: 0,
+                    sampled_at_ns: now_ns,
+                    received_at_ns: now_ns,
+                    joint_positions: vec![0.0; 3],
+                    joint_velocities: vec![0.0; 3],
+                    tcp_pose: [0.0; 7],
+                    signal_quality: SignalQuality::Nominal,
+                },
+                SignalQuality::Nominal,
+            )
+        };
+
+        let obs_snap = ObservationSnapshot {
+            latest: obs_event.clone(),
+            signal_quality: quality,
+            freshness_ns: 0,
         };
 
         let expected_joints = self
             .waypoints
             .get(self.current_waypoint_idx)
             .cloned()
-            .unwrap_or_else(|| vec![0.0; obs_snap.joint_positions.len()]);
+            .unwrap_or_else(|| vec![0.0; obs_snap.latest.joint_positions.len()]);
 
-        let dev = RunSnapshot::compute_deviation(&expected_joints, &obs_snap);
+        let dev = RunSnapshot::compute_deviation(&expected_joints, (self.elapsed_seconds * 1e9) as u64, &obs_event);
 
         RunSnapshot {
             execution: exec_snap,
