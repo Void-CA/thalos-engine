@@ -84,6 +84,7 @@ impl RobotService {
                     manufacturer: None,
                     model: None,
                     source_type: RobotSource::Canonical,
+                    source_label: None,
                     urdf_xml: None,
                     created_at: String::new(),
                     updated_at: String::new(),
@@ -94,7 +95,8 @@ impl RobotService {
         if let Some(ref repo) = self.repo {
             if let Ok(persisted) = repo.list().await {
                 for rec in persisted {
-                    if rec.source_type == RobotSource::ImportedUrdf
+                    if (rec.source_type == RobotSource::ImportedUrdf
+                        || rec.source_type == RobotSource::ImportedPackage)
                         && !records.iter().any(|r| r.id == rec.id)
                     {
                         records.push(rec);
@@ -146,12 +148,14 @@ impl RobotService {
         // 3. Build a RobotRecord from the validated URDF
         let id = urdf_robot_id(urdf_xml);
         let now = chrono::Utc::now().to_rfc3339();
+        #[allow(deprecated)]
         let record = RobotRecord {
             id: id.clone(),
             name: robot.name.clone(),
             manufacturer: None,
             model: None,
             source_type: RobotSource::ImportedUrdf,
+            source_label: None,
             urdf_xml: Some(urdf_xml.to_string()),
             created_at: now.clone(),
             updated_at: now,
