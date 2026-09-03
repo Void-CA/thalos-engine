@@ -6,6 +6,7 @@ use thalos_importer::import_urdf;
 
 use crate::error::RuntimeError;
 use crate::ports::{PersistenceError, RobotRecord, RobotRepository, RobotSource};
+use crate::robot::catalog::RobotCatalog;
 
 /// Application service for robot resource lifecycle.
 ///
@@ -13,6 +14,9 @@ use crate::ports::{PersistenceError, RobotRecord, RobotRepository, RobotSource};
 /// Does NOT own: scene state, kinematics execution, planning.
 pub struct RobotService {
     repo: Option<Arc<dyn RobotRepository>>,
+    /// Catálogo canónico de definiciones de robots — única autoridad de
+    /// identidad técnica del robot (A2.4).
+    catalog: RobotCatalog,
 }
 
 impl Default for RobotService {
@@ -23,7 +27,44 @@ impl Default for RobotService {
 
 impl RobotService {
     pub fn new(repo: Option<Arc<dyn RobotRepository>>) -> Self {
-        Self { repo }
+        Self {
+            repo,
+            catalog: RobotCatalog::canonical(),
+        }
+    }
+
+    /// Acceso al catálogo canónico de definiciones.
+    pub fn catalog(&self) -> &RobotCatalog {
+        &self.catalog
+    }
+
+    /// Lista las definiciones del catálogo (identidad + metadata declarativa).
+    pub fn list_definitions(&self) -> Vec<crate::robot::RobotDefinition> {
+        self.catalog.definitions().to_vec()
+    }
+
+    /// Carga una definición del catálogo directamente en la escena.
+    ///
+    /// Punto único por el que un `robot_definition_id` se convierte en el robot
+    /// activo: resuelve → parsea URDF → construye chain → SceneService.
+    /// El DOF derivado del chain dimensiona el controlador en `SceneService::execute`.
+    pub async fn load_definition_into_scene(
+        &self,
+        definition_id: &str,
+        scene: &crate::scene::service::SceneService,
+    ) -> Result<crate::scene::snapshot::RuntimeSnapshot, RuntimeError> {
+        let (resolution, chain, robot) = self
+            .catalog
+            .load_definition(definition_id)
+            .map_err(|e| RuntimeError::RobotDefinition(e))?;
+        scene
+            .load_urdf_robot_command(
+                robot,
+                chain,
+                resolution.definition.display_name,
+                definition_id,
+            )
+            .await
     }
 
     /// List canonical (engine-defined) robot metadata.

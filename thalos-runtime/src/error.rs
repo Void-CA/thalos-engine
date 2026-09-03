@@ -171,6 +171,10 @@ pub enum RuntimeError {
     #[error("robot not found: {id}")]
     RobotNotFound { id: String },
 
+    /// A2.4: a robot definition could not be resolved/loaded from the catalog.
+    #[error("robot definition error: {0}")]
+    RobotDefinition(#[from] crate::robot::catalog::RobotCatalogError),
+
     #[error("workspace not found: {id}")]
     WorkspaceNotFound { id: String },
 }
@@ -271,6 +275,7 @@ impl RuntimeError {
             RuntimeError::DofMismatch { .. } => "dof_mismatch",
             RuntimeError::Persistence { .. } => "persistence_error",
             RuntimeError::RobotNotFound { .. } => "robot_not_found",
+            RuntimeError::RobotDefinition(_) => "robot_definition_unresolved",
             RuntimeError::WorkspaceNotFound { .. } => "workspace_not_found",
         }
     }
