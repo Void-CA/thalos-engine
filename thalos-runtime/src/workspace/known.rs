@@ -26,12 +26,15 @@ pub struct KnownWorkspaces {
 }
 
 impl KnownWorkspaces {
-    /// Load known workspaces from the default location (`~/.thalos/known_workspaces.json`).
+    /// Load known workspaces from the default location (`~/.config/thalos/known_workspaces.json`).
     ///
     /// Returns an empty registry if the file doesn't exist or can't be parsed.
+    /// Automatically removes entries whose directories no longer exist.
     pub fn load() -> Self {
         let path = Self::default_path();
-        Self::load_from(&path)
+        let mut known = Self::load_from(&path);
+        known.prune_missing();
+        known
     }
 
     /// Load known workspaces from a specific file path.
@@ -39,6 +42,17 @@ impl KnownWorkspaces {
         match std::fs::read_to_string(path) {
             Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
             Err(_) => Self::default(),
+        }
+    }
+
+    /// Remove entries whose workspace directories no longer exist on disk.
+    fn prune_missing(&mut self) {
+        let before = self.workspaces.len();
+        self.workspaces.retain(|w| w.path.exists());
+        let removed = before - self.workspaces.len();
+        if removed > 0 {
+            // Persist the pruned list
+            let _ = self.save();
         }
     }
 
