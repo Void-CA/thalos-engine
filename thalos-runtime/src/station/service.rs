@@ -270,3 +270,20 @@ impl StationService {
         Ok((session_id, runner))
     }
 }
+
+impl crate::ports::RobotReferenceChecker for StationService {
+    fn find_robot_reference(&self, robot_id: &str) -> Option<crate::ports::RobotReference> {
+        let stations = self.stations.lock().unwrap();
+        for station in stations.values() {
+            for (module_id, module) in &station.robotics_modules {
+                if module.robot_definition_id.as_deref() == Some(robot_id) {
+                    return Some(crate::ports::RobotReference {
+                        station_id: station.id.clone(),
+                        module_id: module_id.clone(),
+                    });
+                }
+            }
+        }
+        None
+    }
+}

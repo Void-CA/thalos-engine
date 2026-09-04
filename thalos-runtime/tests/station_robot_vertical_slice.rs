@@ -6,7 +6,7 @@ use thalos_runtime::backends::manager::BackendManager;
 use thalos_runtime::ports::{RobotRepository, StationRepository};
 use thalos_runtime::robot::availability::{check_robot_availability, RobotAvailability};
 use thalos_runtime::station::{AcquisitionModule, AcquisitionModuleId, RoboticsModule, RoboticsModuleId, Station, StationService};
-use thalos_runtime::{RobotId, RobotService, SceneService, WorkspaceService};
+use thalos_runtime::{RobotService, SceneService, WorkspaceService};
 use thalos_engine::prelude::StationId;
 
 const URDF_WITH_MESHES: &str = r#"<?xml version="1.0"?>
@@ -110,9 +110,9 @@ async fn station_module_robot_lifecycle() {
 
     let robot_id = record.id.clone();
 
-    // 2. Create workspace referencing the robot
+    // 2. Create workspace (robots are independent resources)
     let workspace = workspace_service
-        .create_workspace("Assembly Cell", RobotId::new(&robot_id))
+        .create_workspace("Assembly Cell")
         .await
         .expect("create workspace");
 

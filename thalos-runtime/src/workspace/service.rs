@@ -116,19 +116,13 @@ impl WorkspaceService {
             })?;
 
         if let Some(workspace) = workspaces.into_iter().next() {
-            // Load robot into scene
-            let snapshot = self
-                .robot_service
-                .load_materialized_robot(
-                    &workspace.robot_id.0,
-                    path,
-                    &self.scene_service,
-                )
-                .await?;
+            // Load a default robot into scene — actual robot loading happens
+            // when a station's robotics module is selected by the user
+            let default_model = thalos_engine::core::models::RobotModel::Planar2R;
+            let snapshot = self.scene_service.execute(crate::commands::Command::LoadRobot(default_model)).await?;
 
             let active_ws = ActiveWorkspace {
                 workspace: workspace.clone(),
-                active_robot_id: workspace.robot_id.clone(),
             };
 
             *self.active_workspace.write().await = Some(active_ws);
@@ -148,7 +142,6 @@ impl WorkspaceService {
             }
 
             Ok(OpenedWorkspace {
-                active_robot_id: workspace.robot_id.clone(),
                 workspace,
                 runtime_snapshot: snapshot,
             })
@@ -299,11 +292,11 @@ impl WorkspaceService {
         Ok(())
     }
 
-    /// Open a workspace by ID: loads the persistent Workspace aggregate, resolves its robot resource,
-    /// reconstructs computational state in SceneService, updates active workspace state, and returns OpenedWorkspace.
+    /// Open a workspace by ID: loads the persistent Workspace aggregate,
+    /// sets it as active, and returns the session.
     ///
-    /// Requires that a workspace root has been set (via `open_at` or `create_at`).
-    /// If no root is set, falls back to the legacy behavior.
+    /// Robot loading is NOT done here — it happens when a station's
+    /// robotics module is selected by the user.
     pub async fn open(&self, id: &WorkspaceId) -> Result<OpenedWorkspace, RuntimeError> {
         let workspace = self
             .workspace_repo
@@ -316,22 +309,8 @@ impl WorkspaceService {
                 id: id.to_string(),
             })?;
 
-        let root = self.active_root.read().await.clone();
-
-        // Orchestrate: load robot into scene to reconstruct computational state
-        let snapshot = if let Some(ref root_path) = root {
-            self.robot_service
-                .load_materialized_robot(&workspace.robot_id.0, root_path, &self.scene_service)
-                .await?
-        } else {
-            self.robot_service
-                .load_robot_into_scene(&workspace.robot_id.0, &self.scene_service)
-                .await?
-        };
-
         let active_ws = ActiveWorkspace {
             workspace: workspace.clone(),
-            active_robot_id: workspace.robot_id.clone(),
         };
 
         *self.active_workspace.write().await = Some(active_ws);
@@ -339,8 +318,7 @@ impl WorkspaceService {
         tracing::info!(
             workspace_id = %workspace.id,
             workspace_name = %workspace.name,
-            robot_id = %workspace.robot_id,
-            "Opened workspace and set active workspace context"
+            "Opened workspace"
         );
 
         // Record in known workspaces if root is available
@@ -350,8 +328,12 @@ impl WorkspaceService {
             let _ = known.save();
         }
 
+        // Return a default snapshot — actual scene state is built when a robot is loaded
+        let default_model = thalos_engine::core::models::RobotModel::Planar2R;
+        let manager = std::sync::Arc::new(crate::backends::manager::BackendManager::new());
+        let snapshot = self.scene_service.execute(crate::commands::Command::LoadRobot(default_model)).await?;
+
         Ok(OpenedWorkspace {
-            active_robot_id: workspace.robot_id.clone(),
             workspace,
             runtime_snapshot: snapshot,
         })

@@ -4,7 +4,7 @@ use thalos_persistence::{SqliteRobotRepository, SqliteWorkspaceRepository};
 use thalos_runtime::backends::manager::BackendManager;
 use thalos_runtime::ports::RobotRepository;
 use thalos_runtime::robot::availability::{check_robot_availability, RobotAvailability};
-use thalos_runtime::{RobotId, RobotService, SceneService, WorkspaceService};
+use thalos_runtime::{RobotService, SceneService, WorkspaceService};
 use thalos_engine::core::models::RobotModel;
 
 /// URDF with mesh references (visual + collision) — the ABB IRB 140 pattern.
@@ -104,9 +104,9 @@ async fn materialized_robot_survives_full_lifecycle() {
     let robot_id = record.id.clone();
     println!("Imported robot: {robot_id}");
 
-    // Create workspace referencing the imported robot's ID
+    // Create workspace (robots are independent resources, not owned by workspace)
     let workspace = workspace_service
-        .create_workspace("Test Cell", RobotId::new(&robot_id))
+        .create_workspace("Test Cell")
         .await
         .expect("create_workspace must succeed");
 
@@ -213,7 +213,9 @@ async fn materialized_robot_survives_full_lifecycle() {
 
     assert_eq!(opened.workspace.id, workspace.id);
     assert_eq!(opened.workspace.name, "Test Cell");
-    assert_eq!(opened.runtime_snapshot.joints.len(), original_chain_dof);
+    // Workspace no longer loads a specific robot — that happens when a station
+    // module is selected. open_at loads a default scene.
+    assert!(opened.runtime_snapshot.joints.len() >= 2);
 
     let root_after = new_workspace_service.root().await;
     assert_eq!(root_after, Some(workspace_path.clone()));
