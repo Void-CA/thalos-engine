@@ -8,6 +8,7 @@ use crate::execution::session::{
     ExecutionDomainError, ExecutionSessionId, ExpectedState, RobotObservationProvider,
     TelemetryExecutionRunner,
 };
+use crate::ports::station_repository::{StationRecord, StationRepository};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct RoboticsModuleId(pub String);
@@ -100,20 +101,82 @@ pub enum StationServiceError {
 }
 
 /// Servicio de aplicación para la gestión de Stations y la preparación transaccional de ExecutionSessions.
-#[derive(Clone, Default)]
+///
+/// When a `StationRepository` is provided, all mutations are persisted automatically.
+#[derive(Clone)]
 pub struct StationService {
     stations: Arc<Mutex<HashMap<StationId, Station>>>,
+    repo: Arc<Mutex<Option<Arc<dyn StationRepository>>>>,
 }
 
 impl StationService {
     pub fn new() -> Self {
         Self {
             stations: Arc::new(Mutex::new(HashMap::new())),
+            repo: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    /// Create a StationService with persistence support.
+    pub fn with_repository(repo: Arc<dyn StationRepository>) -> Self {
+        Self {
+            stations: Arc::new(Mutex::new(HashMap::new())),
+            repo: Arc::new(Mutex::new(Some(repo))),
+        }
+    }
+
+    /// Set or replace the persistence repository at runtime.
+    /// Used when a workspace is opened and the DB becomes available.
+    pub fn set_repository(&self, repo: Arc<dyn StationRepository>) {
+        *self.repo.lock().unwrap() = Some(repo);
+    }
+
+    /// Load all stations from the repository into memory.
+    pub async fn load_all(&self) -> Result<(), crate::error::RuntimeError> {
+        let repo = self.repo.lock().unwrap().clone();
+        if let Some(repo) = repo {
+            let records = repo.list().await.map_err(|e| crate::error::RuntimeError::Persistence {
+                message: e.to_string(),
+            })?;
+            let mut stations = self.stations.lock().unwrap();
+            stations.clear();
+            for record in records {
+                if let Ok(station) = record.to_station() {
+                    stations.insert(station.id.clone(), station);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Persist all current stations to the repository.
+    async fn persist_all(&self) {
+        let repo = self.repo.lock().unwrap().clone();
+        if let Some(repo) = repo {
+            let stations = self.stations.lock().unwrap().clone();
+            let records: Vec<StationRecord> = stations.values().map(StationRecord::from_station).collect();
+            if let Err(e) = repo.save_all(&records).await {
+                tracing::error!("Failed to persist stations: {e}");
+            }
         }
     }
 
     pub fn register_station(&self, station: Station) {
         self.stations.lock().unwrap().insert(station.id.clone(), station);
+        // Persist asynchronously
+        let repo = self.repo.lock().unwrap().clone();
+        let stations_snapshot = {
+            let s = self.stations.lock().unwrap().clone();
+            s
+        };
+        if let Some(repo) = repo {
+            tokio::spawn(async move {
+                let records: Vec<StationRecord> = stations_snapshot.values().map(StationRecord::from_station).collect();
+                if let Err(e) = repo.save_all(&records).await {
+                    tracing::error!("Failed to persist station registration: {e}");
+                }
+            });
+        }
     }
 
     pub fn get_station(&self, id: &StationId) -> Option<Station> {
@@ -122,6 +185,12 @@ impl StationService {
 
     pub fn list_stations(&self) -> Vec<Station> {
         self.stations.lock().unwrap().values().cloned().collect()
+    }
+
+    /// Remove a station by ID and persist the change.
+    pub async fn remove_station(&self, id: &StationId) {
+        self.stations.lock().unwrap().remove(id);
+        self.persist_all().await;
     }
 
     /// Resuelve el `ExecutionTarget` comprobando la existencia de la Station, el RoboticsModule y que pertenezcan a la misma celda.

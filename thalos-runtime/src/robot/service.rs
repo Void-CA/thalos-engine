@@ -376,6 +376,11 @@ impl RobotService {
     pub fn has_persistence(&self) -> bool {
         self.repo.is_some()
     }
+
+    /// Get a reference to the robot repository, if available.
+    pub fn repo(&self) -> Option<&dyn crate::ports::RobotRepository> {
+        self.repo.as_deref()
+    }
 }
 
 /// Build a Resolution from persisted RobotAsset entries.

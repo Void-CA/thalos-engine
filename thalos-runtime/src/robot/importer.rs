@@ -227,9 +227,9 @@ impl RobotImporter {
                 .join(role.to_string())
                 .join(filename);
 
-            // Asset ID: hash(role + filename + content) to ensure uniqueness
-            // even when multiple files have identical content
-            let id_input = format!("{}:{}:{}", role, filename, sha256_hex);
+            // Asset ID: hash(robot_id + role + filename + content) to ensure uniqueness
+            // across different robots, even when files have identical content
+            let id_input = format!("{}:{}:{}:{}", robot_id, role, filename, sha256_hex);
             let id_hash = Sha256::digest(id_input.as_bytes());
             let asset_id = hex::encode(id_hash)[..12].to_string();
 
