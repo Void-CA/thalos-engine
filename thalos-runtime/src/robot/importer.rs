@@ -202,10 +202,10 @@ impl RobotImporter {
                     format!("Asset not in resolution: {}", asset_ref.uri)
                 ))?;
 
-            // Compute SHA-256
+            // Compute SHA-256 of file content
             let content = std::fs::read(source_path)?;
-            let hash = Sha256::digest(&content);
-            let sha256_hex = hex::encode(hash);
+            let content_hash = Sha256::digest(&content);
+            let sha256_hex = hex::encode(content_hash);
 
             // Determine role and destination
             let (role, dest_dir) = match asset_ref.role {
@@ -227,8 +227,11 @@ impl RobotImporter {
                 .join(role.to_string())
                 .join(filename);
 
-            // Short hash for asset ID
-            let asset_id = sha256_hex[..12].to_string();
+            // Asset ID: hash(role + filename + content) to ensure uniqueness
+            // even when multiple files have identical content
+            let id_input = format!("{}:{}:{}", role, filename, sha256_hex);
+            let id_hash = Sha256::digest(id_input.as_bytes());
+            let asset_id = hex::encode(id_hash)[..12].to_string();
 
             assets.push(RobotAsset {
                 id: asset_id,
