@@ -94,12 +94,15 @@ impl Default for WorkspaceConfiguration {
 ///
 /// Note: Computational engine state (e.g. RobotModel, KinematicChain, ExecutionPlan)
 /// is NOT stored inside Workspace. It is deterministically reconstructed on load.
+///
+/// Robots are independent resources within a Workspace — the Workspace does NOT
+/// own or reference any specific Robot. Stations within the Workspace may
+/// reference Robots through RoboticsModules.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Workspace {
     pub id: WorkspaceId,
     pub name: String,
     pub description: Option<String>,
-    pub robot_id: RobotId,
     pub active_tcp: Option<String>,
     pub configuration: WorkspaceConfiguration,
     pub created_at: String,
@@ -107,13 +110,12 @@ pub struct Workspace {
 }
 
 impl Workspace {
-    pub fn new(name: impl Into<String>, robot_id: RobotId) -> Self {
+    pub fn new(name: impl Into<String>) -> Self {
         let now = chrono::Utc::now().to_rfc3339();
         Self {
             id: WorkspaceId::new(),
             name: name.into(),
             description: None,
-            robot_id,
             active_tcp: None,
             configuration: WorkspaceConfiguration::default(),
             created_at: now.clone(),
@@ -128,6 +130,5 @@ impl Workspace {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ActiveWorkspace {
     pub workspace: Workspace,
-    pub active_robot_id: RobotId,
 }
 

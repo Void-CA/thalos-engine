@@ -7,17 +7,16 @@ use crate::ports::WorkspaceRepository;
 use crate::robot::service::RobotService;
 use crate::scene::service::SceneService;
 use crate::scene::snapshot::RuntimeSnapshot;
-use crate::workspace::aggregate::{ActiveWorkspace, RobotId, Workspace, WorkspaceId};
+use crate::workspace::aggregate::{ActiveWorkspace, Workspace, WorkspaceId};
 use crate::workspace::known::{KnownWorkspace, KnownWorkspaces};
 
 /// Application output representing an opened workspace session.
 ///
-/// Contains the persistent Workspace resource, the active robot identity,
-/// and the reconstructed application runtime snapshot.
+/// Contains the persistent Workspace resource and the reconstructed application
+/// runtime snapshot.
 #[derive(Debug, Clone)]
 pub struct OpenedWorkspace {
     pub workspace: Workspace,
-    pub active_robot_id: RobotId,
     pub runtime_snapshot: RuntimeSnapshot,
 }
 
@@ -169,7 +168,6 @@ impl WorkspaceService {
         &self,
         path: &Path,
         name: impl Into<String>,
-        robot_id: RobotId,
     ) -> Result<Workspace, RuntimeError> {
         if !path.exists() {
             std::fs::create_dir_all(path).map_err(|e| RuntimeError::Persistence {
@@ -190,8 +188,8 @@ impl WorkspaceService {
             message: format!("Failed to create robots directory: {e}"),
         })?;
 
-        // Create workspace aggregate
-        let workspace = Workspace::new(name, robot_id);
+        // Create workspace aggregate (no robot — robots are independent resources)
+        let workspace = Workspace::new(name);
 
         // Persist
         self.workspace_repo.save(&workspace).await
@@ -203,7 +201,6 @@ impl WorkspaceService {
         *self.active_root.write().await = Some(path.to_path_buf());
         let active_ws = ActiveWorkspace {
             workspace: workspace.clone(),
-            active_robot_id: workspace.robot_id.clone(),
         };
         *self.active_workspace.write().await = Some(active_ws);
 
@@ -230,9 +227,8 @@ impl WorkspaceService {
     pub async fn create_workspace(
         &self,
         name: impl Into<String>,
-        robot_id: RobotId,
     ) -> Result<Workspace, RuntimeError> {
-        let workspace = Workspace::new(name, robot_id);
+        let workspace = Workspace::new(name);
         self.workspace_repo
             .save(&workspace)
             .await
