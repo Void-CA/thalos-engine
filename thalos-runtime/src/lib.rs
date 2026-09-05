@@ -18,7 +18,35 @@ pub mod telemetry;
 pub mod test_support;
 pub mod workspace;
 
+// ── Application Facade: re-exports of domain & integration crates ──
+pub mod engine {
+    pub use thalos_engine::*;
+}
 
+pub mod document {
+    pub use thalos_document::*;
+}
+
+pub mod visual {
+    pub use thalos_visual::*;
+}
+
+pub mod language_service {
+    pub use thalos_language_service::*;
+}
+
+/// Curated prelude for application-level consumption.
+pub mod prelude {
+    pub use crate::engine::prelude::*;
+    pub use crate::execution::*;
+    pub use crate::station::*;
+    pub use crate::telemetry::*;
+    pub use crate::workspace::*;
+    pub use crate::robot::*;
+    pub use crate::scene::service::SceneService;
+    pub use crate::planning::{PlanningService, AnalysisService};
+    pub use crate::semantic::service::SemanticService;
+}
 
 pub use execution::{
     analysis as execution_analysis, boundary as execution_boundary, plan, session,

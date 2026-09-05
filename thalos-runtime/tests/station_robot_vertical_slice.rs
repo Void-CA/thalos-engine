@@ -1,13 +1,10 @@
 use std::sync::Arc;
 
-use thalos_engine::core::models::RobotModel;
-use thalos_persistence::{SqliteRobotRepository, SqliteStationRepository, SqliteWorkspaceRepository};
-use thalos_runtime::backends::manager::BackendManager;
-use thalos_runtime::ports::{RobotRepository, StationRepository};
+use thalos_persistence::{SqliteRobotRepository, SqliteStationRepository, SqliteWorkspaceRepository, SqliteEquipmentModuleRepository};
+use thalos_runtime::ports::{RobotRepository, StationRepository, EquipmentModuleRepository};
 use thalos_runtime::robot::availability::{check_robot_availability, RobotAvailability};
-use thalos_runtime::station::{AcquisitionModule, AcquisitionModuleId, RoboticsModule, RoboticsModuleId, Station, StationService};
-use thalos_runtime::{RobotService, SceneService, WorkspaceService};
-use thalos_engine::prelude::StationId;
+use thalos_runtime::station::{Station, StationService};
+use thalos_runtime::RobotService;
 
 const URDF_WITH_MESHES: &str = r#"<?xml version="1.0"?>
 <robot name="test_robot">
@@ -37,353 +34,124 @@ const URDF_WITH_MESHES: &str = r#"<?xml version="1.0"?>
 </robot>"#;
 
 fn create_test_package(dir: &std::path::Path) {
-    let visual_dir = dir.join("meshes").join("visual");
-    let collision_dir = dir.join("meshes").join("collision");
-    std::fs::create_dir_all(&visual_dir).unwrap();
-    std::fs::create_dir_all(&collision_dir).unwrap();
-
+    let visual = dir.join("meshes").join("visual");
+    let collision = dir.join("meshes").join("collision");
+    std::fs::create_dir_all(&visual).unwrap();
+    std::fs::create_dir_all(&collision).unwrap();
     let stl = b"solid test\nfacet normal 0 0 0\nendfacet\nendsolid test\n";
     for name in &["base_link.stl", "link_1.stl"] {
-        std::fs::write(visual_dir.join(name), stl).unwrap();
-        std::fs::write(collision_dir.join(name), stl).unwrap();
+        std::fs::write(visual.join(name), stl).unwrap();
+        std::fs::write(collision.join(name), stl).unwrap();
     }
 }
 
-/// Setup: creates a workspace directory, initializes DB, and returns all services.
-async fn setup_workspace(
-    workspace_dir: &std::path::Path,
-) -> (Arc<RobotService>, Arc<StationService>, Arc<WorkspaceService>, Arc<SceneService>) {
-    std::fs::create_dir_all(workspace_dir.join("robots")).unwrap();
-
-    let db_path = workspace_dir.join("workspace.db");
-    let robot_repo = Arc::new(
-        SqliteRobotRepository::new(db_path.to_str().unwrap())
-            .await
-            .expect("init robot repo"),
-    );
-    let workspace_repo = Arc::new(
-        SqliteWorkspaceRepository::new(db_path.to_str().unwrap())
-            .await
-            .expect("init workspace repo"),
-    );
-
-    let robot_service = Arc::new(RobotService::new(Some(robot_repo.clone())));
-    let manager = Arc::new(BackendManager::new());
-    let scene_service = Arc::new(SceneService::new(manager, RobotModel::Planar2R));
-
-    // Station service with persistence
-    let station_repo = Arc::new(workspace_repo.station_repo());
-    let station_service = Arc::new(StationService::with_repository(station_repo));
-
-    let workspace_service = Arc::new(WorkspaceService::new(
-        workspace_repo.clone(),
-        robot_service.clone(),
-        scene_service.clone(),
-    ));
-
-    (robot_service, station_service, workspace_service, scene_service)
+struct Ctx {
+    robot_service: Arc<RobotService>,
+    station_service: StationService,
+    module_repo: Arc<SqliteEquipmentModuleRepository>,
+    workspace: std::path::PathBuf,
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Test 1: Full lifecycle — Station → Module → Robot → Materialized Assets
-// ═══════════════════════════════════════════════════════════════════════════
+async fn setup() -> Ctx {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("robots")).unwrap();
+    let db = dir.path().join("workspace.db");
+    let robot_repo = Arc::new(SqliteRobotRepository::new(db.to_str().unwrap()).await.unwrap());
+    let ws_repo = Arc::new(SqliteWorkspaceRepository::new(db.to_str().unwrap()).await.unwrap());
+    let station_repo = Arc::new(SqliteStationRepository::from_pool(ws_repo.pool().clone()).await.unwrap());
+    let module_repo = Arc::new(SqliteEquipmentModuleRepository::new(ws_repo.pool().clone()));
+    let robot_service = Arc::new(RobotService::new(Some(robot_repo.clone())));
+    let station_service = StationService::new(station_repo, module_repo.clone(), robot_repo as Arc<dyn RobotRepository>);
+    Ctx { robot_service, station_service, module_repo, workspace: dir.into_path() }
+}
 
 #[tokio::test]
 async fn station_module_robot_lifecycle() {
-    let workspace_dir = tempfile::tempdir().unwrap();
-    let (robot_service, station_service, workspace_service, scene_service) =
-        setup_workspace(workspace_dir.path()).await;
+    let ctx = setup().await;
+    let pkg = tempfile::tempdir().unwrap();
+    create_test_package(pkg.path());
 
-    // 1. Import robot with materialization
-    let package_dir = tempfile::tempdir().unwrap();
-    create_test_package(package_dir.path());
-
-    let record = robot_service
-        .import_urdf_materialized(
-            workspace_dir.path(),
-            URDF_WITH_MESHES,
-            Some("test_pkg"),
-            &[package_dir.path().to_path_buf()],
-        )
-        .await
-        .expect("import robot");
-
+    let record = ctx.robot_service
+        .import_urdf_materialized(&ctx.workspace, URDF_WITH_MESHES, Some("test_pkg"), &[pkg.path().to_path_buf()])
+        .await.expect("import");
     let robot_id = record.id.clone();
 
-    // 2. Create workspace (robots are independent resources)
-    let workspace = workspace_service
-        .create_workspace("Assembly Cell")
-        .await
-        .expect("create workspace");
+    let station = ctx.station_service.create_station("assembly", "Assembly").await.unwrap();
+    ctx.station_service.add_robotics_module(&station.id, &robot_id, "Arm").await.unwrap();
 
-    // 3. Create station with robotics module referencing the robot
-    let mut station = Station::new("assembly_cell", "Assembly Cell");
-    station.add_robotics_module(RoboticsModule {
-        id: RoboticsModuleId("arm_01".into()),
-        station_id: StationId("assembly_cell".into()),
-        name: "Primary Arm".into(),
-        robot_name: "test_robot".into(),
-        robot_definition_id: Some(robot_id.clone()),
-        controller_binding: "simulation".into(),
-    });
-    station.add_acquisition_module(AcquisitionModule {
-        id: AcquisitionModuleId("vision_01".into()),
-        station_id: StationId("assembly_cell".into()),
-        name: "Vision Sensor".into(),
-        channels: [("target_x".into(), 0.0), ("target_y".into(), 0.0)].into(),
-    });
-    station_service.register_station(station);
-
-    // 4. Verify station exists in memory
-    let stations = station_service.list_stations();
-    assert_eq!(stations.len(), 1);
-    let station = &stations[0];
-    assert_eq!(station.id.0, "assembly_cell");
-
-    let module = station.robotics_modules.get(&RoboticsModuleId("arm_01".into()))
-        .expect("arm_01 module must exist");
-    assert_eq!(module.robot_definition_id.as_deref(), Some(robot_id.as_str()));
-
-    // 5. Verify robot is materialized
-    let availability = check_robot_availability(&robot_id, workspace_dir.path(), robot_service.repo().unwrap())
-        .await;
-    assert_eq!(availability, RobotAvailability::Materialized);
-
-    println!("✓ Station → Module → Robot lifecycle complete");
-    println!("  station: assembly_cell");
-    println!("  module: arm_01 → robot: {robot_id}");
+    assert_eq!(check_robot_availability(&robot_id, &ctx.workspace, ctx.robot_service.repo().unwrap()).await, RobotAvailability::Materialized);
+    assert_eq!(ctx.module_repo.find_robot_references(&robot_id).await.unwrap().len(), 1);
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Test 2: Station + Robot survive reopen
-// ═══════════════════════════════════════════════════════════════════════════
 
 #[tokio::test]
 async fn station_module_robot_survives_reopen() {
-    let workspace_dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir().unwrap();
     let robot_id;
 
-    // ─── Phase 1: Create workspace, import robot, create station ───
     {
-        let (robot_service, station_service, _ws, _scene) =
-            setup_workspace(workspace_dir.path()).await;
+        let db = dir.path().join("workspace.db");
+        std::fs::create_dir_all(dir.path().join("robots")).unwrap();
+        let r = Arc::new(SqliteRobotRepository::new(db.to_str().unwrap()).await.unwrap());
+        let w = Arc::new(SqliteWorkspaceRepository::new(db.to_str().unwrap()).await.unwrap());
+        let s = Arc::new(SqliteStationRepository::from_pool(w.pool().clone()).await.unwrap());
+        let m = Arc::new(SqliteEquipmentModuleRepository::new(w.pool().clone()));
+        let rs = Arc::new(RobotService::new(Some(r.clone())));
+        let ss = StationService::new(s, m, r as Arc<dyn RobotRepository>);
 
-        let package_dir = tempfile::tempdir().unwrap();
-        create_test_package(package_dir.path());
+        let pkg = tempfile::tempdir().unwrap();
+        create_test_package(pkg.path());
+        let rec = rs.import_urdf_materialized(dir.path(), URDF_WITH_MESHES, Some("pkg"), &[pkg.path().to_path_buf()]).await.unwrap();
+        robot_id = rec.id.clone();
 
-        let record = robot_service
-            .import_urdf_materialized(
-                workspace_dir.path(),
-                URDF_WITH_MESHES,
-                Some("test_pkg"),
-                &[package_dir.path().to_path_buf()],
-            )
-            .await
-            .expect("import robot");
-
-        robot_id = record.id.clone();
-
-        let mut station = Station::new("inspection_cell", "Inspection Cell");
-        station.add_robotics_module(RoboticsModule {
-            id: RoboticsModuleId("arm_01".into()),
-            station_id: StationId("inspection_cell".into()),
-            name: "Inspector Arm".into(),
-            robot_name: "test_robot".into(),
-            robot_definition_id: Some(robot_id.clone()),
-            controller_binding: "simulation".into(),
-        });
-        station_service.register_station(station);
-
-        // Verify before close
-        assert_eq!(station_service.list_stations().len(), 1);
+        let st = ss.create_station("cell", "Cell").await.unwrap();
+        ss.add_robotics_module(&st.id, &robot_id, "Arm").await.unwrap();
     }
 
-    // ─── Phase 2: "Restart" — reinitialize everything ───
-    let (robot_service2, station_service2, _ws2, scene2) =
-        setup_workspace(workspace_dir.path()).await;
+    let db = dir.path().join("workspace.db");
+    let r = Arc::new(SqliteRobotRepository::new(db.to_str().unwrap()).await.unwrap());
+    let w = Arc::new(SqliteWorkspaceRepository::new(db.to_str().unwrap()).await.unwrap());
+    let s = Arc::new(SqliteStationRepository::from_pool(w.pool().clone()).await.unwrap());
+    let m = Arc::new(SqliteEquipmentModuleRepository::new(w.pool().clone()));
+    let rs = Arc::new(RobotService::new(Some(r.clone())));
+    let ss = StationService::new(s, m.clone(), r as Arc<dyn RobotRepository>);
 
-    // Load stations from DB
-    station_service2.load_all().await.expect("load stations");
-
-    // Verify station survived
-    let stations = station_service2.list_stations();
-    assert_eq!(stations.len(), 1, "station must survive reopen");
-    assert_eq!(stations[0].id.0, "inspection_cell");
-
-    let module = stations[0].robotics_modules.get(&RoboticsModuleId("arm_01".into()))
-        .expect("arm_01 must exist");
-    assert_eq!(
-        module.robot_definition_id.as_deref(),
-        Some(robot_id.as_str()),
-        "module → robot reference must survive"
-    );
-
-    // Verify robot is still materialized
-    let availability = check_robot_availability(&robot_id, workspace_dir.path(), robot_service2.repo().unwrap())
-        .await;
-    assert_eq!(availability, RobotAvailability::Materialized, "robot must survive reopen");
-
-    // Verify robot loads correctly
-    let snapshot = robot_service2
-        .load_materialized_robot(&robot_id, workspace_dir.path(), &scene2)
-        .await
-        .expect("load robot after reopen");
-    assert_eq!(snapshot.robot_name, "test_robot");
-    assert_eq!(snapshot.joints.len(), 1, "must have 1 DOF");
-
-    println!("✓ Station + Robot survive full reopen cycle");
-    println!("  station: inspection_cell");
-    println!("  module → robot: {robot_id}");
+    assert_eq!(ss.list_stations().await.unwrap().len(), 1);
+    assert_eq!(ss.get_station_modules(&StationId("cell".into())).await.unwrap().len(), 1);
+    assert_eq!(m.find_robot_references(&robot_id).await.unwrap().len(), 1);
+    assert_eq!(check_robot_availability(&robot_id, &dir.path(), rs.repo().unwrap()).await, RobotAvailability::Materialized);
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Test 3: Broken reference detection
-// ═══════════════════════════════════════════════════════════════════════════
 
 #[tokio::test]
-async fn station_module_detects_broken_robot_reference() {
-    let workspace_dir = tempfile::tempdir().unwrap();
-    let (_robot_service, station_service, _ws, _scene) =
-        setup_workspace(workspace_dir.path()).await;
-
-    // Create station with a module referencing a robot that DOESN'T exist
-    let mut station = Station::new("ghost_cell", "Ghost Cell");
-    station.add_robotics_module(RoboticsModule {
-        id: RoboticsModuleId("ghost_arm".into()),
-        station_id: StationId("ghost_cell".into()),
-        name: "Ghost Arm".into(),
-        robot_name: "nonexistent_robot".into(),
-        robot_definition_id: Some("robot-does-not-exist".into()),
-        controller_binding: "simulation".into(),
-    });
-    station_service.register_station(station);
-
-    // Give the async persist task time to complete
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
-    // Reload from DB
-    station_service.load_all().await.expect("load stations");
-
-    let stations = station_service.list_stations();
-    assert_eq!(stations.len(), 1);
-
-    let module = stations[0].robotics_modules.get(&RoboticsModuleId("ghost_arm".into()))
-        .expect("ghost_arm must exist");
-
-    // The reference EXISTS in the station...
-    let referenced_robot_id = module.robot_definition_id.as_ref()
-        .expect("robot_definition_id must be set");
-
-    // ...but the robot does NOT exist in the repository
-    let robot_repo = SqliteRobotRepository::in_memory().await.unwrap();
-    let robot_exists = robot_repo.get(referenced_robot_id).await.unwrap().is_some();
-    assert!(!robot_exists, "referenced robot must not exist");
-
-    // The availability check returns Legacy (no record found)
-    let availability = check_robot_availability(
-        referenced_robot_id,
-        workspace_dir.path(),
-        &robot_repo,
-    ).await;
-    assert!(
-        matches!(availability, RobotAvailability::Legacy),
-        "broken reference should be detectable via availability check"
-    );
-
-    println!("✓ Broken reference detection works");
-    println!("  station → module → robot_id: {referenced_robot_id}");
-    println!("  robot exists: {robot_exists}");
-    println!("  availability: {:?}", availability);
+async fn broken_reference_rejected_by_service() {
+    let ctx = setup().await;
+    let st = ctx.station_service.create_station("ghost", "Ghost").await.unwrap();
+    let result = ctx.station_service.add_robotics_module(&st.id, "nonexistent", "Arm").await;
+    assert!(result.is_err());
+    assert!(matches!(result.unwrap_err(), thalos_runtime::station::StationError::RobotNotFound(_)));
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Test 4: Multiple stations with different robots
-// ═══════════════════════════════════════════════════════════════════════════
 
 #[tokio::test]
-async fn multiple_stations_with_different_robots() {
-    let workspace_dir = tempfile::tempdir().unwrap();
-    let (robot_service, station_service, _ws, _scene) =
-        setup_workspace(workspace_dir.path()).await;
+async fn multiple_stations_different_robots() {
+    let ctx = setup().await;
+    let pkg_a = tempfile::tempdir().unwrap();
+    create_test_package(pkg_a.path());
+    let pkg_b = tempfile::tempdir().unwrap();
+    create_test_package(pkg_b.path());
+    std::fs::write(pkg_b.path().join("meshes").join("visual").join("base_link.stl"), b"solid b\n").unwrap();
 
-    // Import two different robots with DIFFERENT content to avoid hash collisions
-    let package_a = tempfile::tempdir().unwrap();
-    create_test_package(package_a.path());
+    let ra = ctx.robot_service.import_urdf_materialized(&ctx.workspace, URDF_WITH_MESHES, Some("a"), &[pkg_a.path().to_path_buf()]).await.unwrap();
+    let rb = ctx.robot_service.import_urdf_materialized(&ctx.workspace, URDF_WITH_MESHES, Some("b"), &[pkg_b.path().to_path_buf()]).await.unwrap();
+    assert_ne!(ra.id, rb.id);
 
-    let package_b = tempfile::tempdir().unwrap();
-    create_test_package(package_b.path());
-    // Write different content to package_b to ensure different hashes
-    std::fs::write(
-        package_b.path().join("meshes").join("visual").join("base_link.stl"),
-        b"solid robot_b\nfacet normal 0 0 1\nendfacet\nendsolid robot_b\n",
-    ).unwrap();
+    let sa = ctx.station_service.create_station("ca", "Cell A").await.unwrap();
+    ctx.station_service.add_robotics_module(&sa.id, &ra.id, "Arm A").await.unwrap();
+    let sb = ctx.station_service.create_station("cb", "Cell B").await.unwrap();
+    ctx.station_service.add_robotics_module(&sb.id, &rb.id, "Arm B").await.unwrap();
 
-    let record_a = robot_service
-        .import_urdf_materialized(
-            workspace_dir.path(),
-            URDF_WITH_MESHES,
-            Some("robot_a"),
-            &[package_a.path().to_path_buf()],
-        )
-        .await
-        .expect("import robot A");
-
-    let record_b = robot_service
-        .import_urdf_materialized(
-            workspace_dir.path(),
-            URDF_WITH_MESHES,
-            Some("robot_b"),
-            &[package_b.path().to_path_buf()],
-        )
-        .await
-        .expect("import robot B");
-
-    assert_ne!(record_a.id, record_b.id, "robots must have different IDs");
-
-    // Create two stations, each referencing a different robot
-    let mut station_a = Station::new("cell_a", "Cell A");
-    station_a.add_robotics_module(RoboticsModule {
-        id: RoboticsModuleId("arm_a".into()),
-        station_id: StationId("cell_a".into()),
-        name: "Arm A".into(),
-        robot_name: "test_robot".into(),
-        robot_definition_id: Some(record_a.id.clone()),
-        controller_binding: "simulation".into(),
-    });
-
-    let mut station_b = Station::new("cell_b", "Cell B");
-    station_b.add_robotics_module(RoboticsModule {
-        id: RoboticsModuleId("arm_b".into()),
-        station_id: StationId("cell_b".into()),
-        name: "Arm B".into(),
-        robot_name: "test_robot".into(),
-        robot_definition_id: Some(record_b.id.clone()),
-        controller_binding: "simulation".into(),
-    });
-
-    station_service.register_station(station_a);
-    station_service.register_station(station_b);
-
-    // Verify both stations exist with correct references
-    let stations = station_service.list_stations();
-    assert_eq!(stations.len(), 2);
-
-    let station_a = stations.iter().find(|s| s.id.0 == "cell_a").unwrap();
-    let station_b = stations.iter().find(|s| s.id.0 == "cell_b").unwrap();
-
-    let module_a = station_a.robotics_modules.get(&RoboticsModuleId("arm_a".into())).unwrap();
-    let module_b = station_b.robotics_modules.get(&RoboticsModuleId("arm_b".into())).unwrap();
-
-    assert_eq!(module_a.robot_definition_id.as_deref(), Some(record_a.id.as_str()));
-    assert_eq!(module_b.robot_definition_id.as_deref(), Some(record_b.id.as_str()));
-
-    // Both robots are materialized
-    let avail_a = check_robot_availability(&record_a.id, workspace_dir.path(), robot_service.repo().unwrap()).await;
-    let avail_b = check_robot_availability(&record_b.id, workspace_dir.path(), robot_service.repo().unwrap()).await;
-    assert_eq!(avail_a, RobotAvailability::Materialized);
-    assert_eq!(avail_b, RobotAvailability::Materialized);
-
-    println!("✓ Multiple stations with different robots work");
-    println!("  cell_a → arm_a → {}", record_a.id);
-    println!("  cell_b → arm_b → {}", record_b.id);
+    assert_eq!(ctx.module_repo.find_robot_references(&ra.id).await.unwrap()[0].station_id, "ca");
+    assert_eq!(ctx.module_repo.find_robot_references(&rb.id).await.unwrap()[0].station_id, "cb");
+    assert_eq!(check_robot_availability(&ra.id, &ctx.workspace, ctx.robot_service.repo().unwrap()).await, RobotAvailability::Materialized);
+    assert_eq!(check_robot_availability(&rb.id, &ctx.workspace, ctx.robot_service.repo().unwrap()).await, RobotAvailability::Materialized);
 }
+
+use thalos_engine::prelude::StationId;

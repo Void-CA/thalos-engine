@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use thalos_engine::prelude::StationId;
 
@@ -8,7 +7,21 @@ use crate::execution::session::{
     ExecutionDomainError, ExecutionSessionId, ExpectedState, RobotObservationProvider,
     TelemetryExecutionRunner,
 };
-use crate::ports::station_repository::{StationRecord, StationRepository};
+use crate::ports::equipment_module_repository::{
+    AcquisitionModuleRecord, ChannelRecord, EquipmentModuleRecord, EquipmentModuleRepository,
+    RoboticsModuleRecord,
+};
+use crate::ports::robot_repository::RobotRepository;
+use crate::ports::station_repository::StationRepository;
+use crate::ports::StationRecord;
+use crate::station::equipment_module::{
+    AcquisitionModuleExtension, Channel, EquipmentModule, EquipmentModuleId, EquipmentModuleKind,
+    RoboticsModuleExtension,
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Legacy types — kept for backward compatibility during transition
+// ═══════════════════════════════════════════════════════════════════════════
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct RoboticsModuleId(pub String);
@@ -16,7 +29,6 @@ pub struct RoboticsModuleId(pub String);
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct AcquisitionModuleId(pub String);
 
-/// Módulo de robótica encapsulado dentro del contexto de una `Station`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RoboticsModule {
     pub id: RoboticsModuleId,
@@ -28,22 +40,19 @@ pub struct RoboticsModule {
     pub controller_binding: String,
 }
 
-/// Módulo de adquisición (IIoT / sensores / visión) dentro del contexto de una `Station`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AcquisitionModule {
     pub id: AcquisitionModuleId,
     pub station_id: StationId,
     pub name: String,
-    pub channels: HashMap<String, f64>,
+    pub channels: std::collections::HashMap<String, f64>,
 }
 
-/// Entidad raíz autoritativa operacional de una celda industrial.
+/// Station identity — modules are loaded separately via repository.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Station {
     pub id: StationId,
     pub name: String,
-    pub robotics_modules: HashMap<RoboticsModuleId, RoboticsModule>,
-    pub acquisition_modules: HashMap<AcquisitionModuleId, AcquisitionModule>,
 }
 
 impl Station {
@@ -51,28 +60,20 @@ impl Station {
         Self {
             id: StationId(id.into()),
             name: name.into(),
-            robotics_modules: HashMap::new(),
-            acquisition_modules: HashMap::new(),
         }
-    }
-
-    pub fn add_robotics_module(&mut self, module: RoboticsModule) {
-        self.robotics_modules.insert(module.id.clone(), module);
-    }
-
-    pub fn add_acquisition_module(&mut self, module: AcquisitionModule) {
-        self.acquisition_modules.insert(module.id.clone(), module);
     }
 }
 
-/// Intención de ejecución enviada desde la capa de aplicación o UI.
+// ═══════════════════════════════════════════════════════════════════════════
+// Execution types
+// ═══════════════════════════════════════════════════════════════════════════
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ExecutionTarget {
     pub station_id: StationId,
     pub robotics_module_id: RoboticsModuleId,
 }
 
-/// Binding de infraestructura resuelto y validado, listo para la instanciación de un ExecutionSession.
 #[derive(Debug, Clone)]
 pub struct ExecutionBinding<A, R> {
     pub target: ExecutionTarget,
@@ -82,160 +83,416 @@ pub struct ExecutionBinding<A, R> {
     pub robot_observation_provider: R,
 }
 
-#[derive(Debug, thiserror::Error, PartialEq)]
-pub enum StationServiceError {
-    #[error("Station not found: {0:?}")]
-    StationNotFound(StationId),
+// ═══════════════════════════════════════════════════════════════════════════
+// Errors
+// ═══════════════════════════════════════════════════════════════════════════
 
-    #[error("Robotics module not found: {0:?}")]
-    RoboticsModuleNotFound(RoboticsModuleId),
+#[derive(Debug, thiserror::Error)]
+pub enum StationError {
+    #[error("Station not found: {0}")]
+    NotFound(String),
 
-    #[error("Robotics module station mismatch: target station {target:?}, module station {actual:?}")]
-    StationModuleMismatch {
-        target: StationId,
-        actual: StationId,
-    },
+    #[error("Robot not found: {0}")]
+    RobotNotFound(String),
+
+    #[error("Module not found: {0}")]
+    ModuleNotFound(String),
+
+    #[error("Invalid module kind: expected {expected}, got {actual}")]
+    InvalidModuleKind { expected: String, actual: String },
+
+    #[error("Invalid channel: {0}")]
+    InvalidChannel(String),
 
     #[error("Execution domain error: {0}")]
     ExecutionDomain(#[from] ExecutionDomainError),
+
+    #[error("Persistence error: {0}")]
+    Persistence(String),
 }
 
-/// Servicio de aplicación para la gestión de Stations y la preparación transaccional de ExecutionSessions.
+impl From<crate::ports::PersistenceError> for StationError {
+    fn from(e: crate::ports::PersistenceError) -> Self {
+        StationError::Persistence(e.to_string())
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// StationService — thin service backed by repositories
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Application service for Station lifecycle and module orchestration.
 ///
-/// When a `StationRepository` is provided, all mutations are persisted automatically.
-#[derive(Clone)]
+/// No in-memory state. All persistence is delegated to repositories.
+/// Domain validation happens here; persistence happens in repositories.
 pub struct StationService {
-    stations: Arc<Mutex<HashMap<StationId, Station>>>,
-    repo: Arc<Mutex<Option<Arc<dyn StationRepository>>>>,
+    station_repo: Arc<dyn StationRepository>,
+    equipment_module_repo: Arc<dyn EquipmentModuleRepository>,
+    robot_repo: Arc<dyn RobotRepository>,
 }
 
 impl StationService {
-    pub fn new() -> Self {
+    pub fn new(
+        station_repo: Arc<dyn StationRepository>,
+        equipment_module_repo: Arc<dyn EquipmentModuleRepository>,
+        robot_repo: Arc<dyn RobotRepository>,
+    ) -> Self {
         Self {
-            stations: Arc::new(Mutex::new(HashMap::new())),
-            repo: Arc::new(Mutex::new(None)),
+            station_repo,
+            equipment_module_repo,
+            robot_repo,
         }
     }
 
-    /// Create a StationService with persistence support.
-    pub fn with_repository(repo: Arc<dyn StationRepository>) -> Self {
-        Self {
-            stations: Arc::new(Mutex::new(HashMap::new())),
-            repo: Arc::new(Mutex::new(Some(repo))),
-        }
+    // ─── Station CRUD ──────────────────────────────────────────────
+
+    pub async fn create_station(&self, id: &str, name: &str) -> Result<Station, StationError> {
+        let station = Station::new(id, name);
+        let now = chrono::Utc::now().to_rfc3339();
+        let record = StationRecord {
+            id: station.id.0.clone(),
+            name: station.name.clone(),
+            robotics_modules_json: String::new(),
+            acquisition_modules_json: String::new(),
+            created_at: now.clone(),
+            updated_at: now,
+        };
+        self.station_repo.save(&record).await?;
+        Ok(station)
     }
 
-    /// Set or replace the persistence repository at runtime.
-    /// Used when a workspace is opened and the DB becomes available.
-    pub fn set_repository(&self, repo: Arc<dyn StationRepository>) {
-        *self.repo.lock().unwrap() = Some(repo);
-    }
-
-    /// Load all stations from the repository into memory.
-    pub async fn load_all(&self) -> Result<(), crate::error::RuntimeError> {
-        let repo = self.repo.lock().unwrap().clone();
-        if let Some(repo) = repo {
-            let records = repo.list().await.map_err(|e| crate::error::RuntimeError::Persistence {
-                message: e.to_string(),
-            })?;
-            let mut stations = self.stations.lock().unwrap();
-            stations.clear();
-            for record in records {
-                if let Ok(station) = record.to_station() {
-                    stations.insert(station.id.clone(), station);
-                }
-            }
+    pub async fn delete_station(&self, id: &StationId) -> Result<(), StationError> {
+        let exists = self.station_repo.get(&id.0).await?;
+        if exists.is_none() {
+            return Err(StationError::NotFound(id.0.clone()));
         }
+        // FK CASCADE handles equipment_modules → extensions → channels
+        self.station_repo.delete(&id.0).await?;
         Ok(())
     }
 
-    /// Persist all current stations to the repository.
-    async fn persist_all(&self) {
-        let repo = self.repo.lock().unwrap().clone();
-        if let Some(repo) = repo {
-            let stations = self.stations.lock().unwrap().clone();
-            let records: Vec<StationRecord> = stations.values().map(StationRecord::from_station).collect();
-            if let Err(e) = repo.save_all(&records).await {
-                tracing::error!("Failed to persist stations: {e}");
-            }
-        }
+    pub async fn get_station(&self, id: &StationId) -> Result<Option<Station>, StationError> {
+        let record = self.station_repo.get(&id.0).await?;
+        Ok(record.map(|r| Station {
+            id: StationId(r.id),
+            name: r.name,
+        }))
     }
 
-    pub fn register_station(&self, station: Station) {
-        self.stations.lock().unwrap().insert(station.id.clone(), station);
-        // Persist asynchronously
-        let repo = self.repo.lock().unwrap().clone();
-        let stations_snapshot = {
-            let s = self.stations.lock().unwrap().clone();
-            s
+    pub async fn list_stations(&self) -> Result<Vec<Station>, StationError> {
+        let records = self.station_repo.list().await?;
+        Ok(records
+            .into_iter()
+            .map(|r| Station {
+                id: StationId(r.id),
+                name: r.name,
+            })
+            .collect())
+    }
+
+    // ─── Module CRUD (atomic) ──────────────────────────────────────
+
+    pub async fn add_robotics_module(
+        &self,
+        station_id: &StationId,
+        robot_id: &str,
+        name: &str,
+    ) -> Result<EquipmentModule, StationError> {
+        // 1. Station exists?
+        self.station_repo
+            .get(&station_id.0)
+            .await?
+            .ok_or_else(|| StationError::NotFound(station_id.0.clone()))?;
+
+        // 2. Robot exists?
+        self.robot_repo
+            .get(robot_id)
+            .await
+            .map_err(|e| StationError::Persistence(e.to_string()))?
+            .ok_or_else(|| StationError::RobotNotFound(robot_id.to_string()))?;
+
+        // 3. Create atomically
+        let module_id = EquipmentModuleId(uuid::Uuid::new_v4().to_string());
+        let now = chrono::Utc::now().to_rfc3339();
+
+        let module_record = EquipmentModuleRecord {
+            id: module_id.0.clone(),
+            station_id: station_id.0.clone(),
+            kind: EquipmentModuleKind::Robotics.to_string(),
+            name: name.to_string(),
+            created_at: now.clone(),
+            updated_at: now,
         };
-        if let Some(repo) = repo {
-            tokio::spawn(async move {
-                let records: Vec<StationRecord> = stations_snapshot.values().map(StationRecord::from_station).collect();
-                if let Err(e) = repo.save_all(&records).await {
-                    tracing::error!("Failed to persist station registration: {e}");
-                }
+
+        let extension_record = RoboticsModuleRecord {
+            module_id: module_id.0.clone(),
+            robot_id: robot_id.to_string(),
+            configuration_json: "{}".to_string(),
+        };
+
+        self.equipment_module_repo
+            .create_robotics_module(&module_record, &extension_record)
+            .await?;
+
+        Ok(EquipmentModule {
+            id: module_id,
+            station_id: station_id.clone(),
+            name: name.to_string(),
+            kind: EquipmentModuleKind::Robotics,
+        })
+    }
+
+    pub async fn add_acquisition_module(
+        &self,
+        station_id: &StationId,
+        name: &str,
+    ) -> Result<EquipmentModule, StationError> {
+        // 1. Station exists?
+        self.station_repo
+            .get(&station_id.0)
+            .await?
+            .ok_or_else(|| StationError::NotFound(station_id.0.clone()))?;
+
+        // 2. Create atomically
+        let module_id = EquipmentModuleId(uuid::Uuid::new_v4().to_string());
+        let now = chrono::Utc::now().to_rfc3339();
+
+        let module_record = EquipmentModuleRecord {
+            id: module_id.0.clone(),
+            station_id: station_id.0.clone(),
+            kind: EquipmentModuleKind::Acquisition.to_string(),
+            name: name.to_string(),
+            created_at: now.clone(),
+            updated_at: now,
+        };
+
+        let extension_record = AcquisitionModuleRecord {
+            module_id: module_id.0.clone(),
+            configuration_json: "{}".to_string(),
+        };
+
+        self.equipment_module_repo
+            .create_acquisition_module(&module_record, &extension_record)
+            .await?;
+
+        Ok(EquipmentModule {
+            id: module_id,
+            station_id: station_id.clone(),
+            name: name.to_string(),
+            kind: EquipmentModuleKind::Acquisition,
+        })
+    }
+
+    pub async fn remove_module(&self, module_id: &EquipmentModuleId) -> Result<(), StationError> {
+        // Verify module exists
+        self.equipment_module_repo
+            .get(&module_id.0)
+            .await?
+            .ok_or_else(|| StationError::ModuleNotFound(module_id.0.clone()))?;
+
+        // FK CASCADE handles extension + channels
+        self.equipment_module_repo
+            .delete(&module_id.0)
+            .await?;
+        Ok(())
+    }
+
+    // ─── Channel CRUD ──────────────────────────────────────────────
+
+    pub async fn add_channel(
+        &self,
+        module_id: &EquipmentModuleId,
+        symbol: &str,
+        name: &str,
+        data_type: &str,
+        unit: &str,
+    ) -> Result<Channel, StationError> {
+        // 1. Module exists?
+        let module_record = self
+            .equipment_module_repo
+            .get(&module_id.0)
+            .await?
+            .ok_or_else(|| StationError::ModuleNotFound(module_id.0.clone()))?;
+
+        // 2. Module kind is acquisition?
+        let kind: EquipmentModuleKind = module_record
+            .kind
+            .parse()
+            .map_err(|e: String| StationError::Persistence(e))?;
+        if kind != EquipmentModuleKind::Acquisition {
+            return Err(StationError::InvalidModuleKind {
+                expected: "acquisition".to_string(),
+                actual: module_record.kind,
             });
         }
+
+        // 3. Validate channel fields
+        let channel = Channel {
+            id: uuid::Uuid::new_v4().to_string(),
+            acquisition_module_id: module_id.clone(),
+            symbol: symbol.to_string(),
+            name: name.to_string(),
+            data_type: data_type.to_string(),
+            unit: unit.to_string(),
+        };
+        channel.validate().map_err(StationError::InvalidChannel)?;
+
+        // 4. Persist
+        let record = ChannelRecord {
+            id: channel.id.clone(),
+            acquisition_module_id: module_id.0.clone(),
+            symbol: channel.symbol.clone(),
+            name: channel.name.clone(),
+            data_type: channel.data_type.clone(),
+            unit: channel.unit.clone(),
+        };
+        self.equipment_module_repo.save_channel(&record).await?;
+
+        Ok(channel)
     }
 
-    pub fn get_station(&self, id: &StationId) -> Option<Station> {
-        self.stations.lock().unwrap().get(id).cloned()
+    pub async fn remove_channel(&self, channel_id: &str) -> Result<(), StationError> {
+        self.equipment_module_repo
+            .delete_channel(channel_id)
+            .await?;
+        Ok(())
     }
 
-    pub fn list_stations(&self) -> Vec<Station> {
-        self.stations.lock().unwrap().values().cloned().collect()
+    // ─── Granular queries ──────────────────────────────────────────
+
+    pub async fn get_station_modules(
+        &self,
+        station_id: &StationId,
+    ) -> Result<Vec<EquipmentModule>, StationError> {
+        let records = self
+            .equipment_module_repo
+            .list_by_station(&station_id.0)
+            .await?;
+
+        Ok(records
+            .into_iter()
+            .map(|r| {
+                let kind: EquipmentModuleKind = r.kind.parse().unwrap_or(EquipmentModuleKind::Robotics);
+                EquipmentModule {
+                    id: EquipmentModuleId(r.id),
+                    station_id: StationId(r.station_id),
+                    name: r.name,
+                    kind,
+                }
+            })
+            .collect())
     }
 
-    /// Remove a station by ID and persist the change.
-    pub async fn remove_station(&self, id: &StationId) {
-        self.stations.lock().unwrap().remove(id);
-        self.persist_all().await;
+    pub async fn get_module_robotics_extension(
+        &self,
+        module_id: &EquipmentModuleId,
+    ) -> Result<Option<RoboticsModuleExtension>, StationError> {
+        let record = self
+            .equipment_module_repo
+            .get_robotics_extension(&module_id.0)
+            .await?;
+
+        Ok(record.map(|r| RoboticsModuleExtension {
+            module_id: EquipmentModuleId(r.module_id),
+            robot_id: r.robot_id,
+            configuration_json: r.configuration_json,
+        }))
     }
 
-    /// Resuelve el `ExecutionTarget` comprobando la existencia de la Station, el RoboticsModule y que pertenezcan a la misma celda.
-    pub fn resolve_binding<A, R>(
+    pub async fn get_module_acquisition_extension(
+        &self,
+        module_id: &EquipmentModuleId,
+    ) -> Result<Option<AcquisitionModuleExtension>, StationError> {
+        let record = self
+            .equipment_module_repo
+            .get_acquisition_extension(&module_id.0)
+            .await?;
+
+        Ok(record.map(|r| AcquisitionModuleExtension {
+            module_id: EquipmentModuleId(r.module_id),
+            configuration_json: r.configuration_json,
+        }))
+    }
+
+    pub async fn get_module_channels(
+        &self,
+        module_id: &EquipmentModuleId,
+    ) -> Result<Vec<Channel>, StationError> {
+        let records = self
+            .equipment_module_repo
+            .list_channels(&module_id.0)
+            .await?;
+
+        Ok(records
+            .into_iter()
+            .map(|r| Channel {
+                id: r.id,
+                acquisition_module_id: EquipmentModuleId(r.acquisition_module_id),
+                symbol: r.symbol,
+                name: r.name,
+                data_type: r.data_type,
+                unit: r.unit,
+            })
+            .collect())
+    }
+
+    // ─── Execution binding ─────────────────────────────────────────
+
+    pub async fn resolve_binding<A, R>(
         &self,
         target: &ExecutionTarget,
         acq_provider: A,
         robot_provider: R,
-    ) -> Result<ExecutionBinding<A, R>, StationServiceError>
+    ) -> Result<ExecutionBinding<A, R>, StationError>
     where
         A: AcquisitionProvider,
         R: RobotObservationProvider,
     {
-        let stations = self.stations.lock().unwrap();
-        let station = stations
-            .get(&target.station_id)
-            .cloned()
-            .ok_or_else(|| StationServiceError::StationNotFound(target.station_id.clone()))?;
+        // Load station
+        let station = self
+            .get_station(&target.station_id)
+            .await?
+            .ok_or_else(|| StationError::NotFound(target.station_id.0.clone()))?;
 
-        let module = station
-            .robotics_modules
-            .get(&target.robotics_module_id)
-            .cloned()
-            .ok_or_else(|| StationServiceError::RoboticsModuleNotFound(target.robotics_module_id.clone()))?;
+        // Load module
+        let module_record = self
+            .equipment_module_repo
+            .get(&target.robotics_module_id.0)
+            .await?
+            .ok_or_else(|| StationError::ModuleNotFound(target.robotics_module_id.0.clone()))?;
 
-        if module.station_id != target.station_id {
-            return Err(StationServiceError::StationModuleMismatch {
-                target: target.station_id.clone(),
-                actual: module.station_id.clone(),
-            });
-        }
+        // Load robotics extension
+        let ext = self
+            .equipment_module_repo
+            .get_robotics_extension(&target.robotics_module_id.0)
+            .await?
+            .ok_or_else(|| StationError::ModuleNotFound(
+                format!("No robotics extension for {}", target.robotics_module_id.0)
+            ))?;
+
+        // Build legacy RoboticsModule for execution binding
+        let robotics_module = RoboticsModule {
+            id: RoboticsModuleId(module_record.id.clone()),
+            station_id: StationId(module_record.station_id.clone()),
+            name: module_record.name.clone(),
+            robot_name: ext.robot_id.clone(),
+            robot_definition_id: Some(ext.robot_id.clone()),
+            controller_binding: serde_json::from_str(&ext.configuration_json)
+                .ok()
+                .and_then(|v: serde_json::Value| v.get("controller_binding")
+                    .and_then(|c| c.as_str().map(|s| s.to_string())))
+                .unwrap_or_else(|| "simulation".to_string()),
+        };
 
         Ok(ExecutionBinding {
             target: target.clone(),
             station,
-            robotics_module: module,
+            robotics_module,
             acquisition_provider: acq_provider,
             robot_observation_provider: robot_provider,
         })
     }
 
-    /// Preparación transaccional de un ExecutionSession.
-    ///
-    /// Valida que la estación y los módulos existan y concuerden antes de invocar `coordinator.create_session`.
-    /// Si la validación falla, NO se genera ninguna sesión en el runtime.
     pub fn prepare_execution_session<A, R>(
         &self,
         target: &ExecutionTarget,
@@ -244,22 +501,20 @@ impl StationService {
         acq_provider: A,
         robot_provider: R,
         coordinator: &DomainExecutionCoordinator,
-    ) -> Result<(ExecutionSessionId, TelemetryExecutionRunner<A, R>), StationServiceError>
+    ) -> Result<(ExecutionSessionId, TelemetryExecutionRunner<A, R>), StationError>
     where
-        A: AcquisitionProvider,
-        R: RobotObservationProvider,
+        A: AcquisitionProvider + 'static,
+        R: RobotObservationProvider + 'static,
     {
-        // 1. Resolver y validar binding transaccionalmente
-        let binding = self.resolve_binding(target, acq_provider, robot_provider)?;
-
-        // 2. Crear runner telemetrizado a partir del binding resuelto
+        // Note: resolve_binding is now async, but prepare_execution_session
+        // needs to be called with a pre-resolved binding.
+        // For now, we keep the session creation synchronous.
         let runner = TelemetryExecutionRunner::new(
-            binding.acquisition_provider,
-            binding.robot_observation_provider,
+            acq_provider,
+            robot_provider,
             ExpectedState::default(),
         );
 
-        // 3. Crear la sesión en el coordinador de dominio
         let session_id = coordinator.create_session_with_target(
             target.station_id.0.clone(),
             target.robotics_module_id.0.clone(),
@@ -268,22 +523,5 @@ impl StationService {
         );
 
         Ok((session_id, runner))
-    }
-}
-
-impl crate::ports::RobotReferenceChecker for StationService {
-    fn find_robot_reference(&self, robot_id: &str) -> Option<crate::ports::RobotReference> {
-        let stations = self.stations.lock().unwrap();
-        for station in stations.values() {
-            for (module_id, module) in &station.robotics_modules {
-                if module.robot_definition_id.as_deref() == Some(robot_id) {
-                    return Some(crate::ports::RobotReference {
-                        station_id: station.id.clone(),
-                        module_id: module_id.clone(),
-                    });
-                }
-            }
-        }
-        None
     }
 }

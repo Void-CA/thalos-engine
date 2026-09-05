@@ -1,4 +1,5 @@
-use crate::station::{RoboticsModuleId, StationId};
+use crate::station::RoboticsModuleId;
+use thalos_engine::prelude::StationId;
 
 /// Identifies where a robot is referenced within the workspace.
 #[derive(Debug, Clone, PartialEq, Eq)]

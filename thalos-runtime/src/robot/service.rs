@@ -360,7 +360,34 @@ impl RobotService {
     }
 
     /// Delete a robot record from persistence.
-    pub async fn delete_robot(&self, id: &str) -> Result<(), RuntimeError> {
+    ///
+    /// Before deleting, checks if any station module references this robot
+    /// via the EquipmentModuleRepository. If referenced, returns an error
+    /// with the specific reference locations.
+    pub async fn delete_robot(
+        &self,
+        id: &str,
+        module_repo: &dyn crate::ports::equipment_module_repository::EquipmentModuleRepository,
+    ) -> Result<(), RuntimeError> {
+        // 1. Check if robot is referenced by any station module (via DB)
+        let references = module_repo
+            .find_robot_references(id)
+            .await
+            .map_err(|e| RuntimeError::Persistence {
+                message: e.to_string(),
+            })?;
+
+        if !references.is_empty() {
+            let ref_desc = references.iter()
+                .map(|r| format!("module '{}' in station '{}'", r.module_id.0, r.station_id))
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(RuntimeError::Persistence {
+                message: format!("Cannot delete robot '{id}': referenced by {ref_desc}"),
+            });
+        }
+
+        // 2. Delete from repository
         let repo = self.repo.as_ref().ok_or_else(|| RuntimeError::Persistence {
             message: "No robot repository configured".to_string(),
         })?;

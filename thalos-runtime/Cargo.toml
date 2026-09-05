@@ -11,6 +11,7 @@ thalos-document = { path = "../thalos-document" }
 thalos_ports = { path = "../thalos-ports", features = ["test-support"] }
 thalos-core = { path = "../thalos-core" }
 thalos-models = { path = "../thalos-models" }
+thalos_visual = { path = "../thalos-visual" }
 thiserror = "2"
 chrono = { version = "0.4", features = ["serde"] }
 rand = "0.8"

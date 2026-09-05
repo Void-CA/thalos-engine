@@ -2,11 +2,11 @@ use std::sync::Arc;
 
 use thalos_engine::core::models::RobotModel;
 use thalos_engine::prelude::StationId;
-use thalos_persistence::{SqliteRobotRepository, SqliteStationRepository, SqliteWorkspaceRepository};
+use thalos_persistence::{SqliteRobotRepository, SqliteStationRepository, SqliteWorkspaceRepository, SqliteEquipmentModuleRepository};
 use thalos_runtime::backends::manager::BackendManager;
-use thalos_runtime::ports::StationRepository;
+use thalos_runtime::ports::{RobotRepository, StationRepository, EquipmentModuleRepository};
 use thalos_runtime::station::{
-    AcquisitionModule, AcquisitionModuleId, RoboticsModule, RoboticsModuleId, Station, StationService,
+    EquipmentModuleId, Station, StationService, StationError,
 };
 use thalos_runtime::{RobotService, SceneService, WorkspaceService};
 
@@ -23,7 +23,14 @@ const URDF_SIMPLE: &str = r#"<?xml version="1.0"?>
   </joint>
 </robot>"#;
 
-async fn setup() -> (Arc<RobotService>, Arc<StationService>, tempfile::TempDir) {
+struct TestContext {
+    robot_service: Arc<RobotService>,
+    station_service: StationService,
+    module_repo: Arc<SqliteEquipmentModuleRepository>,
+    _dir: tempfile::TempDir,
+}
+
+async fn setup() -> TestContext {
     let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(dir.path().join("robots")).unwrap();
     let db_path = dir.path().join("workspace.db");
@@ -35,11 +42,21 @@ async fn setup() -> (Arc<RobotService>, Arc<StationService>, tempfile::TempDir) 
         SqliteWorkspaceRepository::new(db_path.to_str().unwrap()).await.unwrap(),
     );
 
-    let robot_service = Arc::new(RobotService::new(Some(robot_repo)));
-    let station_repo = Arc::new(workspace_repo.station_repo());
-    let station_service = Arc::new(StationService::with_repository(station_repo));
+    let station_repo = Arc::new(
+        SqliteStationRepository::from_pool(workspace_repo.pool().clone()).await.unwrap(),
+    );
+    let module_repo = Arc::new(
+        SqliteEquipmentModuleRepository::new(workspace_repo.pool().clone()),
+    );
 
-    (robot_service, station_service, dir)
+    let robot_service = Arc::new(RobotService::new(Some(robot_repo.clone())));
+    let station_service = StationService::new(
+        station_repo.clone(),
+        module_repo.clone(),
+        robot_repo.clone() as Arc<dyn RobotRepository>,
+    );
+
+    TestContext { robot_service, station_service, module_repo, _dir: dir }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -48,151 +65,309 @@ async fn setup() -> (Arc<RobotService>, Arc<StationService>, tempfile::TempDir) 
 
 #[tokio::test]
 async fn create_empty_station() {
-    let (_robot_service, station_service, _dir) = setup().await;
+    let ctx = setup().await;
 
-    let station = Station::new("empty_cell", "Empty Cell");
-    station_service.register_station(station);
+    let station = ctx.station_service
+        .create_station("empty_cell", "Empty Cell")
+        .await
+        .expect("create station");
 
-    let stations = station_service.list_stations();
-    assert_eq!(stations.len(), 1);
-    assert_eq!(stations[0].robotics_modules.len(), 0);
-    assert_eq!(stations[0].acquisition_modules.len(), 0);
+    assert_eq!(station.id.0, "empty_cell");
+    assert_eq!(station.name, "Empty Cell");
+
+    // Verify modules are empty
+    let modules = ctx.station_service.get_station_modules(&station.id).await.unwrap();
+    assert_eq!(modules.len(), 0);
 }
 
 #[tokio::test]
 async fn create_station_with_acquisition_only() {
-    let (_robot_service, station_service, _dir) = setup().await;
+    let ctx = setup().await;
 
-    let mut station = Station::new("monitoring", "Monitoring Station");
-    station.add_acquisition_module(AcquisitionModule {
-        id: AcquisitionModuleId("temp_sensor".into()),
-        station_id: StationId("monitoring".into()),
-        name: "Temperature".into(),
-        channels: [("temp_c".into(), 0.0)].into(),
-    });
-    station_service.register_station(station);
+    let station = ctx.station_service
+        .create_station("monitoring", "Monitoring Station")
+        .await
+        .expect("create station");
 
-    let stations = station_service.list_stations();
-    assert_eq!(stations.len(), 1);
-    assert_eq!(stations[0].robotics_modules.len(), 0);
-    assert_eq!(stations[0].acquisition_modules.len(), 1);
+    let module = ctx.station_service
+        .add_acquisition_module(&station.id, "Temperature")
+        .await
+        .expect("add acquisition module");
 
-    let module = stations[0].acquisition_modules.get(&AcquisitionModuleId("temp_sensor".into())).unwrap();
-    assert_eq!(module.name, "Temperature");
+    let modules = ctx.station_service.get_station_modules(&station.id).await.unwrap();
+    assert_eq!(modules.len(), 1);
+    assert_eq!(modules[0].name, "Temperature");
 }
 
 #[tokio::test]
 async fn create_station_with_robotics_only() {
-    let (robot_service, station_service, dir) = setup().await;
+    let ctx = setup().await;
 
-    // Import a robot first (legacy import — no materialization needed for cardinality tests)
     #[allow(deprecated)]
-    let record = robot_service
+    let record = ctx.robot_service
         .import_urdf(URDF_SIMPLE)
         .await
         .expect("import robot");
 
-    let mut station = Station::new("assembly", "Assembly Station");
-    station.add_robotics_module(RoboticsModule {
-        id: RoboticsModuleId("arm_01".into()),
-        station_id: StationId("assembly".into()),
-        name: "Primary Arm".into(),
-        robot_name: "test_robot".into(),
-        robot_definition_id: Some(record.id.clone()),
-        controller_binding: "simulation".into(),
-    });
-    station_service.register_station(station);
+    let station = ctx.station_service
+        .create_station("assembly", "Assembly Station")
+        .await
+        .expect("create station");
 
-    let stations = station_service.list_stations();
-    assert_eq!(stations.len(), 1);
-    assert_eq!(stations[0].robotics_modules.len(), 1);
-    assert_eq!(stations[0].acquisition_modules.len(), 0);
+    let module = ctx.station_service
+        .add_robotics_module(&station.id, &record.id, "Primary Arm")
+        .await
+        .expect("add robotics module");
+
+    let modules = ctx.station_service.get_station_modules(&station.id).await.unwrap();
+    assert_eq!(modules.len(), 1);
+    assert_eq!(modules[0].name, "Primary Arm");
 }
 
 #[tokio::test]
 async fn create_station_with_both() {
-    let (robot_service, station_service, dir) = setup().await;
+    let ctx = setup().await;
 
     #[allow(deprecated)]
-    let record = robot_service
+    let record = ctx.robot_service
         .import_urdf(URDF_SIMPLE)
         .await
         .expect("import robot");
 
-    let mut station = Station::new("hybrid", "Hybrid Station");
-    station.add_robotics_module(RoboticsModule {
-        id: RoboticsModuleId("arm_01".into()),
-        station_id: StationId("hybrid".into()),
-        name: "Arm".into(),
-        robot_name: "test_robot".into(),
-        robot_definition_id: Some(record.id.clone()),
-        controller_binding: "simulation".into(),
-    });
-    station.add_acquisition_module(AcquisitionModule {
-        id: AcquisitionModuleId("sensor_01".into()),
-        station_id: StationId("hybrid".into()),
-        name: "Vision".into(),
-        channels: HashMap::new(),
-    });
-    station_service.register_station(station);
+    let station = ctx.station_service
+        .create_station("hybrid", "Hybrid Station")
+        .await
+        .expect("create station");
 
-    let stations = station_service.list_stations();
-    assert_eq!(stations.len(), 1);
-    assert_eq!(stations[0].robotics_modules.len(), 1);
-    assert_eq!(stations[0].acquisition_modules.len(), 1);
+    ctx.station_service
+        .add_robotics_module(&station.id, &record.id, "Arm")
+        .await
+        .expect("add robotics");
+
+    ctx.station_service
+        .add_acquisition_module(&station.id, "Vision")
+        .await
+        .expect("add acquisition");
+
+    let modules = ctx.station_service.get_station_modules(&station.id).await.unwrap();
+    assert_eq!(modules.len(), 2);
 }
 
 #[tokio::test]
 async fn robot_can_exist_without_station() {
-    let (robot_service, station_service, dir) = setup().await;
+    let ctx = setup().await;
 
-    // Import a robot
     #[allow(deprecated)]
-    let record = robot_service
+    let record = ctx.robot_service
         .import_urdf(URDF_SIMPLE)
         .await
         .expect("import robot");
 
     // Station exists but does NOT reference the robot
-    let station = Station::new("unrelated", "Unrelated Station");
-    station_service.register_station(station);
+    ctx.station_service
+        .create_station("unrelated", "Unrelated Station")
+        .await
+        .expect("create station");
 
     // Robot exists independently
-    let stations = station_service.list_stations();
-    assert_eq!(stations.len(), 1);
-    assert_eq!(stations[0].robotics_modules.len(), 0);
-
-    // Robot record is in the repository
-    let repo = robot_service.repo().unwrap();
+    let repo = ctx.robot_service.repo().unwrap();
     let fetched = repo.get(&record.id).await.unwrap();
     assert!(fetched.is_some(), "robot must exist independently of station");
 }
 
 #[tokio::test]
 async fn station_survives_reopen_with_zero_modules() {
-    let (_robot_service, station_service, dir) = setup().await;
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("robots")).unwrap();
+    let db_path = dir.path().join("workspace.db");
 
-    // Create empty station
-    let station = Station::new("empty", "Empty Cell");
-    station_service.register_station(station);
+    // Phase 1: Create station
+    {
+        let robot_repo = Arc::new(SqliteRobotRepository::new(db_path.to_str().unwrap()).await.unwrap());
+        let workspace_repo = Arc::new(SqliteWorkspaceRepository::new(db_path.to_str().unwrap()).await.unwrap());
+        let station_repo = Arc::new(SqliteStationRepository::from_pool(workspace_repo.pool().clone()).await.unwrap());
+        let module_repo = Arc::new(SqliteEquipmentModuleRepository::new(workspace_repo.pool().clone()));
 
-    // Simulate restart
-    drop(station_service);
+        let station_service = StationService::new(
+            station_repo, module_repo, robot_repo as Arc<dyn RobotRepository>,
+        );
+        station_service.create_station("empty", "Empty Cell").await.unwrap();
+    }
 
-    let station_repo = Arc::new(
-        SqliteWorkspaceRepository::new(dir.path().join("workspace.db").to_str().unwrap())
-            .await
-            .unwrap()
-            .station_repo(),
+    // Phase 2: Reopen
+    let robot_repo = Arc::new(SqliteRobotRepository::new(db_path.to_str().unwrap()).await.unwrap());
+    let workspace_repo = Arc::new(SqliteWorkspaceRepository::new(db_path.to_str().unwrap()).await.unwrap());
+    let station_repo = Arc::new(SqliteStationRepository::from_pool(workspace_repo.pool().clone()).await.unwrap());
+    let module_repo = Arc::new(SqliteEquipmentModuleRepository::new(workspace_repo.pool().clone()));
+
+    let station_service = StationService::new(
+        station_repo, module_repo, robot_repo as Arc<dyn RobotRepository>,
     );
-    let new_station_service = StationService::with_repository(station_repo);
-    new_station_service.load_all().await.unwrap();
 
-    let stations = new_station_service.list_stations();
+    let stations = station_service.list_stations().await.unwrap();
     assert_eq!(stations.len(), 1);
     assert_eq!(stations[0].id.0, "empty");
-    assert_eq!(stations[0].robotics_modules.len(), 0);
-    assert_eq!(stations[0].acquisition_modules.len(), 0);
+
+    let modules = station_service.get_station_modules(&stations[0].id).await.unwrap();
+    assert_eq!(modules.len(), 0);
 }
 
-use std::collections::HashMap;
+// ═══════════════════════════════════════════════════════════════════════════
+// Reference protection tests
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[tokio::test]
+async fn delete_unreferenced_robot_succeeds() {
+    let ctx = setup().await;
+
+    #[allow(deprecated)]
+    let record = ctx.robot_service
+        .import_urdf(URDF_SIMPLE)
+        .await
+        .expect("import robot");
+
+    // Station exists but does NOT reference this robot
+    ctx.station_service
+        .create_station("unrelated", "Unrelated")
+        .await
+        .expect("create station");
+
+    // Delete should succeed
+    ctx.robot_service
+        .delete_robot(&record.id, ctx.module_repo.as_ref())
+        .await
+        .expect("delete unreferenced robot must succeed");
+
+    let repo = ctx.robot_service.repo().unwrap();
+    let fetched = repo.get(&record.id).await.unwrap();
+    assert!(fetched.is_none(), "robot should be deleted");
+}
+
+#[tokio::test]
+async fn delete_referenced_robot_fails() {
+    let ctx = setup().await;
+
+    #[allow(deprecated)]
+    let record = ctx.robot_service
+        .import_urdf(URDF_SIMPLE)
+        .await
+        .expect("import robot");
+
+    // Station references this robot
+    let station = ctx.station_service
+        .create_station("cell_1", "Cell 1")
+        .await
+        .expect("create station");
+
+    ctx.station_service
+        .add_robotics_module(&station.id, &record.id, "Arm")
+        .await
+        .expect("add module");
+
+    // Delete should fail
+    let result = ctx.robot_service.delete_robot(&record.id, ctx.module_repo.as_ref()).await;
+    assert!(result.is_err(), "delete referenced robot must fail");
+    let err_msg = result.unwrap_err().to_string();
+    assert!(err_msg.contains("referenced"), "error must mention reference: {err_msg}");
+
+    // Verify robot still exists
+    let repo = ctx.robot_service.repo().unwrap();
+    let fetched = repo.get(&record.id).await.unwrap();
+    assert!(fetched.is_some(), "robot must still exist after failed delete");
+}
+
+#[tokio::test]
+async fn delete_robotics_module_does_not_delete_robot() {
+    let ctx = setup().await;
+
+    #[allow(deprecated)]
+    let record = ctx.robot_service
+        .import_urdf(URDF_SIMPLE)
+        .await
+        .expect("import robot");
+
+    let station = ctx.station_service
+        .create_station("cell_1", "Cell 1")
+        .await
+        .expect("create station");
+
+    let module = ctx.station_service
+        .add_robotics_module(&station.id, &record.id, "Arm")
+        .await
+        .expect("add module");
+
+    // Remove the module
+    ctx.station_service.remove_module(&module.id).await.unwrap();
+
+    // Verify module is gone
+    let modules = ctx.station_service.get_station_modules(&station.id).await.unwrap();
+    assert_eq!(modules.len(), 0);
+
+    // Robot should still exist
+    let repo = ctx.robot_service.repo().unwrap();
+    let fetched = repo.get(&record.id).await.unwrap();
+    assert!(fetched.is_some(), "robot must survive module deletion");
+}
+
+#[tokio::test]
+async fn find_robot_references_works() {
+    let ctx = setup().await;
+
+    // Import a real robot (legacy import — same URDF produces same ID)
+    #[allow(deprecated)]
+    let record = ctx.robot_service.import_urdf(URDF_SIMPLE).await.expect("import robot");
+
+    let station_a = ctx.station_service
+        .create_station("cell_a", "Cell A")
+        .await
+        .expect("create station");
+
+    ctx.station_service
+        .add_robotics_module(&station_a.id, &record.id, "Arm A")
+        .await
+        .expect("add module");
+
+    let station_b = ctx.station_service
+        .create_station("cell_b", "Cell B")
+        .await
+        .expect("create station");
+
+    // Station B references the SAME robot (different module)
+    ctx.station_service
+        .add_robotics_module(&station_b.id, &record.id, "Arm B")
+        .await
+        .expect("add module");
+
+    // Find references — robot is referenced by 2 modules in 2 stations
+    let references = ctx.module_repo.find_robot_references(&record.id).await.unwrap();
+    assert_eq!(references.len(), 2, "robot referenced by 2 modules");
+
+    // No reference to nonexistent robot
+    let references = ctx.module_repo.find_robot_references("nonexistent").await.unwrap();
+    assert!(references.is_empty());
+}
+
+#[tokio::test]
+async fn foreign_keys_are_enabled() {
+    let ctx = setup().await;
+
+    #[allow(deprecated)]
+    let record = ctx.robot_service
+        .import_urdf(URDF_SIMPLE)
+        .await
+        .expect("import robot");
+
+    let station = ctx.station_service
+        .create_station("cell_1", "Cell 1")
+        .await
+        .expect("create station");
+
+    ctx.station_service
+        .add_robotics_module(&station.id, &record.id, "Arm")
+        .await
+        .expect("add module");
+
+    // Application-level validation blocks deletion
+    let result = ctx.robot_service.delete_robot(&record.id, ctx.module_repo.as_ref()).await;
+    assert!(result.is_err());
+}

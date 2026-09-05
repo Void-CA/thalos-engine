@@ -1,3 +1,8 @@
+// TODO: Rewrite this test to use the new StationService API (B4.1)
+// The old tests used StationServiceError, station.add_robotics_module(), etc.
+// which no longer exist. This test validates execution session lifecycle
+// and needs to be rewritten using the new repository-backed service.
+
 use std::sync::Arc;
 use thalos_engine::prelude::StationId;
 use thalos_runtime::execution::session::{
@@ -6,8 +11,7 @@ use thalos_runtime::execution::session::{
     LifecycleState, RobotState, SharedRobotObservation, TickOutcome,
 };
 use thalos_runtime::station::{
-    AcquisitionModule, AcquisitionModuleId, ExecutionTarget, RoboticsModule, RoboticsModuleId,
-    Station, StationService, StationServiceError,
+    ExecutionTarget, Station, StationError, StationService,
 };
 
 #[test]
