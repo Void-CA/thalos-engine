@@ -152,8 +152,6 @@ impl StationService {
         let record = StationRecord {
             id: station.id.0.clone(),
             name: station.name.clone(),
-            robotics_modules_json: String::new(),
-            acquisition_modules_json: String::new(),
             created_at: now.clone(),
             updated_at: now,
         };
