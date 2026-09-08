@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Duration;
 use serde::{Deserialize, Serialize};
+use thalos_core::device::ChannelObservation;
 
 /// Identificador único para una sesión de ejecución.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -118,25 +119,28 @@ pub struct ExpectedState {
     pub simulated_joints: Vec<f64>,
 }
 
-/// Snapshot congelado de telemetría de canales en un tick k.
+/// A collection of observations associated with a single execution sampling point.
+///
+/// `captured_at_us` marks when the bundle was assembled — it does NOT guarantee
+/// that all contained observations share the same physical timestamp.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct AcquisitionSnapshot {
-    pub timestamp_us: u64,
-    pub channels: HashMap<String, f64>,
+pub struct ObservationBundle {
+    pub captured_at_us: u64,
+    pub observations: HashMap<String, ChannelObservation>,
 }
 
 /// Contexto de observación agrupado para alimentar la evaluación del tick k.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct TickContext {
-    pub acquisition: AcquisitionSnapshot,
+    pub observations: ObservationBundle,
     pub robot: RobotState,
     pub expected: ExpectedState,
 }
 
 impl TickContext {
-    pub fn new(acquisition: AcquisitionSnapshot, robot: RobotState, expected: ExpectedState) -> Self {
+    pub fn new(observations: ObservationBundle, robot: RobotState, expected: ExpectedState) -> Self {
         Self {
-            acquisition,
+            observations,
             robot,
             expected,
         }
@@ -155,7 +159,7 @@ pub struct CycleState {
 pub struct ControlTick {
     pub index: u64,
     pub timestamp_ns: u64,
-    pub acquisition: AcquisitionSnapshot,
+    pub observations: ObservationBundle,
     pub robot: RobotState,
     pub expected: ExpectedState,
 }
@@ -204,7 +208,7 @@ pub struct SessionState {
     pub program: ProgramState,
     pub robot: RobotState,
     pub expected: ExpectedState,
-    pub acquisition: AcquisitionSnapshot,
+    pub observations: ObservationBundle,
     pub cycle: CycleState,
 }
 
@@ -367,7 +371,7 @@ impl ExecutionSession {
     pub fn evaluate_tick(
         &mut self,
         context: TickContext,
-        eval_fn: impl FnOnce(&AcquisitionSnapshot, &RobotState) -> (Decision, Action),
+        eval_fn: impl FnOnce(&ObservationBundle, &RobotState) -> (Decision, Action),
     ) -> Result<TickResult, InvalidLifecycleTransition> {
         if self.lifecycle != LifecycleState::Running {
             return Err(InvalidLifecycleTransition {
@@ -385,20 +389,27 @@ impl ExecutionSession {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_nanos() as u64,
-            acquisition: context.acquisition.clone(),
+            observations: context.observations.clone(),
             robot: context.robot.clone(),
             expected: context.expected.clone(),
         };
 
         // 1. Actualizar estado latched en la sesión
-        self.state.acquisition = context.acquisition;
+        self.state.observations = context.observations;
         self.state.robot = context.robot;
         self.state.expected = context.expected;
 
         // 2. Evaluación de condición de terminación previa a la acción
         let condition_met = match self.configuration.termination {
             TerminationPolicy::Condition(ref cond_channel) => {
-                if let Some(&val) = tick.acquisition.channels.get(cond_channel) {
+                if let Some(obs) = tick.observations.observations.get(cond_channel) {
+                    let val = match obs.value {
+                        thalos_core::device::ChannelValue::Scalar(v) => v,
+                        thalos_core::device::ChannelValue::Integer(v) => v as f64,
+                        thalos_core::device::ChannelValue::Boolean(v) => {
+                            if v { 1.0 } else { 0.0 }
+                        }
+                    };
                     if val > 0.0 {
                         Some(cond_channel.clone())
                     } else {
@@ -424,7 +435,7 @@ impl ExecutionSession {
         }
 
         // 3. Evaluación de programa y selección de decisión/acción
-        let (decision, action) = eval_fn(&tick.acquisition, &tick.robot);
+        let (decision, action) = eval_fn(&tick.observations, &tick.robot);
 
         Ok(TickResult {
             tick,
@@ -642,9 +653,9 @@ impl DomainExecutionCoordinator {
         &self,
         id: &ExecutionSessionId,
         context: TickContext,
-        eval_fn: impl FnOnce(&AcquisitionSnapshot, &RobotState) -> (Decision, Action),
+        eval_fn: impl FnOnce(&ObservationBundle, &RobotState) -> (Decision, Action),
     ) -> Result<TickResult, ExecutionDomainError> {
-        let sampled_at_us = context.acquisition.timestamp_us;
+        let sampled_at_us = context.observations.captured_at_us;
         let res = self.registry.with_session_mut(id, |session| {
             if session.lifecycle != LifecycleState::Running {
                 return Err(ExecutionDomainError::NotRunning(session.lifecycle.clone()));
@@ -668,10 +679,10 @@ impl DomainExecutionCoordinator {
         &self,
         id: &ExecutionSessionId,
         runner: &mut impl super::runner::ExecutionRunner,
-        eval_fn: impl FnOnce(&AcquisitionSnapshot, &RobotState) -> (Decision, Action),
+        eval_fn: impl FnOnce(&ObservationBundle, &RobotState) -> (Decision, Action),
     ) -> Result<TickResult, ExecutionDomainError> {
         let context = runner.acquire();
-        let sampled_at_us = context.acquisition.timestamp_us;
+        let sampled_at_us = context.observations.captured_at_us;
 
         let mut result = self.registry.with_session_mut(id, |session| {
             if session.lifecycle != LifecycleState::Running {
@@ -749,8 +760,14 @@ mod tests {
         session.initialize().unwrap();
         session.start().unwrap();
 
-        let eval_logic = |acq: &AcquisitionSnapshot, _rob: &RobotState| {
-            let target_x = acq.channels.get("camera.target_x").copied().unwrap_or(0.0);
+        let eval_logic = |obs: &ObservationBundle, _rob: &RobotState| {
+            let target_x = obs.observations.get("camera.target_x")
+                .map(|o| match o.value {
+                    thalos_core::device::ChannelValue::Scalar(v) => v,
+                    thalos_core::device::ChannelValue::Integer(v) => v as f64,
+                    thalos_core::device::ChannelValue::Boolean(v) => if v { 1.0 } else { 0.0 },
+                })
+                .unwrap_or(0.0);
             if target_x > 80.0 {
                 (
                     Decision::MotionAction {
@@ -776,9 +793,16 @@ mod tests {
             }
         };
 
-        let mut acq1 = AcquisitionSnapshot::default();
-        acq1.channels.insert("camera.target_x".to_string(), 100.0);
-        let ctx1 = TickContext::new(acq1, RobotState::default(), ExpectedState::default());
+        let mut obs1 = ObservationBundle::default();
+        obs1.observations.insert("camera.target_x".to_string(), ChannelObservation {
+            channel_id: "camera.target_x".to_string(),
+            sampled_at_ns: 0,
+            received_at_ns: 0,
+            value: thalos_core::device::ChannelValue::Scalar(100.0),
+            unit: None,
+            quality: thalos_core::device::SignalQuality::Nominal,
+        });
+        let ctx1 = TickContext::new(obs1, RobotState::default(), ExpectedState::default());
         let res1 = session.evaluate_tick(ctx1, eval_logic).unwrap();
         assert_eq!(res1.tick.index, 1);
         assert_eq!(
@@ -789,9 +813,16 @@ mod tests {
             }
         );
 
-        let mut acq2 = AcquisitionSnapshot::default();
-        acq2.channels.insert("camera.target_x".to_string(), 50.0);
-        let ctx2 = TickContext::new(acq2, RobotState::default(), ExpectedState::default());
+        let mut obs2 = ObservationBundle::default();
+        obs2.observations.insert("camera.target_x".to_string(), ChannelObservation {
+            channel_id: "camera.target_x".to_string(),
+            sampled_at_ns: 0,
+            received_at_ns: 0,
+            value: thalos_core::device::ChannelValue::Scalar(50.0),
+            unit: None,
+            quality: thalos_core::device::SignalQuality::Nominal,
+        });
+        let ctx2 = TickContext::new(obs2, RobotState::default(), ExpectedState::default());
         let res2 = session.evaluate_tick(ctx2, eval_logic).unwrap();
         assert_eq!(res2.tick.index, 2);
         assert_eq!(
@@ -809,20 +840,56 @@ mod tests {
         session.initialize().unwrap();
         session.start().unwrap();
 
-        let mut acq = AcquisitionSnapshot::default();
-        acq.channels.insert("camera.target_x".to_string(), 100.0);
-        acq.channels.insert("camera.target_y".to_string(), 50.0);
-        let ctx = TickContext::new(acq, RobotState::default(), ExpectedState::default());
+        let mut obs = ObservationBundle::default();
+        obs.observations.insert("camera.target_x".to_string(), ChannelObservation {
+            channel_id: "camera.target_x".to_string(),
+            sampled_at_ns: 0,
+            received_at_ns: 0,
+            value: thalos_core::device::ChannelValue::Scalar(100.0),
+            unit: None,
+            quality: thalos_core::device::SignalQuality::Nominal,
+        });
+        obs.observations.insert("camera.target_y".to_string(), ChannelObservation {
+            channel_id: "camera.target_y".to_string(),
+            sampled_at_ns: 0,
+            received_at_ns: 0,
+            value: thalos_core::device::ChannelValue::Scalar(50.0),
+            unit: None,
+            quality: thalos_core::device::SignalQuality::Nominal,
+        });
+        let ctx = TickContext::new(obs, RobotState::default(), ExpectedState::default());
 
-        let res = session.evaluate_tick(ctx, |acq, _rob| {
-            let x = acq.channels.get("camera.target_x").copied().unwrap_or(0.0);
-            let y = acq.channels.get("camera.target_y").copied().unwrap_or(0.0);
+        let res = session.evaluate_tick(ctx, |obs, _rob| {
+            let x = obs.observations.get("camera.target_x")
+                .map(|o| match o.value {
+                    thalos_core::device::ChannelValue::Scalar(v) => v,
+                    _ => 0.0,
+                })
+                .unwrap_or(0.0);
+            let y = obs.observations.get("camera.target_y")
+                .map(|o| match o.value {
+                    thalos_core::device::ChannelValue::Scalar(v) => v,
+                    _ => 0.0,
+                })
+                .unwrap_or(0.0);
             assert_eq!(x, 100.0);
             assert_eq!(y, 50.0);
             (Decision::Continue, Action::None)
         }).unwrap();
 
-        assert_eq!(res.tick.acquisition.channels.get("camera.target_x"), Some(&100.0));
-        assert_eq!(res.tick.acquisition.channels.get("camera.target_y"), Some(&50.0));
+        let x = res.tick.observations.observations.get("camera.target_x")
+            .map(|o| match o.value {
+                thalos_core::device::ChannelValue::Scalar(v) => v,
+                _ => 0.0,
+            })
+            .unwrap_or(0.0);
+        let y = res.tick.observations.observations.get("camera.target_y")
+            .map(|o| match o.value {
+                thalos_core::device::ChannelValue::Scalar(v) => v,
+                _ => 0.0,
+            })
+            .unwrap_or(0.0);
+        assert_eq!(x, 100.0);
+        assert_eq!(y, 50.0);
     }
 }

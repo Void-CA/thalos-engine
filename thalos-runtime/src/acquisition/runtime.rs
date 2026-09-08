@@ -1,7 +1,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
 use crate::acquisition::lease::{AcquisitionLease, LeaseId};
-use crate::acquisition::requirement::{AcquisitionRequirement, SamplingRequirement};
+use crate::acquisition::requirement::{ObservationRequirement, SamplingPolicy};
 use thalos_ports::device::{ChannelId, ChannelObservation};
 use crate::ports::device::transport::{
     ChannelSubscription, DeviceTransport, DeviceTransportError,
@@ -48,14 +48,14 @@ impl<T: DeviceTransport> AcquisitionRuntime<T> {
         }
     }
 
-    /// Acquire an operational lease for a channel based on an AcquisitionRequirement.
+    /// Acquire an operational lease for a channel based on an ObservationRequirement.
     pub fn acquire_lease(
         &mut self,
-        req: &AcquisitionRequirement,
+        req: &ObservationRequirement,
     ) -> Result<AcquisitionLease, DeviceTransportError> {
         let target_hz = match req.sampling {
-            SamplingRequirement::Continuous { target_hz } => target_hz,
-            SamplingRequirement::OnDemand => 1,
+            SamplingPolicy::Continuous { target_hz } => target_hz,
+            SamplingPolicy::OnDemand => 1,
         };
 
         let lease_id = LeaseId(NEXT_LEASE_ID.fetch_add(1, Ordering::SeqCst));
@@ -144,10 +144,10 @@ mod tests {
         let fake_transport = FakeDeviceTransport::new();
         let mut runtime = AcquisitionRuntime::new(fake_transport);
 
-        let req1 = AcquisitionRequirement {
+        let req1 = ObservationRequirement {
             channel_id: "temp_01".into(),
-            sampling: SamplingRequirement::Continuous { target_hz: 10 },
-            required: true,
+            sampling: SamplingPolicy::Continuous { target_hz: 10 },
+            mandatory: true,
         };
 
         // 1. Acquire lease 1 -> subscribes to transport
@@ -160,10 +160,10 @@ mod tests {
         );
 
         // 2. Acquire lease 2 for same channel -> 2 leases, still 1 transport subscription
-        let req2 = AcquisitionRequirement {
+        let req2 = ObservationRequirement {
             channel_id: "temp_01".into(),
-            sampling: SamplingRequirement::Continuous { target_hz: 50 },
-            required: true,
+            sampling: SamplingPolicy::Continuous { target_hz: 50 },
+            mandatory: true,
         };
         let lease2 = runtime.acquire_lease(&req2).unwrap();
         assert_eq!(runtime.active_lease_count(&"temp_01".into()), 2);
@@ -188,10 +188,10 @@ mod tests {
         let fake_transport = FakeDeviceTransport::new();
         let mut runtime = AcquisitionRuntime::new(fake_transport);
 
-        let req = AcquisitionRequirement {
+        let req = ObservationRequirement {
             channel_id: "vibration_01".into(),
-            sampling: SamplingRequirement::Continuous { target_hz: 100 },
-            required: true,
+            sampling: SamplingPolicy::Continuous { target_hz: 100 },
+            mandatory: true,
         };
         let lease = runtime.acquire_lease(&req).unwrap();
 

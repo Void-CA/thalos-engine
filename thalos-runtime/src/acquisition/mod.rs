@@ -3,5 +3,5 @@ pub mod requirement;
 pub mod runtime;
 
 pub use lease::{AcquisitionLease, LeaseId};
-pub use requirement::{AcquisitionRequirement, SamplingRequirement};
+pub use requirement::{ObservationRequirement, SamplingPolicy};
 pub use runtime::AcquisitionRuntime;

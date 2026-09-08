@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use thalos_core::device::{ChannelObservation, SignalQuality};
 use super::domain::{
-    Action, AcquisitionSnapshot, ExpectedState, RobotState, TickContext, TickOutcome,
+    Action, ExpectedState, ObservationBundle, RobotState, TickContext, TickOutcome,
 };
 
 /// Abstracción del entorno de ejecución (Simulación, Hardware Físico, etc.).
@@ -16,45 +17,97 @@ pub trait ExecutionRunner: Send + Sync {
     fn act(&mut self, action: &Action) -> TickOutcome;
 }
 
-/// Trait para proveedores de adquisición de señales de sensores/canales.
-pub trait AcquisitionProvider: Send + Sync {
-    fn snapshot(&self) -> AcquisitionSnapshot;
+/// Provides observation data to the execution domain.
+///
+/// This trait is the contractual boundary between Interconnection (provider)
+/// and Execution (consumer). Execution defines WHAT it needs; Interconnection
+/// implements HOW to provide it.
+pub trait ObservationProvider: Send + Sync {
+    fn snapshot(&self) -> ObservationBundle;
 }
 
-/// Trait para proveedores de observación del estado del robot (articulaciones, velocidades).
+/// Issues commands through the interconnection layer.
+///
+/// Execution defines WHAT domain commands to issue; Interconnection implements
+/// HOW to transport them to the physical equipment.
+pub trait CommandProvider: Send + Sync {
+    fn dispatch(
+        &mut self,
+        command: &RobotCommand,
+    ) -> Result<(), CommandError>;
+}
+
+/// Provides observation of the robot state (joint positions, velocities).
 pub trait RobotObservationProvider: Send + Sync {
     fn observe(&self) -> RobotState;
 }
 
-/// Registro en memoria de canales que implementa `AcquisitionProvider`.
-#[derive(Debug, Clone, Default)]
-pub struct InMemoryAcquisitionRegistry {
-    channels: Arc<Mutex<HashMap<String, f64>>>,
+/// A domain-level command issued by Execution toward physical equipment.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RobotCommand {
+    pub kind: String,
+    pub target: String,
+    pub parameters: HashMap<String, String>,
 }
 
-impl InMemoryAcquisitionRegistry {
+/// Error produced when a command cannot be delivered.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum CommandError {
+    #[error("Command delivery failed: {0}")]
+    DeliveryFailed(String),
+
+    #[error("Hardware not connected")]
+    NotConnected,
+
+    #[error("Command rejected by equipment: {0}")]
+    Rejected(String),
+}
+
+/// In-memory observation provider for testing and development.
+#[derive(Debug, Clone, Default)]
+pub struct InMemoryObservationProvider {
+    observations: Arc<Mutex<HashMap<String, ChannelObservation>>>,
+}
+
+impl InMemoryObservationProvider {
     pub fn new() -> Self {
         Self {
-            channels: Arc::new(Mutex::new(HashMap::new())),
+            observations: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
     pub fn set_channel(&self, name: impl Into<String>, value: f64) {
-        self.channels.lock().unwrap().insert(name.into(), value);
+        let name = name.into();
+        let now_ns = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos() as u64;
+        let obs = ChannelObservation {
+            channel_id: name.clone(),
+            sampled_at_ns: now_ns,
+            received_at_ns: now_ns,
+            value: thalos_core::device::ChannelValue::Scalar(value),
+            unit: None,
+            quality: SignalQuality::Nominal,
+        };
+        self.observations.lock().unwrap().insert(name, obs);
+    }
+
+    pub fn set_observation(&self, name: impl Into<String>, obs: ChannelObservation) {
+        self.observations.lock().unwrap().insert(name.into(), obs);
     }
 }
 
-impl AcquisitionProvider for InMemoryAcquisitionRegistry {
-    fn snapshot(&self) -> AcquisitionSnapshot {
-        let channels = self.channels.lock().unwrap().clone();
-        let timestamp_us = std::time::SystemTime::now()
+impl ObservationProvider for InMemoryObservationProvider {
+    fn snapshot(&self) -> ObservationBundle {
+        let observations = self.observations.lock().unwrap().clone();
+        let captured_at_us = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_micros() as u64;
-
-        AcquisitionSnapshot {
-            timestamp_us,
-            channels,
+        ObservationBundle {
+            captured_at_us,
+            observations,
         }
     }
 }
@@ -85,14 +138,14 @@ impl RobotObservationProvider for SharedRobotObservation {
     }
 }
 
-/// Runner modular que combina un `AcquisitionProvider` y un `RobotObservationProvider`.
+/// Runner modular que combina un `ObservationProvider` y un `RobotObservationProvider`.
 #[derive(Debug)]
 pub struct TelemetryExecutionRunner<A, R>
 where
-    A: AcquisitionProvider,
+    A: ObservationProvider,
     R: RobotObservationProvider,
 {
-    pub acquisition_provider: A,
+    pub observation_provider: A,
     pub robot_provider: R,
     pub expected_state: ExpectedState,
     pub is_connected: bool,
@@ -100,12 +153,12 @@ where
 
 impl<A, R> TelemetryExecutionRunner<A, R>
 where
-    A: AcquisitionProvider,
+    A: ObservationProvider,
     R: RobotObservationProvider,
 {
-    pub fn new(acquisition_provider: A, robot_provider: R, expected_state: ExpectedState) -> Self {
+    pub fn new(observation_provider: A, robot_provider: R, expected_state: ExpectedState) -> Self {
         Self {
-            acquisition_provider,
+            observation_provider,
             robot_provider,
             expected_state,
             is_connected: true,
@@ -120,12 +173,12 @@ where
 
 impl<A, R> ExecutionRunner for TelemetryExecutionRunner<A, R>
 where
-    A: AcquisitionProvider,
+    A: ObservationProvider,
     R: RobotObservationProvider,
 {
     fn acquire(&mut self) -> TickContext {
         TickContext {
-            acquisition: self.acquisition_provider.snapshot(),
+            observations: self.observation_provider.snapshot(),
             robot: self.robot_provider.observe(),
             expected: self.expected_state.clone(),
         }
