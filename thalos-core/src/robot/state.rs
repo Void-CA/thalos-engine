@@ -56,7 +56,7 @@ impl JointState {
 /// without pulling in the full robot description.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RobotState {
-    /// Acquisition timestamp in seconds.
+    /// Interconnection timestamp in seconds.
     pub timestamp: f64,
     /// Joint states for all degrees of freedom.
     pub joints: Vec<JointState>,

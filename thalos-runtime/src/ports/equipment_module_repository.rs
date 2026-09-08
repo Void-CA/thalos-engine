@@ -2,7 +2,7 @@ use async_trait::async_trait;
 
 use crate::ports::PersistenceError;
 use crate::station::{
-    Channel, EquipmentModule, EquipmentModuleId, AcquisitionModuleExtension,
+    Channel, EquipmentModule, EquipmentModuleId, InterconnectionModuleExtension,
     RoboticsModuleExtension,
 };
 
@@ -25,7 +25,7 @@ pub struct RoboticsModuleRecord {
 }
 
 #[derive(Debug, Clone)]
-pub struct AcquisitionModuleRecord {
+pub struct InterconnectionModuleRecord {
     pub module_id: String,
     pub configuration_json: String,
 }
@@ -33,7 +33,7 @@ pub struct AcquisitionModuleRecord {
 #[derive(Debug, Clone)]
 pub struct ChannelRecord {
     pub id: String,
-    pub acquisition_module_id: String,
+    pub interconnection_module_id: String,
     pub symbol: String,
     pub name: String,
     pub data_type: String,
@@ -50,7 +50,7 @@ pub struct RobotReference {
 /// Repository for equipment modules, extensions, and channels.
 ///
 /// Key design decisions:
-/// - `create_robotics_module` and `create_acquisition_module` are ATOMIC:
+/// - `create_robotics_module` and `create_interconnection_module` are ATOMIC:
 ///   they insert equipment_module + subtype in one transaction.
 /// - There is NO generic `save(EquipmentModuleRecord)` for creation.
 /// - `kind` is immutable after creation.
@@ -68,10 +68,10 @@ pub trait EquipmentModuleRepository: Send + Sync {
         extension: &RoboticsModuleRecord,
     ) -> Result<(), PersistenceError>;
 
-    async fn create_acquisition_module(
+    async fn create_interconnection_module(
         &self,
         module: &EquipmentModuleRecord,
-        extension: &AcquisitionModuleRecord,
+        extension: &InterconnectionModuleRecord,
     ) -> Result<(), PersistenceError>;
 
     // ─── Updates ───────────────────────────────────────────────────────
@@ -82,10 +82,10 @@ pub trait EquipmentModuleRepository: Send + Sync {
 
     // ─── Type-specific queries ─────────────────────────────────────────
     async fn get_robotics_extension(&self, module_id: &str) -> Result<Option<RoboticsModuleRecord>, PersistenceError>;
-    async fn get_acquisition_extension(&self, module_id: &str) -> Result<Option<AcquisitionModuleRecord>, PersistenceError>;
+    async fn get_interconnection_extension(&self, module_id: &str) -> Result<Option<InterconnectionModuleRecord>, PersistenceError>;
 
     // ─── Channel queries ───────────────────────────────────────────────
-    async fn list_channels(&self, acquisition_module_id: &str) -> Result<Vec<ChannelRecord>, PersistenceError>;
+    async fn list_channels(&self, interconnection_module_id: &str) -> Result<Vec<ChannelRecord>, PersistenceError>;
     async fn save_channel(&self, channel: &ChannelRecord) -> Result<(), PersistenceError>;
     async fn delete_channel(&self, id: &str) -> Result<(), PersistenceError>;
 

@@ -8,15 +8,15 @@ use crate::execution::session::{
     RobotObservationProvider, TelemetryExecutionRunner,
 };
 use crate::ports::equipment_module_repository::{
-    AcquisitionModuleRecord, ChannelRecord, EquipmentModuleRecord, EquipmentModuleRepository,
-    RoboticsModuleRecord,
+    ChannelRecord, EquipmentModuleRecord, EquipmentModuleRepository,
+    InterconnectionModuleRecord, RoboticsModuleRecord,
 };
 use crate::ports::robot_repository::RobotRepository;
 use crate::ports::station_repository::StationRepository;
 use crate::ports::StationRecord;
 use crate::station::equipment_module::{
-    AcquisitionModuleExtension, Channel, EquipmentModule, EquipmentModuleId, EquipmentModuleKind,
-    RoboticsModuleExtension,
+    Channel, EquipmentModule, EquipmentModuleId, EquipmentModuleKind,
+    InterconnectionModuleExtension, RoboticsModuleExtension,
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -27,7 +27,7 @@ use crate::station::equipment_module::{
 pub struct RoboticsModuleId(pub String);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct AcquisitionModuleId(pub String);
+pub struct InterconnectionModuleId(pub String);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RoboticsModule {
@@ -41,8 +41,8 @@ pub struct RoboticsModule {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AcquisitionModule {
-    pub id: AcquisitionModuleId,
+pub struct InterconnectionModule {
+    pub id: InterconnectionModuleId,
     pub station_id: StationId,
     pub name: String,
     pub channels: std::collections::HashMap<String, f64>,
@@ -79,7 +79,7 @@ pub struct ExecutionBinding<A, R> {
     pub target: ExecutionTarget,
     pub station: Station,
     pub robotics_module: RoboticsModule,
-    pub acquisition_provider: A,
+    pub observation_provider: A,
     pub robot_observation_provider: R,
 }
 
@@ -240,7 +240,7 @@ impl StationService {
         })
     }
 
-    pub async fn add_acquisition_module(
+    pub async fn add_interconnection_module(
         &self,
         station_id: &StationId,
         name: &str,
@@ -258,26 +258,26 @@ impl StationService {
         let module_record = EquipmentModuleRecord {
             id: module_id.0.clone(),
             station_id: station_id.0.clone(),
-            kind: EquipmentModuleKind::Acquisition.to_string(),
+            kind: EquipmentModuleKind::Interconnection.to_string(),
             name: name.to_string(),
             created_at: now.clone(),
             updated_at: now,
         };
 
-        let extension_record = AcquisitionModuleRecord {
+        let extension_record = InterconnectionModuleRecord {
             module_id: module_id.0.clone(),
             configuration_json: "{}".to_string(),
         };
 
         self.equipment_module_repo
-            .create_acquisition_module(&module_record, &extension_record)
+            .create_interconnection_module(&module_record, &extension_record)
             .await?;
 
         Ok(EquipmentModule {
             id: module_id,
             station_id: station_id.clone(),
             name: name.to_string(),
-            kind: EquipmentModuleKind::Acquisition,
+            kind: EquipmentModuleKind::Interconnection,
         })
     }
 
@@ -312,14 +312,14 @@ impl StationService {
             .await?
             .ok_or_else(|| StationError::ModuleNotFound(module_id.0.clone()))?;
 
-        // 2. Module kind is acquisition?
+        // 2. Module kind is interconnection?
         let kind: EquipmentModuleKind = module_record
             .kind
             .parse()
             .map_err(|e: String| StationError::Persistence(e))?;
-        if kind != EquipmentModuleKind::Acquisition {
+        if kind != EquipmentModuleKind::Interconnection {
             return Err(StationError::InvalidModuleKind {
-                expected: "acquisition".to_string(),
+                expected: "interconnection".to_string(),
                 actual: module_record.kind,
             });
         }
@@ -327,7 +327,7 @@ impl StationService {
         // 3. Validate channel fields
         let channel = Channel {
             id: uuid::Uuid::new_v4().to_string(),
-            acquisition_module_id: module_id.clone(),
+            interconnection_module_id: module_id.clone(),
             symbol: symbol.to_string(),
             name: name.to_string(),
             data_type: data_type.to_string(),
@@ -338,7 +338,7 @@ impl StationService {
         // 4. Persist
         let record = ChannelRecord {
             id: channel.id.clone(),
-            acquisition_module_id: module_id.0.clone(),
+            interconnection_module_id: module_id.0.clone(),
             symbol: channel.symbol.clone(),
             name: channel.name.clone(),
             data_type: channel.data_type.clone(),
@@ -397,16 +397,16 @@ impl StationService {
         }))
     }
 
-    pub async fn get_module_acquisition_extension(
+    pub async fn get_module_interconnection_extension(
         &self,
         module_id: &EquipmentModuleId,
-    ) -> Result<Option<AcquisitionModuleExtension>, StationError> {
+    ) -> Result<Option<InterconnectionModuleExtension>, StationError> {
         let record = self
             .equipment_module_repo
-            .get_acquisition_extension(&module_id.0)
+            .get_interconnection_extension(&module_id.0)
             .await?;
 
-        Ok(record.map(|r| AcquisitionModuleExtension {
+        Ok(record.map(|r| InterconnectionModuleExtension {
             module_id: EquipmentModuleId(r.module_id),
             configuration_json: r.configuration_json,
         }))
@@ -425,7 +425,7 @@ impl StationService {
             .into_iter()
             .map(|r| Channel {
                 id: r.id,
-                acquisition_module_id: EquipmentModuleId(r.acquisition_module_id),
+                interconnection_module_id: EquipmentModuleId(r.interconnection_module_id),
                 symbol: r.symbol,
                 name: r.name,
                 data_type: r.data_type,
@@ -486,7 +486,7 @@ impl StationService {
             target: target.clone(),
             station,
             robotics_module,
-            acquisition_provider: acq_provider,
+            observation_provider: acq_provider,
             robot_observation_provider: robot_provider,
         })
     }

@@ -26,7 +26,7 @@ impl StationRuntimeState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModuleKind {
-    Acquisition,
+    Interconnection,
     Robotics,
 }
 

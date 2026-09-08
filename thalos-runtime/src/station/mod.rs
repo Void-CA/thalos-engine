@@ -4,13 +4,13 @@ pub mod service;
 pub mod state;
 
 pub use equipment_module::{
-    AcquisitionModuleExtension, Channel, EquipmentModule, EquipmentModuleId, EquipmentModuleKind,
-    RoboticsModuleExtension,
+    Channel, EquipmentModule, EquipmentModuleId, EquipmentModuleKind,
+    InterconnectionModuleExtension, RoboticsModuleExtension,
 };
 pub use runtime::{StationRuntime, StationRuntimeError};
 pub use service::{
-    AcquisitionModule, AcquisitionModuleId, ExecutionBinding, ExecutionTarget, RoboticsModule,
-    RoboticsModuleId, Station, StationError, StationService,
+    ExecutionBinding, ExecutionTarget, InterconnectionModule, InterconnectionModuleId,
+    RoboticsModule, RoboticsModuleId, Station, StationError, StationService,
 };
 pub use state::{ModuleKind, ModuleRuntimeState, OperationalSession, StationRuntimeState};
 

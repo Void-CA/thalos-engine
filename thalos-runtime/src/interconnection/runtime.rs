@@ -1,7 +1,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
-use crate::acquisition::lease::{AcquisitionLease, LeaseId};
-use crate::acquisition::requirement::{ObservationRequirement, SamplingPolicy};
+use crate::interconnection::lease::{InterconnectionLease, LeaseId};
+use crate::interconnection::requirement::{ObservationRequirement, SamplingPolicy};
 use thalos_ports::device::{ChannelId, ChannelObservation};
 use crate::ports::device::transport::{
     ChannelSubscription, DeviceTransport, DeviceTransportError,
@@ -27,19 +27,19 @@ impl ChannelLeaseState {
     }
 }
 
-/// AcquisitionRuntime coordinates active leases and manages underlying DeviceTransport subscriptions.
+/// InterconnectionRuntime coordinates active leases and manages underlying DeviceTransport subscriptions.
 ///
 /// Invariants:
 /// 1. Subscribes to DeviceTransport ONLY when at least one active lease exists for a channel.
 /// 2. Unsubscribes from DeviceTransport when the last lease for a channel is released.
 /// 3. Ingested ChannelObservations are routed to an internal observation buffer.
-pub struct AcquisitionRuntime<T: DeviceTransport> {
+pub struct InterconnectionRuntime<T: DeviceTransport> {
     transport: T,
     channel_states: HashMap<ChannelId, ChannelLeaseState>,
     observation_buffer: VecDeque<ChannelObservation>,
 }
 
-impl<T: DeviceTransport> AcquisitionRuntime<T> {
+impl<T: DeviceTransport> InterconnectionRuntime<T> {
     pub fn new(transport: T) -> Self {
         Self {
             transport,
@@ -52,7 +52,7 @@ impl<T: DeviceTransport> AcquisitionRuntime<T> {
     pub fn acquire_lease(
         &mut self,
         req: &ObservationRequirement,
-    ) -> Result<AcquisitionLease, DeviceTransportError> {
+    ) -> Result<InterconnectionLease, DeviceTransportError> {
         let target_hz = match req.sampling {
             SamplingPolicy::Continuous { target_hz } => target_hz,
             SamplingPolicy::OnDemand => 1,
@@ -67,13 +67,12 @@ impl<T: DeviceTransport> AcquisitionRuntime<T> {
         entry.leases.insert(lease_id, target_hz);
         let max_hz = entry.max_target_hz();
 
-        // If this is the first lease or target_hz changed, update DeviceTransport subscription
         self.transport.subscribe(ChannelSubscription {
             channel_id: req.channel_id.clone(),
             target_hz: max_hz,
         })?;
 
-        Ok(AcquisitionLease {
+        Ok(InterconnectionLease {
             id: lease_id,
             channel_id: req.channel_id.clone(),
             target_hz,
@@ -81,7 +80,7 @@ impl<T: DeviceTransport> AcquisitionRuntime<T> {
     }
 
     /// Release an operational lease. Unsubscribes from transport if no leases remain.
-    pub fn release_lease(&mut self, lease: AcquisitionLease) -> Result<(), DeviceTransportError> {
+    pub fn release_lease(&mut self, lease: InterconnectionLease) -> Result<(), DeviceTransportError> {
         if let Some(entry) = self.channel_states.get_mut(&lease.channel_id) {
             entry.leases.remove(&lease.id);
             if entry.leases.is_empty() {
@@ -140,9 +139,9 @@ mod tests {
     use thalos_ports::device::ChannelValue;
 
     #[test]
-    fn acquisition_lease_lifecycle_manages_subscriptions() {
+    fn interconnection_lease_lifecycle_manages_subscriptions() {
         let fake_transport = FakeDeviceTransport::new();
-        let mut runtime = AcquisitionRuntime::new(fake_transport);
+        let mut runtime = InterconnectionRuntime::new(fake_transport);
 
         let req1 = ObservationRequirement {
             channel_id: "temp_01".into(),
@@ -150,7 +149,6 @@ mod tests {
             mandatory: true,
         };
 
-        // 1. Acquire lease 1 -> subscribes to transport
         let lease1 = runtime.acquire_lease(&req1).unwrap();
         assert_eq!(runtime.active_lease_count(&"temp_01".into()), 1);
         assert_eq!(
@@ -159,7 +157,6 @@ mod tests {
             "transport should have 1 active subscription"
         );
 
-        // 2. Acquire lease 2 for same channel -> 2 leases, still 1 transport subscription
         let req2 = ObservationRequirement {
             channel_id: "temp_01".into(),
             sampling: SamplingPolicy::Continuous { target_hz: 50 },
@@ -168,12 +165,10 @@ mod tests {
         let lease2 = runtime.acquire_lease(&req2).unwrap();
         assert_eq!(runtime.active_lease_count(&"temp_01".into()), 2);
 
-        // 3. Release lease 1 -> 1 lease remains, transport subscription still active
         runtime.release_lease(lease1).unwrap();
         assert_eq!(runtime.active_lease_count(&"temp_01".into()), 1);
         assert_eq!(runtime.transport().active_subscriptions.len(), 1);
 
-        // 4. Release lease 2 -> 0 leases remain, transport subscription removed (IDLE)
         runtime.release_lease(lease2).unwrap();
         assert_eq!(runtime.active_lease_count(&"temp_01".into()), 0);
         assert_eq!(
@@ -186,7 +181,7 @@ mod tests {
     #[test]
     fn tick_ingests_and_drains_observations() {
         let fake_transport = FakeDeviceTransport::new();
-        let mut runtime = AcquisitionRuntime::new(fake_transport);
+        let mut runtime = InterconnectionRuntime::new(fake_transport);
 
         let req = ObservationRequirement {
             channel_id: "vibration_01".into(),
@@ -195,7 +190,6 @@ mod tests {
         };
         let lease = runtime.acquire_lease(&req).unwrap();
 
-        // Inject 2 observations into fake transport
         runtime.transport_mut().push_observation(ChannelObservation {
             channel_id: "vibration_01".into(),
             sampled_at_ns: 100,
@@ -213,7 +207,6 @@ mod tests {
             quality: SignalQuality::Nominal,
         });
 
-        // Tick polls transport
         let count = runtime.tick().unwrap();
         assert_eq!(count, 2);
 

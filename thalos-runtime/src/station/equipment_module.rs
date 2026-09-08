@@ -16,14 +16,14 @@ impl std::fmt::Display for EquipmentModuleId {
 #[serde(rename_all = "snake_case")]
 pub enum EquipmentModuleKind {
     Robotics,
-    Acquisition,
+    Interconnection,
 }
 
 impl std::fmt::Display for EquipmentModuleKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Robotics => write!(f, "robotics"),
-            Self::Acquisition => write!(f, "acquisition"),
+            Self::Interconnection => write!(f, "interconnection"),
         }
     }
 }
@@ -33,7 +33,7 @@ impl std::str::FromStr for EquipmentModuleKind {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "robotics" => Ok(Self::Robotics),
-            "acquisition" => Ok(Self::Acquisition),
+            "interconnection" => Ok(Self::Interconnection),
             _ => Err(format!("Invalid equipment module kind: {s}")),
         }
     }
@@ -43,7 +43,7 @@ impl std::str::FromStr for EquipmentModuleKind {
 ///
 /// The `kind` field is immutable after creation. The module's type-specific
 /// data lives in the corresponding extension struct (RoboticsModuleExtension
-/// or AcquisitionModuleExtension), which is stored in a separate table.
+/// or InterconnectionModuleExtension), which is stored in a separate table.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EquipmentModule {
     pub id: EquipmentModuleId,
@@ -63,23 +63,23 @@ pub struct RoboticsModuleExtension {
     pub configuration_json: String,
 }
 
-/// Type-specific data for an Acquisition module.
+/// Type-specific data for an Interconnection module.
 ///
 /// Channels are stored in a separate table with FK to this module.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AcquisitionModuleExtension {
+pub struct InterconnectionModuleExtension {
     pub module_id: EquipmentModuleId,
     pub configuration_json: String,
 }
 
-/// A channel definition within an Acquisition module.
+/// A channel definition within an Interconnection module.
 ///
 /// Channels represent the semantic definition of a data stream
 /// (e.g. "temperature" in °C). Observations are a separate concern.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Channel {
     pub id: String,
-    pub acquisition_module_id: EquipmentModuleId,
+    pub interconnection_module_id: EquipmentModuleId,
     pub symbol: String,
     pub name: String,
     pub data_type: String,

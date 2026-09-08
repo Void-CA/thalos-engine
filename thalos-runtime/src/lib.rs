@@ -1,4 +1,4 @@
-pub mod acquisition;
+pub mod interconnection;
 pub mod analysis;
 pub mod backends;
 pub mod commands;

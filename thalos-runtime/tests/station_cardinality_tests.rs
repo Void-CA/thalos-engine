@@ -90,7 +90,7 @@ async fn create_station_with_acquisition_only() {
         .expect("create station");
 
     let module = ctx.station_service
-        .add_acquisition_module(&station.id, "Temperature")
+        .add_interconnection_module(&station.id, "Temperature")
         .await
         .expect("add acquisition module");
 
@@ -145,7 +145,7 @@ async fn create_station_with_both() {
         .expect("add robotics");
 
     ctx.station_service
-        .add_acquisition_module(&station.id, "Vision")
+        .add_interconnection_module(&station.id, "Vision")
         .await
         .expect("add acquisition");
 

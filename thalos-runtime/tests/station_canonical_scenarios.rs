@@ -26,8 +26,8 @@ use thalos_ports::robot::{
     RobotCommand, RobotTransport, TransportError, TransportState,
 };
 
-use thalos_runtime::acquisition::{
-    AcquisitionRequirement, AcquisitionRuntime, SamplingRequirement,
+use thalos_runtime::interconnection::{
+    ObservationRequirement, InterconnectionRuntime, SamplingPolicy,
 };
 use thalos_runtime::resources::{
     ReservationError, ResourceRegistry, ResourceReservationManager, ResourceResolver,
@@ -99,7 +99,7 @@ fn s02_station_open_does_not_start_acquisition() {
 
     // Acquisition runtime initialized with FakeDeviceTransport is completely idle
     let fake_transport = FakeDeviceTransport::new();
-    let mut acq_runtime = AcquisitionRuntime::new(fake_transport);
+    let mut acq_runtime = InterconnectionRuntime::new(fake_transport);
 
     assert_eq!(acq_runtime.transport().active_subscriptions.len(), 0);
     assert_eq!(acq_runtime.drain_observations().len(), 0);
@@ -177,11 +177,11 @@ fn s04_concurrent_robot_and_iiot_sessions() {
 
     // Session B: Acquisition Session leases Temperature Sensor
     let fake_transport = FakeDeviceTransport::new();
-    let mut acq_runtime = AcquisitionRuntime::new(fake_transport);
-    let acq_req = AcquisitionRequirement {
+    let mut acq_runtime = InterconnectionRuntime::new(fake_transport);
+    let acq_req = ObservationRequirement {
         channel_id: "temp-s1".into(),
-        sampling: SamplingRequirement::Continuous { target_hz: 10 },
-        required: true,
+        sampling: SamplingPolicy::Continuous { target_hz: 10 },
+        mandatory: true,
     };
     let lease_b = acq_runtime.acquire_lease(&acq_req).unwrap();
 
@@ -219,17 +219,17 @@ fn s05_exclusive_robot_reservation_rejects_second_session() {
 #[test]
 fn s06_shared_acquisition_lease_rate_escalation_and_teardown() {
     let fake_transport = FakeDeviceTransport::new();
-    let mut acq_runtime = AcquisitionRuntime::new(fake_transport);
+    let mut acq_runtime = InterconnectionRuntime::new(fake_transport);
 
-    let req_10hz = AcquisitionRequirement {
+    let req_10hz = ObservationRequirement {
         channel_id: "temperature".into(),
-        sampling: SamplingRequirement::Continuous { target_hz: 10 },
-        required: true,
+        sampling: SamplingPolicy::Continuous { target_hz: 10 },
+        mandatory: true,
     };
-    let req_2hz = AcquisitionRequirement {
+    let req_2hz = ObservationRequirement {
         channel_id: "temperature".into(),
-        sampling: SamplingRequirement::Continuous { target_hz: 2 },
-        required: true,
+        sampling: SamplingPolicy::Continuous { target_hz: 2 },
+        mandatory: true,
     };
 
     // 1. Session A leases @ 10 Hz
@@ -375,7 +375,7 @@ fn s09_resource_disconnection_faults_session_without_crashing_station() {
 fn s10_multi_module_independence() {
     let mut resv_mgr = ResourceReservationManager::new();
     let fake_transport = FakeDeviceTransport::new();
-    let mut acq_runtime = AcquisitionRuntime::new(fake_transport);
+    let mut acq_runtime = InterconnectionRuntime::new(fake_transport);
 
     let robot_a = ResourceRef::new("robot-a", ResourceKind::Robot);
     let robot_b = ResourceRef::new("robot-b", ResourceKind::Robot);
@@ -391,10 +391,10 @@ fn s10_multi_module_independence() {
         .unwrap();
 
     // Session C acquires Environment telemetry
-    let acq_req = AcquisitionRequirement {
+    let acq_req = ObservationRequirement {
         channel_id: "esp32-env-01".into(),
-        sampling: SamplingRequirement::Continuous { target_hz: 100 },
-        required: true,
+        sampling: SamplingPolicy::Continuous { target_hz: 100 },
+        mandatory: true,
     };
     let lease_c = acq_runtime.acquire_lease(&acq_req).unwrap();
 
@@ -450,7 +450,7 @@ fn s12_session_cleanup_releases_all_reservations_and_leases() {
 
     let mut resv_mgr = ResourceReservationManager::new();
     let fake_transport = FakeDeviceTransport::new();
-    let mut acq_runtime = AcquisitionRuntime::new(fake_transport);
+    let mut acq_runtime = InterconnectionRuntime::new(fake_transport);
 
     let session = station_runtime.start_session().unwrap();
     let session_id = ExecutionSessionId(session.id.as_str().to_string());
@@ -462,24 +462,24 @@ fn s12_session_cleanup_releases_all_reservations_and_leases() {
         .unwrap();
 
     let lease_1 = acq_runtime
-        .acquire_lease(&AcquisitionRequirement {
+        .acquire_lease(&ObservationRequirement {
             channel_id: "ch-1".into(),
-            sampling: SamplingRequirement::Continuous { target_hz: 10 },
-            required: true,
+            sampling: SamplingPolicy::Continuous { target_hz: 10 },
+            mandatory: true,
         })
         .unwrap();
     let lease_2 = acq_runtime
-        .acquire_lease(&AcquisitionRequirement {
+        .acquire_lease(&ObservationRequirement {
             channel_id: "ch-2".into(),
-            sampling: SamplingRequirement::Continuous { target_hz: 20 },
-            required: true,
+            sampling: SamplingPolicy::Continuous { target_hz: 20 },
+            mandatory: true,
         })
         .unwrap();
     let lease_3 = acq_runtime
-        .acquire_lease(&AcquisitionRequirement {
+        .acquire_lease(&ObservationRequirement {
             channel_id: "ch-3".into(),
-            sampling: SamplingRequirement::Continuous { target_hz: 50 },
-            required: true,
+            sampling: SamplingPolicy::Continuous { target_hz: 50 },
+            mandatory: true,
         })
         .unwrap();
 

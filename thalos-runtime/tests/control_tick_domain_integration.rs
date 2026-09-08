@@ -1,11 +1,12 @@
 use thalos_runtime::execution::session::{
-    Action, AcquisitionSnapshot, Decision, DomainExecutionCoordinator,
+    Action, Decision, DomainExecutionCoordinator,
     DomainExecutionSession as ExecutionSession, Environment, EventSubscriber,
     ExecutionConfiguration, ExecutionDomainError, ExecutionEvent, ExecutionEventBus, ExecutionHistory,
-    ExecutionHistoryStore, ExpectedState, InMemoryAcquisitionRegistry, LifecycleState, PhysicalRunner,
-    Reactivity, RobotState, SharedRobotObservation, SimulationRunner, TelemetryExecutionRunner,
-    TerminationPolicy, TickContext, TickOutcome, TickResult,
+    ExecutionHistoryStore, ExpectedState, InMemoryObservationProvider, LifecycleState, PhysicalRunner,
+    ObservationBundle, Reactivity, RobotState, SharedRobotObservation, SimulationRunner,
+    TelemetryExecutionRunner, TerminationPolicy, TickContext, TickOutcome, TickResult,
 };
+use thalos_ports::device::{ChannelObservation, ChannelValue, SignalQuality};
 
 #[test]
 fn test_control_tick_deterministic_branching_and_invariants() {
@@ -20,8 +21,8 @@ fn test_control_tick_deterministic_branching_and_invariants() {
     session.start().expect("must start");
     assert_eq!(session.lifecycle, LifecycleState::Running);
 
-    let eval_logic = |acq: &AcquisitionSnapshot, _robot: &RobotState| {
-        let target_x = acq.channels.get("camera.target_x").copied().unwrap_or(0.0);
+    let eval_logic = |acq: &ObservationBundle, _robot: &RobotState| {
+        let target_x = acq.observations.get("camera.target_x").map(|o| match o.value { ChannelValue::Scalar(v) => v, _ => 0.0 }).unwrap_or(0.0);
         if target_x > 80.0 {
             (
                 Decision::MotionAction {
@@ -42,8 +43,15 @@ fn test_control_tick_deterministic_branching_and_invariants() {
     };
 
     // Tick 0: camera.target_x = 100 -> decision = move_to_target
-    let mut acq0 = AcquisitionSnapshot::default();
-    acq0.channels.insert("camera.target_x".to_string(), 100.0);
+    let mut acq0 = ObservationBundle::default();
+    acq0.observations.insert("camera.target_x".to_string(), ChannelObservation {
+        channel_id: "camera.target_x".to_string(),
+        sampled_at_ns: 0,
+        received_at_ns: 0,
+        value: ChannelValue::Scalar(100.0),
+        unit: None,
+        quality: SignalQuality::Nominal,
+    });
     let ctx0 = TickContext::new(acq0, RobotState::default(), ExpectedState::default());
 
     let res0: TickResult = session
@@ -68,8 +76,15 @@ fn test_control_tick_deterministic_branching_and_invariants() {
     assert_eq!(res0.outcome, TickOutcome::Success);
 
     // Tick 1: camera.target_x = 50 -> decision = wait_for_signal (HoldPosition)
-    let mut acq1 = AcquisitionSnapshot::default();
-    acq1.channels.insert("camera.target_x".to_string(), 50.0);
+    let mut acq1 = ObservationBundle::default();
+    acq1.observations.insert("camera.target_x".to_string(), ChannelObservation {
+        channel_id: "camera.target_x".to_string(),
+        sampled_at_ns: 0,
+        received_at_ns: 0,
+        value: ChannelValue::Scalar(50.0),
+        unit: None,
+        quality: SignalQuality::Nominal,
+    });
     let ctx1 = TickContext::new(acq1, RobotState::default(), ExpectedState::default());
 
     let res1: TickResult = session
@@ -89,17 +104,31 @@ fn test_control_tick_multi_channel_latching_invariance() {
     session.start().unwrap();
 
     // Tick k: camera.target_x = 100, camera.target_y = 40
-    let mut acq_k = AcquisitionSnapshot::default();
-    acq_k.channels.insert("camera.target_x".to_string(), 100.0);
-    acq_k.channels.insert("camera.target_y".to_string(), 40.0);
+    let mut acq_k = ObservationBundle::default();
+    acq_k.observations.insert("camera.target_x".to_string(), ChannelObservation {
+        channel_id: "camera.target_x".to_string(),
+        sampled_at_ns: 0,
+        received_at_ns: 0,
+        value: ChannelValue::Scalar(100.0),
+        unit: None,
+        quality: SignalQuality::Nominal,
+    });
+    acq_k.observations.insert("camera.target_y".to_string(), ChannelObservation {
+        channel_id: "camera.target_y".to_string(),
+        sampled_at_ns: 0,
+        received_at_ns: 0,
+        value: ChannelValue::Scalar(40.0),
+        unit: None,
+        quality: SignalQuality::Nominal,
+    });
     let ctx_k = TickContext::new(acq_k.clone(), RobotState::default(), ExpectedState::default());
 
     let res_k = session
         .evaluate_tick(
             ctx_k,
             |acq, _robot| {
-                let x = acq.channels.get("camera.target_x").copied().unwrap_or(0.0);
-                let y = acq.channels.get("camera.target_y").copied().unwrap_or(0.0);
+                let x = acq.observations.get("camera.target_x").map(|o| match o.value { ChannelValue::Scalar(v) => v, _ => 0.0 }).unwrap_or(0.0);
+                let y = acq.observations.get("camera.target_y").map(|o| match o.value { ChannelValue::Scalar(v) => v, _ => 0.0 }).unwrap_or(0.0);
                 assert_eq!(x, 100.0, "x must be latched to tick k snapshot");
                 assert_eq!(y, 40.0, "y must be latched to tick k snapshot");
                 (Decision::Continue, Action::None)
@@ -108,7 +137,7 @@ fn test_control_tick_multi_channel_latching_invariance() {
         .expect("tick k evaluation must succeed");
 
     // Invariante: res_k.tick contiene la captura inmutable del tick k
-    assert_eq!(res_k.tick.acquisition, acq_k);
+    assert_eq!(res_k.tick.observations, acq_k);
 }
 
 #[test]
@@ -122,8 +151,15 @@ fn test_control_tick_termination_policy_evaluation() {
     session.initialize().unwrap();
     session.start().unwrap();
 
-    let mut acq = AcquisitionSnapshot::default();
-    acq.channels.insert("safety_stop".to_string(), 1.0);
+    let mut acq = ObservationBundle::default();
+    acq.observations.insert("safety_stop".to_string(), ChannelObservation {
+        channel_id: "safety_stop".to_string(),
+        sampled_at_ns: 0,
+        received_at_ns: 0,
+        value: ChannelValue::Scalar(1.0),
+        unit: None,
+        quality: SignalQuality::Nominal,
+    });
     let ctx = TickContext::new(acq, RobotState::default(), ExpectedState::default());
 
     let res = session
@@ -162,7 +198,7 @@ fn test_coordinator_session_lifecycle_and_tick_rejection_when_paused() {
     let session = coordinator.registry.get(&session_id).unwrap();
     assert_eq!(session.lifecycle, LifecycleState::Running);
 
-    let dummy_eval = |_acq: &AcquisitionSnapshot, _rob: &RobotState| (Decision::Continue, Action::None);
+    let dummy_eval = |_acq: &ObservationBundle, _rob: &RobotState| (Decision::Continue, Action::None);
 
     // 4. tick 0 -> ok
     let ctx0 = TickContext::default();
@@ -218,8 +254,8 @@ fn test_same_program_runner_polymorphism_reproducibility() {
     let coordinator = DomainExecutionCoordinator::new();
 
     // Programa reactivo compartido: si camera.target_x > 80, dispatch move_to
-    let eval_logic = |acq: &AcquisitionSnapshot, _rob: &RobotState| {
-        let target_x = acq.channels.get("camera.target_x").copied().unwrap_or(0.0);
+    let eval_logic = |acq: &ObservationBundle, _rob: &RobotState| {
+        let target_x = acq.observations.get("camera.target_x").map(|o| match o.value { ChannelValue::Scalar(v) => v, _ => 0.0 }).unwrap_or(0.0);
         if target_x > 80.0 {
             (
                 Decision::MotionAction {
@@ -251,8 +287,15 @@ fn test_same_program_runner_polymorphism_reproducibility() {
     coordinator.initialize(&session_a).unwrap();
     coordinator.start(&session_a).unwrap();
 
-    let mut acq_sim = AcquisitionSnapshot::default();
-    acq_sim.channels.insert("camera.target_x".to_string(), 100.0);
+    let mut acq_sim = ObservationBundle::default();
+    acq_sim.observations.insert("camera.target_x".to_string(), ChannelObservation {
+        channel_id: "camera.target_x".to_string(),
+        sampled_at_ns: 0,
+        received_at_ns: 0,
+        value: ChannelValue::Scalar(100.0),
+        unit: None,
+        quality: SignalQuality::Nominal,
+    });
     let mut sim_runner = SimulationRunner::new(TickContext::new(
         acq_sim,
         RobotState::default(),
@@ -275,8 +318,15 @@ fn test_same_program_runner_polymorphism_reproducibility() {
     coordinator.initialize(&session_b).unwrap();
     coordinator.start(&session_b).unwrap();
 
-    let mut acq_phys = AcquisitionSnapshot::default();
-    acq_phys.channels.insert("camera.target_x".to_string(), 100.0);
+    let mut acq_phys = ObservationBundle::default();
+    acq_phys.observations.insert("camera.target_x".to_string(), ChannelObservation {
+        channel_id: "camera.target_x".to_string(),
+        sampled_at_ns: 0,
+        received_at_ns: 0,
+        value: ChannelValue::Scalar(100.0),
+        unit: None,
+        quality: SignalQuality::Nominal,
+    });
     let mut phys_runner = PhysicalRunner::new(
         TickContext::new(acq_phys, RobotState::default(), ExpectedState::default()),
         false, // disconnected!
@@ -309,7 +359,7 @@ fn test_same_program_runner_polymorphism_reproducibility() {
 fn test_telemetry_execution_runner_dynamic_channel_and_robot_observation() {
     let coordinator = DomainExecutionCoordinator::new();
 
-    let acq_registry = InMemoryAcquisitionRegistry::new();
+    let acq_registry = InMemoryObservationProvider::new();
     let robot_obs = SharedRobotObservation::new(RobotState {
         joints: vec![0.0, 0.0, 0.0],
         velocities: vec![0.0, 0.0, 0.0],
@@ -328,8 +378,8 @@ fn test_telemetry_execution_runner_dynamic_channel_and_robot_observation() {
     coordinator.initialize(&session_id).unwrap();
     coordinator.start(&session_id).unwrap();
 
-    let eval_logic = |acq: &AcquisitionSnapshot, rob: &RobotState| {
-        let temp = acq.channels.get("weld_head.temperature").copied().unwrap_or(0.0);
+    let eval_logic = |acq: &ObservationBundle, rob: &RobotState| {
+        let temp = acq.observations.get("weld_head.temperature").map(|o| match o.value { ChannelValue::Scalar(v) => v, _ => 0.0 }).unwrap_or(0.0);
         let j0 = rob.joints.first().copied().unwrap_or(0.0);
 
         if temp > 150.0 && j0 > 45.0 {
@@ -386,14 +436,12 @@ fn test_telemetry_execution_runner_dynamic_channel_and_robot_observation() {
     assert_eq!(res2.outcome, TickOutcome::Success);
 
     // Verificar que los snapshots del tick k fueron aislados inmutablemente
-    assert_eq!(
-        res1.tick.acquisition.channels.get("weld_head.temperature"),
-        Some(&100.0)
-    );
-    assert_eq!(
-        res2.tick.acquisition.channels.get("weld_head.temperature"),
-        Some(&180.0)
-    );
+    let temp1 = res1.tick.observations.observations.get("weld_head.temperature")
+        .map(|o| match o.value { ChannelValue::Scalar(v) => v, _ => 0.0 });
+    assert_eq!(temp1, Some(100.0));
+    let temp2 = res2.tick.observations.observations.get("weld_head.temperature")
+        .map(|o| match o.value { ChannelValue::Scalar(v) => v, _ => 0.0 });
+    assert_eq!(temp2, Some(180.0));
     assert_eq!(res1.tick.robot.joints, vec![0.0, 10.0, 0.0]);
     assert_eq!(res2.tick.robot.joints, vec![50.0, 10.0, 0.0]);
 }
@@ -430,9 +478,16 @@ fn test_execution_event_bus_pub_sub_and_temporal_invariants() {
     coordinator.start(&session_id).unwrap();
 
     // 4. Tick -> TickEvaluated
-    let mut acq = AcquisitionSnapshot::default();
-    acq.timestamp_us = 1_700_000_000_000_000;
-    acq.channels.insert("sensor_a".to_string(), 42.0);
+    let mut acq = ObservationBundle::default();
+    acq.captured_at_us = 1_700_000_000_000_000;
+    acq.observations.insert("sensor_a".to_string(), ChannelObservation {
+        channel_id: "sensor_a".to_string(),
+        sampled_at_ns: 0,
+        received_at_ns: 0,
+        value: ChannelValue::Scalar(42.0),
+        unit: None,
+        quality: SignalQuality::Nominal,
+    });
 
     let ctx = TickContext::new(acq, RobotState::default(), ExpectedState::default());
 
@@ -500,9 +555,16 @@ fn test_execution_history_reconstruction_from_event_bus() {
     coordinator.start(&session_id).unwrap();
 
     // 3. Ejecutar Ticks con SimulationRunner
-    let mut acq = AcquisitionSnapshot::default();
-    acq.timestamp_us = 1_700_000_000_100_000;
-    acq.channels.insert("line_speed".to_string(), 1.2);
+    let mut acq = ObservationBundle::default();
+    acq.captured_at_us = 1_700_000_000_100_000;
+    acq.observations.insert("line_speed".to_string(), ChannelObservation {
+        channel_id: "line_speed".to_string(),
+        sampled_at_ns: 0,
+        received_at_ns: 0,
+        value: ChannelValue::Scalar(1.2),
+        unit: None,
+        quality: SignalQuality::Nominal,
+    });
 
     let mut sim_runner = SimulationRunner::new(TickContext::new(
         acq,

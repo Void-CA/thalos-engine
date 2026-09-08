@@ -52,7 +52,7 @@ async fn station_full_lifecycle() {
 
     let station = ctx.station_service.create_station("cell_1", "Cell 1").await.unwrap();
     ctx.station_service.add_robotics_module(&station.id, &robot.id, "Arm").await.unwrap();
-    ctx.station_service.add_acquisition_module(&station.id, "Vision").await.unwrap();
+    ctx.station_service.add_interconnection_module(&station.id, "Vision").await.unwrap();
 
     let modules = ctx.station_service.get_station_modules(&station.id).await.unwrap();
     assert_eq!(modules.len(), 2);
@@ -71,7 +71,7 @@ async fn cascade_delete_station() {
 
     let station = ctx.station_service.create_station("cell_1", "Cell 1").await.unwrap();
     ctx.station_service.add_robotics_module(&station.id, &robot.id, "Arm").await.unwrap();
-    ctx.station_service.add_acquisition_module(&station.id, "Vision").await.unwrap();
+    ctx.station_service.add_interconnection_module(&station.id, "Vision").await.unwrap();
 
     // Delete station
     ctx.station_service.delete_station(&station.id).await.unwrap();
@@ -100,7 +100,7 @@ async fn cascade_delete_module() {
 
     let station = ctx.station_service.create_station("cell_1", "Cell 1").await.unwrap();
     let module = ctx.station_service.add_robotics_module(&station.id, &robot.id, "Arm").await.unwrap();
-    ctx.station_service.add_acquisition_module(&station.id, "Vision").await.unwrap();
+    ctx.station_service.add_interconnection_module(&station.id, "Vision").await.unwrap();
 
     // Delete robotics module
     ctx.station_service.remove_module(&module.id).await.unwrap();
@@ -252,7 +252,7 @@ async fn channel_metadata_survives_reopen() {
 
     // Create station with acquisition module + channels
     let station = station_service.create_station("monitoring", "Monitoring").await.unwrap();
-    let acq_module = station_service.add_acquisition_module(&station.id, "Sensors").await.unwrap();
+    let acq_module = station_service.add_interconnection_module(&station.id, "Sensors").await.unwrap();
 
     let ch1 = station_service.add_channel(&acq_module.id, "temperature", "Temperature", "f64", "°C").await.unwrap();
     let ch2 = station_service.add_channel(&acq_module.id, "pressure", "Pressure", "f64", "Pa").await.unwrap();
@@ -321,7 +321,7 @@ async fn schema_verification() {
 
     let station = station_service.create_station("test_station", "Test Station").await.unwrap();
     station_service.add_robotics_module(&station.id, &robot.id, "Arm").await.unwrap();
-    let acq = station_service.add_acquisition_module(&station.id, "Sensors").await.unwrap();
+    let acq = station_service.add_interconnection_module(&station.id, "Sensors").await.unwrap();
     station_service.add_channel(&acq.id, "temp", "Temperature", "f64", "°C").await.unwrap();
 
     // Station loads from relational tables
@@ -335,7 +335,7 @@ async fn schema_verification() {
 
     // Extensions accessible
     assert!(module_repo.get_robotics_extension(&modules.iter().find(|m| m.kind == "robotics").unwrap().id).await.unwrap().is_some());
-    assert!(module_repo.get_acquisition_extension(&modules.iter().find(|m| m.kind == "acquisition").unwrap().id).await.unwrap().is_some());
+    assert!(module_repo.get_interconnection_extension(&modules.iter().find(|m| m.kind == "acquisition").unwrap().id).await.unwrap().is_some());
 
     // Channels with real metadata
     let channels = module_repo.list_channels(&modules.iter().find(|m| m.kind == "acquisition").unwrap().id).await.unwrap();

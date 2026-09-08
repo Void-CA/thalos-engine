@@ -10,8 +10,8 @@ pub use device::{ChannelId, ChannelObservation, ChannelValue, DeviceTransport, D
 pub use crate::test_support::FakeDeviceTransport;
 pub use robot::{RobotObservation, RobotTransport, TransportError, TransportState};
 pub use equipment_module_repository::{
-    AcquisitionModuleRecord, ChannelRecord, EquipmentModuleRecord, EquipmentModuleRepository,
-    RobotReference as ModuleRobotReference, RoboticsModuleRecord,
+    ChannelRecord, EquipmentModuleRecord, EquipmentModuleRepository,
+    InterconnectionModuleRecord, RobotReference as ModuleRobotReference, RoboticsModuleRecord,
 };
 pub use robot_reference_checker::{RobotReference, RobotReferenceChecker};
 pub use robot_repository::{
