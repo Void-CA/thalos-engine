@@ -892,4 +892,192 @@ mod tests {
         assert_eq!(x, 100.0);
         assert_eq!(y, 50.0);
     }
+
+    #[test]
+    fn test_termination_condition_with_scalar_channel() {
+        let mut session = ExecutionSession::new("term_test", ExecutionConfiguration {
+            termination: TerminationPolicy::Condition("safety_stop".to_string()),
+            ..Default::default()
+        });
+        session.initialize().unwrap();
+        session.start().unwrap();
+
+        // safety_stop = 0.0 → should NOT terminate
+        let mut obs = ObservationBundle::default();
+        obs.observations.insert("safety_stop".to_string(), ChannelObservation {
+            channel_id: "safety_stop".to_string(),
+            sampled_at_ns: 0,
+            received_at_ns: 0,
+            value: thalos_core::device::ChannelValue::Scalar(0.0),
+            unit: None,
+            quality: thalos_core::device::SignalQuality::Nominal,
+        });
+        let ctx = TickContext::new(obs, RobotState::default(), ExpectedState::default());
+        let res = session.evaluate_tick(ctx, |_obs, _rob| (Decision::Continue, Action::None)).unwrap();
+        assert_eq!(res.outcome, TickOutcome::Success);
+        assert_eq!(res.decision, Decision::Continue);
+
+        // safety_stop = 1.0 → should terminate
+        let mut obs2 = ObservationBundle::default();
+        obs2.observations.insert("safety_stop".to_string(), ChannelObservation {
+            channel_id: "safety_stop".to_string(),
+            sampled_at_ns: 0,
+            received_at_ns: 0,
+            value: thalos_core::device::ChannelValue::Scalar(1.0),
+            unit: None,
+            quality: thalos_core::device::SignalQuality::Nominal,
+        });
+        let ctx2 = TickContext::new(obs2, RobotState::default(), ExpectedState::default());
+        let res2 = session.evaluate_tick(ctx2, |_obs, _rob| (Decision::Continue, Action::None)).unwrap();
+        assert_eq!(res2.outcome, TickOutcome::SessionCompleted);
+        assert!(matches!(res2.decision, Decision::TerminateSession { .. }));
+    }
+
+    #[test]
+    fn test_termination_condition_with_boolean_channel() {
+        let mut session = ExecutionSession::new("bool_term", ExecutionConfiguration {
+            termination: TerminationPolicy::Condition("e_stop".to_string()),
+            ..Default::default()
+        });
+        session.initialize().unwrap();
+        session.start().unwrap();
+
+        // Boolean false → should NOT terminate
+        let mut obs = ObservationBundle::default();
+        obs.observations.insert("e_stop".to_string(), ChannelObservation {
+            channel_id: "e_stop".to_string(),
+            sampled_at_ns: 0,
+            received_at_ns: 0,
+            value: thalos_core::device::ChannelValue::Boolean(false),
+            unit: None,
+            quality: thalos_core::device::SignalQuality::Nominal,
+        });
+        let ctx = TickContext::new(obs, RobotState::default(), ExpectedState::default());
+        let res = session.evaluate_tick(ctx, |_obs, _rob| (Decision::Continue, Action::None)).unwrap();
+        assert_eq!(res.outcome, TickOutcome::Success);
+
+        // Boolean true → should terminate
+        let mut obs2 = ObservationBundle::default();
+        obs2.observations.insert("e_stop".to_string(), ChannelObservation {
+            channel_id: "e_stop".to_string(),
+            sampled_at_ns: 0,
+            received_at_ns: 0,
+            value: thalos_core::device::ChannelValue::Boolean(true),
+            unit: None,
+            quality: thalos_core::device::SignalQuality::Nominal,
+        });
+        let ctx2 = TickContext::new(obs2, RobotState::default(), ExpectedState::default());
+        let res2 = session.evaluate_tick(ctx2, |_obs, _rob| (Decision::Continue, Action::None)).unwrap();
+        assert_eq!(res2.outcome, TickOutcome::SessionCompleted);
+    }
+
+    #[test]
+    fn test_termination_condition_with_integer_channel() {
+        let mut session = ExecutionSession::new("int_term", ExecutionConfiguration {
+            termination: TerminationPolicy::Condition("error_code".to_string()),
+            ..Default::default()
+        });
+        session.initialize().unwrap();
+        session.start().unwrap();
+
+        // error_code = 0 → should NOT terminate
+        let mut obs = ObservationBundle::default();
+        obs.observations.insert("error_code".to_string(), ChannelObservation {
+            channel_id: "error_code".to_string(),
+            sampled_at_ns: 0,
+            received_at_ns: 0,
+            value: thalos_core::device::ChannelValue::Integer(0),
+            unit: None,
+            quality: thalos_core::device::SignalQuality::Nominal,
+        });
+        let ctx = TickContext::new(obs, RobotState::default(), ExpectedState::default());
+        let res = session.evaluate_tick(ctx, |_obs, _rob| (Decision::Continue, Action::None)).unwrap();
+        assert_eq!(res.outcome, TickOutcome::Success);
+
+        // error_code = 5 → should terminate
+        let mut obs2 = ObservationBundle::default();
+        obs2.observations.insert("error_code".to_string(), ChannelObservation {
+            channel_id: "error_code".to_string(),
+            sampled_at_ns: 0,
+            received_at_ns: 0,
+            value: thalos_core::device::ChannelValue::Integer(5),
+            unit: None,
+            quality: thalos_core::device::SignalQuality::Nominal,
+        });
+        let ctx2 = TickContext::new(obs2, RobotState::default(), ExpectedState::default());
+        let res2 = session.evaluate_tick(ctx2, |_obs, _rob| (Decision::Continue, Action::None)).unwrap();
+        assert_eq!(res2.outcome, TickOutcome::SessionCompleted);
+    }
+
+    #[test]
+    fn test_termination_condition_missing_channel() {
+        let mut session = ExecutionSession::new("missing_term", ExecutionConfiguration {
+            termination: TerminationPolicy::Condition("nonexistent_channel".to_string()),
+            ..Default::default()
+        });
+        session.initialize().unwrap();
+        session.start().unwrap();
+
+        // Channel doesn't exist in observation bundle → should NOT terminate
+        let obs = ObservationBundle::default(); // empty
+        let ctx = TickContext::new(obs, RobotState::default(), ExpectedState::default());
+        let res = session.evaluate_tick(ctx, |_obs, _rob| (Decision::Continue, Action::None)).unwrap();
+        assert_eq!(res.outcome, TickOutcome::Success);
+        assert_eq!(res.decision, Decision::Continue);
+    }
+
+    #[test]
+    fn test_termination_condition_with_degraded_quality() {
+        let mut session = ExecutionSession::new("degraded_term", ExecutionConfiguration {
+            termination: TerminationPolicy::Condition("sensor".to_string()),
+            ..Default::default()
+        });
+        session.initialize().unwrap();
+        session.start().unwrap();
+
+        // Degraded quality but value > 0 → should still terminate
+        // (quality is metadata; the value interpretation is the consumer's responsibility)
+        let mut obs = ObservationBundle::default();
+        obs.observations.insert("sensor".to_string(), ChannelObservation {
+            channel_id: "sensor".to_string(),
+            sampled_at_ns: 0,
+            received_at_ns: 0,
+            value: thalos_core::device::ChannelValue::Scalar(1.0),
+            unit: None,
+            quality: thalos_core::device::SignalQuality::Degraded,
+        });
+        let ctx = TickContext::new(obs, RobotState::default(), ExpectedState::default());
+        let res = session.evaluate_tick(ctx, |_obs, _rob| (Decision::Continue, Action::None)).unwrap();
+        assert_eq!(res.outcome, TickOutcome::SessionCompleted);
+    }
+
+    #[test]
+    fn test_eval_fn_receives_observations_not_acquisition() {
+        let mut session = ExecutionSession::new("obs_test", ExecutionConfiguration::default());
+        session.initialize().unwrap();
+        session.start().unwrap();
+
+        let mut obs = ObservationBundle::default();
+        obs.observations.insert("joint_1.position".to_string(), ChannelObservation {
+            channel_id: "joint_1.position".to_string(),
+            sampled_at_ns: 0,
+            received_at_ns: 0,
+            value: thalos_core::device::ChannelValue::Scalar(1.57),
+            unit: Some("rad".to_string()),
+            quality: thalos_core::device::SignalQuality::Nominal,
+        });
+        let ctx = TickContext::new(obs, RobotState::default(), ExpectedState::default());
+
+        let res = session.evaluate_tick(ctx, |bundle, _rob| {
+            let val = bundle.observations.get("joint_1.position")
+                .map(|o| match o.value {
+                    thalos_core::device::ChannelValue::Scalar(v) => v,
+                    _ => 0.0,
+                })
+                .unwrap_or(0.0);
+            assert!((val - 1.57).abs() < 0.001);
+            (Decision::Continue, Action::None)
+        }).unwrap();
+        assert_eq!(res.outcome, TickOutcome::Success);
+    }
 }

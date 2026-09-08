@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use thalos_core::device::{ChannelObservation, SignalQuality};
+use thalos_core::robot::RobotCommand;
 use super::domain::{
     Action, ExpectedState, ObservationBundle, RobotState, TickContext, TickOutcome,
 };
@@ -40,14 +41,6 @@ pub trait CommandProvider: Send + Sync {
 /// Provides observation of the robot state (joint positions, velocities).
 pub trait RobotObservationProvider: Send + Sync {
     fn observe(&self) -> RobotState;
-}
-
-/// A domain-level command issued by Execution toward physical equipment.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct RobotCommand {
-    pub kind: String,
-    pub target: String,
-    pub parameters: HashMap<String, String>,
 }
 
 /// Error produced when a command cannot be delivered.
@@ -267,5 +260,182 @@ impl ExecutionRunner for PhysicalRunner {
             Action::HoldPosition => TickOutcome::Success,
             Action::None => TickOutcome::Success,
         }
+    }
+}
+
+/// Test double that captures dispatched RobotCommands for assertion.
+#[derive(Debug, Clone, Default)]
+pub struct CapturingCommandProvider {
+    commands: Arc<Mutex<Vec<RobotCommand>>>,
+}
+
+impl CapturingCommandProvider {
+    pub fn new() -> Self {
+        Self {
+            commands: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    pub fn captured(&self) -> Vec<RobotCommand> {
+        self.commands.lock().unwrap().clone()
+    }
+
+    pub fn clear(&self) {
+        self.commands.lock().unwrap().clear();
+    }
+}
+
+impl CommandProvider for CapturingCommandProvider {
+    fn dispatch(&mut self, command: &RobotCommand) -> Result<(), CommandError> {
+        self.commands.lock().unwrap().push(command.clone());
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use thalos_core::device::ChannelValue;
+
+    #[test]
+    fn in_memory_observation_provider_scalar_values() {
+        let provider = InMemoryObservationProvider::new();
+        provider.set_channel("temperature", 72.5);
+        provider.set_channel("pressure", 1013.25);
+
+        let bundle = provider.snapshot();
+        let temp = bundle.observations.get("temperature").unwrap();
+        assert_eq!(temp.value, ChannelValue::Scalar(72.5));
+        assert_eq!(temp.quality, SignalQuality::Nominal);
+
+        let pres = bundle.observations.get("pressure").unwrap();
+        assert_eq!(pres.value, ChannelValue::Scalar(1013.25));
+    }
+
+    #[test]
+    fn in_memory_observation_provider_timestamps() {
+        let before_us = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_micros() as u64;
+
+        let provider = InMemoryObservationProvider::new();
+        provider.set_channel("ch1", 1.0);
+
+        let bundle = provider.snapshot();
+        let after_us = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_micros() as u64;
+
+        assert!(bundle.captured_at_us >= before_us);
+        assert!(bundle.captured_at_us <= after_us);
+
+        let obs = bundle.observations.get("ch1").unwrap();
+        assert!(obs.sampled_at_ns > 0);
+        assert!(obs.received_at_ns > 0);
+    }
+
+    #[test]
+    fn in_memory_observation_provider_updates_between_ticks() {
+        let provider = InMemoryObservationProvider::new();
+        provider.set_channel("sensor", 10.0);
+
+        let bundle1 = provider.snapshot();
+        assert_eq!(
+            bundle1.observations.get("sensor").unwrap().value,
+            ChannelValue::Scalar(10.0)
+        );
+
+        provider.set_channel("sensor", 25.0);
+        let bundle2 = provider.snapshot();
+        assert_eq!(
+            bundle2.observations.get("sensor").unwrap().value,
+            ChannelValue::Scalar(25.0)
+        );
+    }
+
+    #[test]
+    fn in_memory_observation_provider_explicit_observation() {
+        let provider = InMemoryObservationProvider::new();
+        let obs = ChannelObservation {
+            channel_id: "vibration".to_string(),
+            sampled_at_ns: 1000,
+            received_at_ns: 1100,
+            value: ChannelValue::Scalar(0.42),
+            unit: Some("g".to_string()),
+            quality: SignalQuality::Degraded,
+        };
+        provider.set_observation("vibration", obs);
+
+        let bundle = provider.snapshot();
+        let vib = bundle.observations.get("vibration").unwrap();
+        assert_eq!(vib.quality, SignalQuality::Degraded);
+        assert_eq!(vib.unit.as_deref(), Some("g"));
+        assert_eq!(vib.sampled_at_ns, 1000);
+    }
+
+    #[test]
+    fn capturing_command_provider_records_commands() {
+        let mut provider = CapturingCommandProvider::new();
+        let cmd = RobotCommand::MoveJoints {
+            positions_rad: vec![0.1, 0.2, 0.3],
+            velocities_rad_s: None,
+        };
+        provider.dispatch(&cmd).unwrap();
+        provider.dispatch(&RobotCommand::Stop).unwrap();
+
+        let captured = provider.captured();
+        assert_eq!(captured.len(), 2);
+        assert_eq!(captured[0], RobotCommand::MoveJoints {
+            positions_rad: vec![0.1, 0.2, 0.3],
+            velocities_rad_s: None,
+        });
+        assert_eq!(captured[1], RobotCommand::Stop);
+    }
+
+    #[test]
+    fn capturing_command_provider_clear() {
+        let mut provider = CapturingCommandProvider::new();
+        provider.dispatch(&RobotCommand::Stop).unwrap();
+        assert_eq!(provider.captured().len(), 1);
+
+        provider.clear();
+        assert_eq!(provider.captured().len(), 0);
+    }
+
+    #[test]
+    fn observation_bundle_with_channel_value_types() {
+        let provider = InMemoryObservationProvider::new();
+
+        // Boolean observation
+        provider.set_observation("safety_stop", ChannelObservation {
+            channel_id: "safety_stop".to_string(),
+            sampled_at_ns: 0,
+            received_at_ns: 0,
+            value: ChannelValue::Boolean(true),
+            unit: None,
+            quality: SignalQuality::Nominal,
+        });
+
+        // Integer observation
+        provider.set_observation("error_code", ChannelObservation {
+            channel_id: "error_code".to_string(),
+            sampled_at_ns: 0,
+            received_at_ns: 0,
+            value: ChannelValue::Integer(42),
+            unit: None,
+            quality: SignalQuality::Nominal,
+        });
+
+        let bundle = provider.snapshot();
+        assert_eq!(
+            bundle.observations.get("safety_stop").unwrap().value,
+            ChannelValue::Boolean(true)
+        );
+        assert_eq!(
+            bundle.observations.get("error_code").unwrap().value,
+            ChannelValue::Integer(42)
+        );
     }
 }

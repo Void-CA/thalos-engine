@@ -3,9 +3,9 @@ use serde::{Deserialize, Serialize};
 use thalos_engine::prelude::StationId;
 
 use crate::execution::session::{
-    AcquisitionProvider, DomainExecutionCoordinator, ExecutionConfiguration,
-    ExecutionDomainError, ExecutionSessionId, ExpectedState, RobotObservationProvider,
-    TelemetryExecutionRunner,
+    DomainExecutionCoordinator, ExecutionConfiguration,
+    ExecutionDomainError, ExecutionSessionId, ExpectedState, ObservationProvider,
+    RobotObservationProvider, TelemetryExecutionRunner,
 };
 use crate::ports::equipment_module_repository::{
     AcquisitionModuleRecord, ChannelRecord, EquipmentModuleRecord, EquipmentModuleRepository,
@@ -443,7 +443,7 @@ impl StationService {
         robot_provider: R,
     ) -> Result<ExecutionBinding<A, R>, StationError>
     where
-        A: AcquisitionProvider,
+        A: ObservationProvider,
         R: RobotObservationProvider,
     {
         // Load station
@@ -501,7 +501,7 @@ impl StationService {
         coordinator: &DomainExecutionCoordinator,
     ) -> Result<(ExecutionSessionId, TelemetryExecutionRunner<A, R>), StationError>
     where
-        A: AcquisitionProvider + 'static,
+        A: ObservationProvider + 'static,
         R: RobotObservationProvider + 'static,
     {
         // Note: resolve_binding is now async, but prepare_execution_session

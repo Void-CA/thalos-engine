@@ -23,7 +23,7 @@ pub use history::{
 pub use manager::SessionManager;
 pub use runner::{
     CommandError, CommandProvider, ExecutionRunner, InMemoryObservationProvider, ObservationProvider,
-    PhysicalRunner, RobotCommand, RobotObservationProvider, SharedRobotObservation,
+    PhysicalRunner, RobotObservationProvider, SharedRobotObservation,
     SimulationRunner, TelemetryExecutionRunner,
 };
 pub use session_data::{SessionData, SessionWithTrace};
