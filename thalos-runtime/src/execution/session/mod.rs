@@ -7,12 +7,12 @@ pub mod runner;
 pub mod session_data;
 
 pub use domain::{
-    Action, Cardinality, ControlTick, CycleState, Decision,
+    Action, Cardinality, ChannelAccessError, ControlTick, CycleState, Decision,
     DomainExecutionCoordinator, Environment, ExecutionConfiguration, ExecutionDomainError,
     ExecutionSession as DomainExecutionSession, ExecutionSessionId, ExpectedState,
     InvalidLifecycleTransition, LifecycleState, ObservationBundle, ProgramState, Reactivity,
     RobotState, SessionRegistry, SessionState, TerminationPolicy, TickContext, TickOutcome,
-    TickResult,
+    TickResult, eval_channel_access, eval_derived_signal, extract_scalar,
 };
 pub use events::{EventSubscriber, ExecutionEvent, ExecutionEventBus, TemporalInvariants};
 pub use execution_source::ExecutionSource;
@@ -22,8 +22,8 @@ pub use history::{
 };
 pub use manager::SessionManager;
 pub use runner::{
-    CommandError, CommandProvider, ExecutionRunner, InMemoryObservationProvider, ObservationProvider,
-    PhysicalRunner, RobotObservationProvider, SharedRobotObservation,
-    SimulationRunner, TelemetryExecutionRunner,
+    CapturingCommandProvider, CommandError, CommandProvider, ExecutionRunner,
+    InMemoryObservationProvider, NoopCommandProvider, ObservationProvider, PhysicalRunner,
+    RobotObservationProvider, SharedRobotObservation, SimulationRunner, TelemetryExecutionRunner,
 };
 pub use session_data::{SessionData, SessionWithTrace};

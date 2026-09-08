@@ -708,6 +708,96 @@ impl DomainExecutionCoordinator {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Channel Access Evaluation (6.5)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Extract a scalar value from a ChannelObservation.
+pub fn extract_scalar(obs: &ChannelObservation) -> f64 {
+    match obs.value {
+        thalos_core::device::ChannelValue::Scalar(v) => v,
+        thalos_core::device::ChannelValue::Integer(v) => v as f64,
+        thalos_core::device::ChannelValue::Boolean(v) => if v { 1.0 } else { 0.0 },
+    }
+}
+
+/// Evaluate a channel access against an ObservationBundle.
+///
+/// This bridges the DSL compiler's `SemanticExpr::ChannelAccess { module, channel }`
+/// with the runtime observation data. The module parameter is currently unused
+/// (channel IDs are globally unique in the observation bundle) but preserved
+/// for future namespace scoping.
+pub fn eval_channel_access(
+    _module: &str,
+    channel: &str,
+    bundle: &ObservationBundle,
+) -> Result<f64, ChannelAccessError> {
+    bundle.observations
+        .get(channel)
+        .map(|obs| extract_scalar(obs))
+        .ok_or_else(|| ChannelAccessError::ChannelNotFound(channel.to_string()))
+}
+
+/// Error type for channel access evaluation.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ChannelAccessError {
+    #[error("Channel not found: {0}")]
+    ChannelNotFound(String),
+
+    #[error("Channel value not available: {0}")]
+    ValueUnavailable(String),
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Derived Signal Evaluation (6.6)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Resolve a signal reference to a scalar value within an ObservationBundle.
+///
+/// If the signal is found in the bundle, its value is extracted.
+/// If not found, returns 0.0 (allows derived signals to operate on
+/// partially-available data during startup or degraded states).
+fn resolve_signal(signal_id: &str, bundle: &ObservationBundle) -> f64 {
+    bundle.observations
+        .get(signal_id)
+        .map(|obs| extract_scalar(obs))
+        .unwrap_or(0.0)
+}
+
+/// Evaluate a derived signal expression against an ObservationBundle.
+///
+/// Pure derived signals can be evaluated by Interconnection because they
+/// only transform signal data without requiring domain semantics.
+pub fn eval_derived_signal(
+    derived: &thalos_core::device::DerivedSignal,
+    bundle: &ObservationBundle,
+) -> Result<f64, ChannelAccessError> {
+    match &derived.expression {
+        thalos_core::device::SignalExpression::Channel(signal_id) => {
+            Ok(resolve_signal(signal_id, bundle))
+        }
+        thalos_core::device::SignalExpression::Add(a, b) => {
+            Ok(resolve_signal(a, bundle) + resolve_signal(b, bundle))
+        }
+        thalos_core::device::SignalExpression::Subtract(a, b) => {
+            Ok(resolve_signal(a, bundle) - resolve_signal(b, bundle))
+        }
+        thalos_core::device::SignalExpression::Multiply(a, b) => {
+            Ok(resolve_signal(a, bundle) * resolve_signal(b, bundle))
+        }
+        thalos_core::device::SignalExpression::Divide(a, b) => {
+            let divisor = resolve_signal(b, bundle);
+            if divisor == 0.0 {
+                Err(ChannelAccessError::ValueUnavailable(
+                    format!("Division by zero in derived signal {}", derived.signal_id)
+                ))
+            } else {
+                Ok(resolve_signal(a, bundle) / divisor)
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1079,5 +1169,161 @@ mod tests {
             (Decision::Continue, Action::None)
         }).unwrap();
         assert_eq!(res.outcome, TickOutcome::Success);
+    }
+
+    #[test]
+    fn test_eval_channel_access() {
+        let mut bundle = ObservationBundle::default();
+        bundle.observations.insert("temperature".to_string(), ChannelObservation {
+            channel_id: "temperature".to_string(),
+            sampled_at_ns: 0,
+            received_at_ns: 0,
+            value: thalos_core::device::ChannelValue::Scalar(72.5),
+            unit: None,
+            quality: thalos_core::device::SignalQuality::Nominal,
+        });
+
+        let val = eval_channel_access("device", "temperature", &bundle).unwrap();
+        assert!((val - 72.5).abs() < 0.001);
+
+        // Missing channel returns error
+        assert!(eval_channel_access("device", "missing", &bundle).is_err());
+    }
+
+    #[test]
+    fn test_eval_channel_access_integer() {
+        let mut bundle = ObservationBundle::default();
+        bundle.observations.insert("error_code".to_string(), ChannelObservation {
+            channel_id: "error_code".to_string(),
+            sampled_at_ns: 0,
+            received_at_ns: 0,
+            value: thalos_core::device::ChannelValue::Integer(42),
+            unit: None,
+            quality: thalos_core::device::SignalQuality::Nominal,
+        });
+
+        let val = eval_channel_access("device", "error_code", &bundle).unwrap();
+        assert!((val - 42.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_eval_channel_access_boolean() {
+        let mut bundle = ObservationBundle::default();
+        bundle.observations.insert("safety_stop".to_string(), ChannelObservation {
+            channel_id: "safety_stop".to_string(),
+            sampled_at_ns: 0,
+            received_at_ns: 0,
+            value: thalos_core::device::ChannelValue::Boolean(true),
+            unit: None,
+            quality: thalos_core::device::SignalQuality::Nominal,
+        });
+
+        let val = eval_channel_access("device", "safety_stop", &bundle).unwrap();
+        assert!((val - 1.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_eval_derived_signal_channel() {
+        let mut bundle = ObservationBundle::default();
+        bundle.observations.insert("temperature".to_string(), ChannelObservation {
+            channel_id: "temperature".to_string(),
+            sampled_at_ns: 0,
+            received_at_ns: 0,
+            value: thalos_core::device::ChannelValue::Scalar(72.5),
+            unit: None,
+            quality: thalos_core::device::SignalQuality::Nominal,
+        });
+
+        let derived = thalos_core::device::DerivedSignal::new(
+            "temp_copy",
+            thalos_core::device::SignalExpression::Channel("temperature".to_string()),
+        );
+
+        let val = eval_derived_signal(&derived, &bundle).unwrap();
+        assert!((val - 72.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_eval_derived_signal_add() {
+        let mut bundle = ObservationBundle::default();
+        bundle.observations.insert("a".to_string(), ChannelObservation {
+            channel_id: "a".to_string(),
+            sampled_at_ns: 0,
+            received_at_ns: 0,
+            value: thalos_core::device::ChannelValue::Scalar(10.0),
+            unit: None,
+            quality: thalos_core::device::SignalQuality::Nominal,
+        });
+        bundle.observations.insert("b".to_string(), ChannelObservation {
+            channel_id: "b".to_string(),
+            sampled_at_ns: 0,
+            received_at_ns: 0,
+            value: thalos_core::device::ChannelValue::Scalar(20.0),
+            unit: None,
+            quality: thalos_core::device::SignalQuality::Nominal,
+        });
+
+        let derived = thalos_core::device::DerivedSignal::new(
+            "sum",
+            thalos_core::device::SignalExpression::Add("a".to_string(), "b".to_string()),
+        );
+
+        let val = eval_derived_signal(&derived, &bundle).unwrap();
+        assert!((val - 30.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_eval_derived_signal_subtract() {
+        let mut bundle = ObservationBundle::default();
+        bundle.observations.insert("target".to_string(), ChannelObservation {
+            channel_id: "target".to_string(),
+            sampled_at_ns: 0,
+            received_at_ns: 0,
+            value: thalos_core::device::ChannelValue::Scalar(100.0),
+            unit: None,
+            quality: thalos_core::device::SignalQuality::Nominal,
+        });
+        bundle.observations.insert("actual".to_string(), ChannelObservation {
+            channel_id: "actual".to_string(),
+            sampled_at_ns: 0,
+            received_at_ns: 0,
+            value: thalos_core::device::ChannelValue::Scalar(95.0),
+            unit: None,
+            quality: thalos_core::device::SignalQuality::Nominal,
+        });
+
+        let derived = thalos_core::device::DerivedSignal::new(
+            "error",
+            thalos_core::device::SignalExpression::Subtract("target".to_string(), "actual".to_string()),
+        );
+
+        let val = eval_derived_signal(&derived, &bundle).unwrap();
+        assert!((val - 5.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_eval_derived_signal_divide_by_zero() {
+        let bundle = ObservationBundle::default();
+
+        let derived = thalos_core::device::DerivedSignal::new(
+            "ratio",
+            thalos_core::device::SignalExpression::Divide("a".to_string(), "b".to_string()),
+        );
+
+        let result = eval_derived_signal(&derived, &bundle);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_eval_derived_signal_missing_inputs_use_zero() {
+        let bundle = ObservationBundle::default();
+
+        let derived = thalos_core::device::DerivedSignal::new(
+            "missing_sum",
+            thalos_core::device::SignalExpression::Add("x".to_string(), "y".to_string()),
+        );
+
+        let val = eval_derived_signal(&derived, &bundle).unwrap();
+        assert!((val - 0.0).abs() < 0.001);
     }
 }

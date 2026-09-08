@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use thalos_engine::prelude::StationId;
 
 use crate::execution::session::{
-    DomainExecutionCoordinator, ExecutionConfiguration,
+    CommandProvider, DomainExecutionCoordinator, ExecutionConfiguration,
     ExecutionDomainError, ExecutionSessionId, ExpectedState, ObservationProvider,
     RobotObservationProvider, TelemetryExecutionRunner,
 };
@@ -491,18 +491,20 @@ impl StationService {
         })
     }
 
-    pub fn prepare_execution_session<A, R>(
+    pub fn prepare_execution_session<A, R, C>(
         &self,
         target: &ExecutionTarget,
         program_id: impl Into<String>,
         config: ExecutionConfiguration,
         acq_provider: A,
         robot_provider: R,
+        cmd_provider: C,
         coordinator: &DomainExecutionCoordinator,
-    ) -> Result<(ExecutionSessionId, TelemetryExecutionRunner<A, R>), StationError>
+    ) -> Result<(ExecutionSessionId, TelemetryExecutionRunner<A, R, C>), StationError>
     where
         A: ObservationProvider + 'static,
         R: RobotObservationProvider + 'static,
+        C: CommandProvider + 'static,
     {
         // Note: resolve_binding is now async, but prepare_execution_session
         // needs to be called with a pre-resolved binding.
@@ -510,6 +512,7 @@ impl StationService {
         let runner = TelemetryExecutionRunner::new(
             acq_provider,
             robot_provider,
+            cmd_provider,
             ExpectedState::default(),
         );
 

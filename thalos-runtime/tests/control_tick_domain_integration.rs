@@ -2,8 +2,8 @@ use thalos_runtime::execution::session::{
     Action, Decision, DomainExecutionCoordinator,
     DomainExecutionSession as ExecutionSession, Environment, EventSubscriber,
     ExecutionConfiguration, ExecutionDomainError, ExecutionEvent, ExecutionEventBus, ExecutionHistory,
-    ExecutionHistoryStore, ExpectedState, InMemoryObservationProvider, LifecycleState, PhysicalRunner,
-    ObservationBundle, Reactivity, RobotState, SharedRobotObservation, SimulationRunner,
+    ExecutionHistoryStore, ExpectedState, InMemoryObservationProvider, LifecycleState, NoopCommandProvider,
+    PhysicalRunner, ObservationBundle, Reactivity, RobotState, SharedRobotObservation, SimulationRunner,
     TelemetryExecutionRunner, TerminationPolicy, TickContext, TickOutcome, TickResult,
 };
 use thalos_ports::device::{ChannelObservation, ChannelValue, SignalQuality};
@@ -368,6 +368,7 @@ fn test_telemetry_execution_runner_dynamic_channel_and_robot_observation() {
     let mut runner = TelemetryExecutionRunner::new(
         acq_registry.clone(),
         robot_obs.clone(),
+        NoopCommandProvider,
         ExpectedState::default(),
     );
 

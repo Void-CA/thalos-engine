@@ -43,6 +43,16 @@ pub trait RobotObservationProvider: Send + Sync {
     fn observe(&self) -> RobotState;
 }
 
+/// No-op command provider for testing and backward compatibility.
+#[derive(Debug, Clone, Default)]
+pub struct NoopCommandProvider;
+
+impl CommandProvider for NoopCommandProvider {
+    fn dispatch(&mut self, _command: &RobotCommand) -> Result<(), CommandError> {
+        Ok(())
+    }
+}
+
 /// Error produced when a command cannot be delivered.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum CommandError {
@@ -131,28 +141,38 @@ impl RobotObservationProvider for SharedRobotObservation {
     }
 }
 
-/// Runner modular que combina un `ObservationProvider` y un `RobotObservationProvider`.
+/// Runner modular que combina un `ObservationProvider`, un `RobotObservationProvider`,
+/// y un `CommandProvider` para dispatch de comandos al hardware.
 #[derive(Debug)]
-pub struct TelemetryExecutionRunner<A, R>
+pub struct TelemetryExecutionRunner<A, R, C>
 where
     A: ObservationProvider,
     R: RobotObservationProvider,
+    C: CommandProvider,
 {
     pub observation_provider: A,
     pub robot_provider: R,
+    pub command_provider: C,
     pub expected_state: ExpectedState,
     pub is_connected: bool,
 }
 
-impl<A, R> TelemetryExecutionRunner<A, R>
+impl<A, R, C> TelemetryExecutionRunner<A, R, C>
 where
     A: ObservationProvider,
     R: RobotObservationProvider,
+    C: CommandProvider,
 {
-    pub fn new(observation_provider: A, robot_provider: R, expected_state: ExpectedState) -> Self {
+    pub fn new(
+        observation_provider: A,
+        robot_provider: R,
+        command_provider: C,
+        expected_state: ExpectedState,
+    ) -> Self {
         Self {
             observation_provider,
             robot_provider,
+            command_provider,
             expected_state,
             is_connected: true,
         }
@@ -164,10 +184,11 @@ where
     }
 }
 
-impl<A, R> ExecutionRunner for TelemetryExecutionRunner<A, R>
+impl<A, R, C> ExecutionRunner for TelemetryExecutionRunner<A, R, C>
 where
     A: ObservationProvider,
     R: RobotObservationProvider,
+    C: CommandProvider,
 {
     fn acquire(&mut self) -> TickContext {
         TickContext {
@@ -183,9 +204,26 @@ where
         }
 
         match action {
-            Action::DispatchMotion { .. } => TickOutcome::Success,
+            Action::DispatchMotion { kind, target } => {
+                let cmd = match kind.as_str() {
+                    "movej" => RobotCommand::MoveJoints {
+                        positions_rad: vec![], // TODO: resolve target to joint positions
+                        velocities_rad_s: None,
+                    },
+                    _ => RobotCommand::Stop,
+                };
+                match self.command_provider.dispatch(&cmd) {
+                    Ok(()) => TickOutcome::Success,
+                    Err(e) => TickOutcome::Faulted(format!("Command dispatch failed: {e}")),
+                }
+            }
             Action::SetOutput { .. } => TickOutcome::Success,
-            Action::HoldPosition => TickOutcome::Success,
+            Action::HoldPosition => {
+                match self.command_provider.dispatch(&RobotCommand::Stop) {
+                    Ok(()) => TickOutcome::Success,
+                    Err(e) => TickOutcome::Faulted(format!("Hold position failed: {e}")),
+                }
+            }
             Action::None => TickOutcome::Success,
         }
     }
