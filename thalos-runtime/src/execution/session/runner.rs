@@ -66,6 +66,46 @@ pub enum CommandError {
     Rejected(String),
 }
 
+/// Adapter that bridges CommandProvider to RobotTransport.
+///
+/// This is the integration point between the execution domain and physical hardware.
+/// It translates domain-level RobotCommands into transport-level send operations.
+///
+/// Invariant: This adapter translates contracts; it does not introduce execution semantics.
+/// Waypoint progression, convergence checks, and safety logic belong to HardwareExecutor.
+pub struct TransportCommandProvider<T: thalos_ports::robot::RobotTransport> {
+    transport: std::sync::Arc<std::sync::Mutex<T>>,
+}
+
+impl<T: thalos_ports::robot::RobotTransport> TransportCommandProvider<T> {
+    pub fn new(transport: std::sync::Arc<std::sync::Mutex<T>>) -> Self {
+        Self { transport }
+    }
+}
+
+impl<T: thalos_ports::robot::RobotTransport> CommandProvider for TransportCommandProvider<T> {
+    fn dispatch(&mut self, command: &RobotCommand) -> Result<(), CommandError> {
+        let mut transport = self.transport.lock().map_err(|e| {
+            CommandError::DeliveryFailed(format!("Transport lock poisoned: {e}"))
+        })?;
+
+        // Check transport state before sending
+        match transport.state() {
+            thalos_ports::robot::TransportState::Connected => {}
+            state => {
+                return Err(CommandError::NotConnected);
+            }
+        }
+
+        // Send command through transport
+        transport.send(command.clone()).map_err(|e| {
+            CommandError::DeliveryFailed(format!("Transport send failed: {e}"))
+        })?;
+
+        Ok(())
+    }
+}
+
 /// In-memory observation provider for testing and development.
 #[derive(Debug, Clone, Default)]
 pub struct InMemoryObservationProvider {

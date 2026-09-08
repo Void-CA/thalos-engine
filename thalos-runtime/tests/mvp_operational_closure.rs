@@ -346,3 +346,70 @@ fn test_execution_boundary_invariant() {
 
     assert_execution_uses_contracts_only(&obs, &mut cmd);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 12.1 — RobotTransportCommandProvider Adapter
+// ═══════════════════════════════════════════════════════════════════════════
+
+use std::sync::{Arc, Mutex};
+use thalos_runtime::execution::session::{CommandError, TransportCommandProvider};
+use thalos_ports::robot::fake::FakeRobotTransport;
+use thalos_ports::robot::TransportState;
+
+#[test]
+fn test_transport_command_provider_sends_command() {
+    let fake_transport = FakeRobotTransport::new();
+    let transport = Arc::new(Mutex::new(fake_transport));
+
+    let mut provider = TransportCommandProvider::new(transport.clone());
+
+    let cmd = RobotCommand::MoveJoints {
+        positions_rad: vec![0.1, 0.2, 0.3],
+        velocities_rad_s: None,
+    };
+
+    let result = provider.dispatch(&cmd);
+    assert!(result.is_ok());
+
+    // Verify command was sent through transport
+    let transport = transport.lock().unwrap();
+    assert_eq!(transport.sent_commands.len(), 1);
+    assert_eq!(transport.sent_commands[0], cmd);
+}
+
+#[test]
+fn test_transport_command_provider_rejects_when_disconnected() {
+    let mut fake_transport = FakeRobotTransport::new();
+    fake_transport.state = TransportState::Disconnected;
+    let transport = Arc::new(Mutex::new(fake_transport));
+
+    let mut provider = TransportCommandProvider::new(transport);
+
+    let cmd = RobotCommand::Stop;
+    let result = provider.dispatch(&cmd);
+    assert!(result.is_err());
+    assert!(matches!(result.unwrap_err(), CommandError::NotConnected));
+}
+
+#[test]
+fn test_transport_command_provider_multiple_commands() {
+    let fake_transport = FakeRobotTransport::new();
+    let transport = Arc::new(Mutex::new(fake_transport));
+
+    let mut provider = TransportCommandProvider::new(transport.clone());
+
+    provider.dispatch(&RobotCommand::MoveJoints {
+        positions_rad: vec![0.1],
+        velocities_rad_s: None,
+    }).unwrap();
+
+    provider.dispatch(&RobotCommand::MoveJoints {
+        positions_rad: vec![0.2],
+        velocities_rad_s: None,
+    }).unwrap();
+
+    provider.dispatch(&RobotCommand::Stop).unwrap();
+
+    let transport = transport.lock().unwrap();
+    assert_eq!(transport.sent_commands.len(), 3);
+}

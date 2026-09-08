@@ -120,7 +120,7 @@ impl<T: Transport> RobotTransport for Esp32RobotAdapter<T> {
                 }
                 Ok(None)
             }
-            Err(crate::common::TransportError::Timeout) => Ok(None),
+            Err(crate::common::IoTransportError::Timeout) => Ok(None),
             Err(e) => Err(TransportError::CommunicationFailure(e.to_string())),
         }
     }

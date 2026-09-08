@@ -24,6 +24,7 @@ pub use manager::SessionManager;
 pub use runner::{
     CapturingCommandProvider, CommandError, CommandProvider, ExecutionRunner,
     InMemoryObservationProvider, NoopCommandProvider, ObservationProvider, PhysicalRunner,
-    RobotObservationProvider, SharedRobotObservation, SimulationRunner, TelemetryExecutionRunner,
+    RobotObservationProvider, SharedRobotObservation, SimulationRunner,
+    TelemetryExecutionRunner, TransportCommandProvider,
 };
 pub use session_data::{SessionData, SessionWithTrace};

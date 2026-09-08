@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use crate::common::{Transport, TransportError};
+use crate::common::{IoTransportError, Transport};
 
 /// Transporte TCP — conecta a un socket (ESP32 o simulator).
 pub struct TcpTransport {
@@ -28,7 +28,7 @@ impl TcpTransport {
 
 #[async_trait]
 impl Transport for TcpTransport {
-    async fn connect(&mut self) -> Result<(), TransportError> {
+    async fn connect(&mut self) -> Result<(), IoTransportError> {
         let stream = tokio::net::TcpStream::connect(&self.addr).await?;
         let (read_half, write_half) = stream.into_split();
         self.reader = Some(tokio::io::BufReader::new(read_half));
@@ -36,26 +36,26 @@ impl Transport for TcpTransport {
         Ok(())
     }
 
-    async fn disconnect(&mut self) -> Result<(), TransportError> {
+    async fn disconnect(&mut self) -> Result<(), IoTransportError> {
         self.stream = None;
         self.reader = None;
         self.partial_line = None;
         Ok(())
     }
 
-    async fn send(&mut self, data: &[u8]) -> Result<(), TransportError> {
+    async fn send(&mut self, data: &[u8]) -> Result<(), IoTransportError> {
         use tokio::io::AsyncWriteExt;
-        let stream = self.stream.as_ref().ok_or(TransportError::Disconnected)?;
+        let stream = self.stream.as_ref().ok_or(IoTransportError::Disconnected)?;
         let mut guard = stream.lock().await;
         guard.write_all(data).await?;
         guard.flush().await?;
         Ok(())
     }
 
-    async fn receive(&mut self) -> Result<Vec<u8>, TransportError> {
+    async fn receive(&mut self) -> Result<Vec<u8>, IoTransportError> {
         use tokio::io::AsyncBufReadExt;
-        let reader = self.reader.as_mut().ok_or(TransportError::Disconnected)?;
-        let line = self.partial_line.as_mut().ok_or(TransportError::Disconnected)?;
+        let reader = self.reader.as_mut().ok_or(IoTransportError::Disconnected)?;
+        let line = self.partial_line.as_mut().ok_or(IoTransportError::Disconnected)?;
 
         match tokio::time::timeout(
             std::time::Duration::from_millis(self.receive_timeout_ms),
@@ -63,13 +63,13 @@ impl Transport for TcpTransport {
         )
         .await
         {
-            Err(_) => return Err(TransportError::Timeout),
-            Ok(Err(e)) => return Err(TransportError::Io(e)),
-            Ok(Ok(0)) => return Err(TransportError::Disconnected),
+            Err(_) => return Err(IoTransportError::Timeout),
+            Ok(Err(e)) => return Err(IoTransportError::Io(e)),
+            Ok(Ok(0)) => return Err(IoTransportError::Disconnected),
             Ok(Ok(_)) => {}
         }
         if line.is_empty() {
-            return Err(TransportError::Disconnected);
+            return Err(IoTransportError::Disconnected);
         }
         Ok(std::mem::take(line))
     }
@@ -91,7 +91,7 @@ mod tests {
         let (mut socket, _) = listener.accept().await.unwrap();
         socket.write_all(b"STATUS RUN").await.unwrap();
         let err = transport.receive().await.unwrap_err();
-        assert!(matches!(err, TransportError::Timeout), "got {err:?}");
+        assert!(matches!(err, IoTransportError::Timeout), "got {err:?}");
 
         socket.write_all(b"NING 0.5\n").await.unwrap();
         let resp = transport.receive().await.unwrap();
@@ -109,7 +109,7 @@ mod tests {
 
         let start = std::time::Instant::now();
         let err = transport.receive().await.unwrap_err();
-        assert!(matches!(err, TransportError::Timeout), "got {err:?}");
+        assert!(matches!(err, IoTransportError::Timeout), "got {err:?}");
         assert!(
             start.elapsed() < std::time::Duration::from_secs(5),
             "receive must not block forever"

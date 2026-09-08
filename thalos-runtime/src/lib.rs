@@ -3,6 +3,7 @@ pub mod analysis;
 pub mod backends;
 pub mod commands;
 pub mod comparison;
+pub mod device;
 pub mod error;
 pub mod execution;
 pub mod motion;

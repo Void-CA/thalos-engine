@@ -1,37 +1,40 @@
 use async_trait::async_trait;
 
-/// Error de transporte físico (I/O, timeout, desconexión).
+/// Error de transporte físico de bajo nivel (I/O, timeout, desconexión).
+///
+/// Este es el error interno de las implementaciones de `Transport`.
+/// Se mapea a `thalos_ports::robot::transport::TransportError` en la frontera.
 #[derive(Debug)]
-pub enum TransportError {
+pub enum IoTransportError {
     Io(std::io::Error),
     Timeout,
     Disconnected,
     InvalidResponse(String),
 }
 
-impl std::fmt::Display for TransportError {
+impl std::fmt::Display for IoTransportError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TransportError::Io(e) => write!(f, "IO error: {}", e),
-            TransportError::Timeout => write!(f, "Transport timeout"),
-            TransportError::Disconnected => write!(f, "Transport disconnected"),
-            TransportError::InvalidResponse(s) => write!(f, "Invalid response: {}", s),
+            IoTransportError::Io(e) => write!(f, "IO error: {}", e),
+            IoTransportError::Timeout => write!(f, "Transport timeout"),
+            IoTransportError::Disconnected => write!(f, "Transport disconnected"),
+            IoTransportError::InvalidResponse(s) => write!(f, "Invalid response: {}", s),
         }
     }
 }
 
-impl std::error::Error for TransportError {
+impl std::error::Error for IoTransportError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            TransportError::Io(e) => Some(e),
+            IoTransportError::Io(e) => Some(e),
             _ => None,
         }
     }
 }
 
-impl From<std::io::Error> for TransportError {
+impl From<std::io::Error> for IoTransportError {
     fn from(e: std::io::Error) -> Self {
-        TransportError::Io(e)
+        IoTransportError::Io(e)
     }
 }
 
@@ -39,42 +42,42 @@ impl From<std::io::Error> for TransportError {
 #[async_trait]
 pub trait Transport: Send + Sync {
     /// Conectar al dispositivo.
-    async fn connect(&mut self) -> Result<(), TransportError>;
+    async fn connect(&mut self) -> Result<(), IoTransportError>;
 
     /// Desconectar.
-    async fn disconnect(&mut self) -> Result<(), TransportError>;
+    async fn disconnect(&mut self) -> Result<(), IoTransportError>;
 
     /// Enviar datos (bytes).
-    async fn send(&mut self, data: &[u8]) -> Result<(), TransportError>;
+    async fn send(&mut self, data: &[u8]) -> Result<(), IoTransportError>;
 
     /// Recibir datos (bytes).
-    async fn receive(&mut self) -> Result<Vec<u8>, TransportError>;
+    async fn receive(&mut self) -> Result<Vec<u8>, IoTransportError>;
 
     /// Descartar líneas residuales en el buffer de entrada.
-    async fn drain(&mut self) -> Result<(), TransportError> {
+    async fn drain(&mut self) -> Result<(), IoTransportError> {
         Ok(())
     }
 }
 
 #[async_trait]
 impl<T: Transport + ?Sized> Transport for Box<T> {
-    async fn connect(&mut self) -> Result<(), TransportError> {
+    async fn connect(&mut self) -> Result<(), IoTransportError> {
         (**self).connect().await
     }
 
-    async fn disconnect(&mut self) -> Result<(), TransportError> {
+    async fn disconnect(&mut self) -> Result<(), IoTransportError> {
         (**self).disconnect().await
     }
 
-    async fn send(&mut self, data: &[u8]) -> Result<(), TransportError> {
+    async fn send(&mut self, data: &[u8]) -> Result<(), IoTransportError> {
         (**self).send(data).await
     }
 
-    async fn receive(&mut self) -> Result<Vec<u8>, TransportError> {
+    async fn receive(&mut self) -> Result<Vec<u8>, IoTransportError> {
         (**self).receive().await
     }
 
-    async fn drain(&mut self) -> Result<(), TransportError> {
+    async fn drain(&mut self) -> Result<(), IoTransportError> {
         (**self).drain().await
     }
 }
@@ -124,33 +127,33 @@ impl Default for FakeTransport {
 
 #[async_trait]
 impl Transport for FakeTransport {
-    async fn connect(&mut self) -> Result<(), TransportError> {
+    async fn connect(&mut self) -> Result<(), IoTransportError> {
         self.connected
             .store(true, std::sync::atomic::Ordering::SeqCst);
         Ok(())
     }
 
-    async fn disconnect(&mut self) -> Result<(), TransportError> {
+    async fn disconnect(&mut self) -> Result<(), IoTransportError> {
         self.connected
             .store(false, std::sync::atomic::Ordering::SeqCst);
         Ok(())
     }
 
-    async fn send(&mut self, data: &[u8]) -> Result<(), TransportError> {
+    async fn send(&mut self, data: &[u8]) -> Result<(), IoTransportError> {
         self.sent.lock().unwrap().push(data.to_vec());
         Ok(())
     }
 
-    async fn receive(&mut self) -> Result<Vec<u8>, TransportError> {
+    async fn receive(&mut self) -> Result<Vec<u8>, IoTransportError> {
         let mut responses = self.responses.lock().unwrap();
         if responses.is_empty() {
             if self
                 .disconnect_on_empty
                 .swap(false, std::sync::atomic::Ordering::SeqCst)
             {
-                return Err(TransportError::Disconnected);
+                return Err(IoTransportError::Disconnected);
             }
-            return Err(TransportError::Timeout);
+            return Err(IoTransportError::Timeout);
         }
         Ok(responses.remove(0))
     }

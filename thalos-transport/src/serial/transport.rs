@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use crate::common::{Transport, TransportError};
+use crate::common::{IoTransportError, Transport};
 
 /// Transporte serial — conexión USB/UART a un MCU.
 pub struct SerialTransport {
@@ -39,50 +39,50 @@ impl SerialTransport {
 
 #[async_trait]
 impl Transport for SerialTransport {
-    async fn connect(&mut self) -> Result<(), TransportError> {
+    async fn connect(&mut self) -> Result<(), IoTransportError> {
         if self.reader.is_some() {
             return Ok(());
         }
         let builder = tokio_serial::new(&self.port, self.baud);
         let port = tokio_serial::SerialStream::open(&builder)
-            .map_err(|e| TransportError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| IoTransportError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
         self.reader = Some(tokio::sync::Mutex::new(tokio::io::BufReader::new(port)));
         self.partial_line = Some(Vec::new());
         Ok(())
     }
 
-    async fn disconnect(&mut self) -> Result<(), TransportError> {
+    async fn disconnect(&mut self) -> Result<(), IoTransportError> {
         self.reader = None;
         self.partial_line = None;
         Ok(())
     }
 
-    async fn send(&mut self, data: &[u8]) -> Result<(), TransportError> {
+    async fn send(&mut self, data: &[u8]) -> Result<(), IoTransportError> {
         use tokio::io::AsyncWriteExt;
-        let reader = self.reader.as_ref().ok_or(TransportError::Disconnected)?;
+        let reader = self.reader.as_ref().ok_or(IoTransportError::Disconnected)?;
         let mut guard = reader.lock().await;
         guard.get_mut().write_all(data).await?;
         guard.get_mut().flush().await?;
         Ok(())
     }
 
-    async fn receive(&mut self) -> Result<Vec<u8>, TransportError> {
+    async fn receive(&mut self) -> Result<Vec<u8>, IoTransportError> {
         use tokio::io::AsyncBufReadExt;
-        let reader = self.reader.as_ref().ok_or(TransportError::Disconnected)?;
+        let reader = self.reader.as_ref().ok_or(IoTransportError::Disconnected)?;
         let mut guard = reader.lock().await;
         let line = self
             .partial_line
             .as_mut()
-            .ok_or(TransportError::Disconnected)?;
+            .ok_or(IoTransportError::Disconnected)?;
 
         match tokio::time::timeout(self.read_timeout, guard.read_until(b'\n', line)).await {
-            Err(_) => return Err(TransportError::Timeout),
-            Ok(Err(e)) => return Err(TransportError::Io(e)),
-            Ok(Ok(0)) => return Err(TransportError::Disconnected),
+            Err(_) => return Err(IoTransportError::Timeout),
+            Ok(Err(e)) => return Err(IoTransportError::Io(e)),
+            Ok(Ok(0)) => return Err(IoTransportError::Disconnected),
             Ok(Ok(_)) => {}
         }
         if line.is_empty() {
-            return Err(TransportError::Disconnected);
+            return Err(IoTransportError::Disconnected);
         }
         let mut bytes = std::mem::take(line);
         if bytes.last() == Some(&b'\n') {
@@ -95,14 +95,14 @@ impl Transport for SerialTransport {
         Ok(bytes)
     }
 
-    async fn drain(&mut self) -> Result<(), TransportError> {
+    async fn drain(&mut self) -> Result<(), IoTransportError> {
         use tokio::io::AsyncBufReadExt;
-        let reader = self.reader.as_ref().ok_or(TransportError::Disconnected)?;
+        let reader = self.reader.as_ref().ok_or(IoTransportError::Disconnected)?;
         let mut guard = reader.lock().await;
         let line = self
             .partial_line
             .as_mut()
-            .ok_or(TransportError::Disconnected)?;
+            .ok_or(IoTransportError::Disconnected)?;
         for _ in 0..8 {
             match tokio::time::timeout(
                 std::time::Duration::from_millis(20),
@@ -134,7 +134,7 @@ mod tests {
             SerialTransport::from_stream(master, Duration::from_millis(150));
         let start = std::time::Instant::now();
         let err = transport.receive().await.unwrap_err();
-        assert!(matches!(err, TransportError::Timeout), "got {err:?}");
+        assert!(matches!(err, IoTransportError::Timeout), "got {err:?}");
         assert!(
             start.elapsed() < Duration::from_secs(5),
             "receive must not hang forever"
@@ -179,7 +179,7 @@ mod tests {
         slave.write_all(b"STATUS RUN").await.unwrap();
         slave.flush().await.unwrap();
         let err = transport.receive().await.unwrap_err();
-        assert!(matches!(err, TransportError::Timeout), "got {err:?}");
+        assert!(matches!(err, IoTransportError::Timeout), "got {err:?}");
 
         slave.write_all(b"NING 0.5\n").await.unwrap();
         slave.flush().await.unwrap();
@@ -197,13 +197,13 @@ mod tests {
         let start = std::time::Instant::now();
         let err = transport.receive().await.unwrap_err();
         assert!(
-            !matches!(err, TransportError::Timeout),
+            !matches!(err, IoTransportError::Timeout),
             "peer drop must NOT surface as a timeout, got {err:?}"
         );
         assert!(
             matches!(
                 err,
-                TransportError::Disconnected | TransportError::Io(_)
+                IoTransportError::Disconnected | IoTransportError::Io(_)
             ),
             "peer drop must surface as Disconnected or Io, got {err:?}"
         );
