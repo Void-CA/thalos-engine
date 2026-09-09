@@ -159,6 +159,27 @@ impl StationService {
         Ok(station)
     }
 
+    pub async fn update_station(&self, id: &StationId, name: &str) -> Result<Station, StationError> {
+        let existing = self.station_repo.get(&id.0).await?;
+        if existing.is_none() {
+            return Err(StationError::NotFound(id.0.clone()));
+        }
+
+        let now = chrono::Utc::now().to_rfc3339();
+        let record = StationRecord {
+            id: id.0.clone(),
+            name: name.to_string(),
+            created_at: existing.unwrap().created_at,
+            updated_at: now,
+        };
+        self.station_repo.save(&record).await?;
+
+        Ok(Station {
+            id: id.clone(),
+            name: name.to_string(),
+        })
+    }
+
     pub async fn delete_station(&self, id: &StationId) -> Result<(), StationError> {
         let exists = self.station_repo.get(&id.0).await?;
         if exists.is_none() {
@@ -202,12 +223,14 @@ impl StationService {
             .await?
             .ok_or_else(|| StationError::NotFound(station_id.0.clone()))?;
 
-        // 2. Robot exists?
-        self.robot_repo
-            .get(robot_id)
-            .await
-            .map_err(|e| StationError::Persistence(e.to_string()))?
-            .ok_or_else(|| StationError::RobotNotFound(robot_id.to_string()))?;
+        // 2. Robot exists? (only if robot_id is provided)
+        if !robot_id.is_empty() {
+            self.robot_repo
+                .get(robot_id)
+                .await
+                .map_err(|e| StationError::Persistence(e.to_string()))?
+                .ok_or_else(|| StationError::RobotNotFound(robot_id.to_string()))?;
+        }
 
         // 3. Create atomically
         let module_id = EquipmentModuleId(uuid::Uuid::new_v4().to_string());
@@ -293,6 +316,36 @@ impl StationService {
             .delete(&module_id.0)
             .await?;
         Ok(())
+    }
+
+    pub async fn update_module(&self, module_id: &EquipmentModuleId, name: &str) -> Result<EquipmentModule, StationError> {
+        // Verify module exists
+        let existing = self.equipment_module_repo
+            .get(&module_id.0)
+            .await?
+            .ok_or_else(|| StationError::ModuleNotFound(module_id.0.clone()))?;
+
+        let now = chrono::Utc::now().to_rfc3339();
+        let record = EquipmentModuleRecord {
+            id: existing.id,
+            station_id: existing.station_id,
+            kind: existing.kind,
+            name: name.to_string(),
+            created_at: existing.created_at,
+            updated_at: now,
+        };
+
+        self.equipment_module_repo
+            .update_module(&record)
+            .await?;
+
+        let kind: EquipmentModuleKind = record.kind.parse().unwrap_or(EquipmentModuleKind::Robotics);
+        Ok(EquipmentModule {
+            id: module_id.clone(),
+            station_id: StationId(record.station_id),
+            name: name.to_string(),
+            kind,
+        })
     }
 
     // ─── Channel CRUD ──────────────────────────────────────────────
