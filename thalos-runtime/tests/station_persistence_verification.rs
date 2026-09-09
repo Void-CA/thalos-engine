@@ -51,7 +51,7 @@ async fn station_full_lifecycle() {
     let robot = ctx.robot_service.import_urdf(URDF_SIMPLE).await.unwrap();
 
     let station = ctx.station_service.create_station("cell_1", "Cell 1").await.unwrap();
-    ctx.station_service.add_robotics_module(&station.id, &robot.id, "Arm").await.unwrap();
+    ctx.station_service.add_robotics_module(&station.id, &robot.id, "Arm", "{}").await.unwrap();
     ctx.station_service.add_interconnection_module(&station.id, "Vision").await.unwrap();
 
     let modules = ctx.station_service.get_station_modules(&station.id).await.unwrap();
@@ -70,7 +70,7 @@ async fn cascade_delete_station() {
     let robot = ctx.robot_service.import_urdf(URDF_SIMPLE).await.unwrap();
 
     let station = ctx.station_service.create_station("cell_1", "Cell 1").await.unwrap();
-    ctx.station_service.add_robotics_module(&station.id, &robot.id, "Arm").await.unwrap();
+    ctx.station_service.add_robotics_module(&station.id, &robot.id, "Arm", "{}").await.unwrap();
     ctx.station_service.add_interconnection_module(&station.id, "Vision").await.unwrap();
 
     // Delete station
@@ -99,7 +99,7 @@ async fn cascade_delete_module() {
     let robot = ctx.robot_service.import_urdf(URDF_SIMPLE).await.unwrap();
 
     let station = ctx.station_service.create_station("cell_1", "Cell 1").await.unwrap();
-    let module = ctx.station_service.add_robotics_module(&station.id, &robot.id, "Arm").await.unwrap();
+    let module = ctx.station_service.add_robotics_module(&station.id, &robot.id, "Arm", "{}").await.unwrap();
     ctx.station_service.add_interconnection_module(&station.id, "Vision").await.unwrap();
 
     // Delete robotics module
@@ -130,7 +130,7 @@ async fn delete_robot_with_reference_fails() {
     let robot = ctx.robot_service.import_urdf(URDF_SIMPLE).await.unwrap();
 
     let station = ctx.station_service.create_station("cell_1", "Cell 1").await.unwrap();
-    ctx.station_service.add_robotics_module(&station.id, &robot.id, "Arm").await.unwrap();
+    ctx.station_service.add_robotics_module(&station.id, &robot.id, "Arm", "{}").await.unwrap();
 
     // Delete should fail
     let result = ctx.robot_service.delete_robot(&robot.id, ctx.module_repo.as_ref()).await;
@@ -196,7 +196,7 @@ async fn materialized_robot_lifecycle() {
 
     // Create station + module
     let station = station_service.create_station("cell_1", "Cell 1").await.unwrap();
-    station_service.add_robotics_module(&station.id, &record.id, "Arm").await.unwrap();
+    station_service.add_robotics_module(&station.id, &record.id, "Arm", "{}").await.unwrap();
 
     // Verify on disk
     let robot_dir = dir.path().join("robots").join(&record.id);
@@ -320,7 +320,7 @@ async fn schema_verification() {
     let robot = robot_service.import_urdf(URDF_SIMPLE).await.unwrap();
 
     let station = station_service.create_station("test_station", "Test Station").await.unwrap();
-    station_service.add_robotics_module(&station.id, &robot.id, "Arm").await.unwrap();
+    station_service.add_robotics_module(&station.id, &robot.id, "Arm", "{}").await.unwrap();
     let acq = station_service.add_interconnection_module(&station.id, "Sensors").await.unwrap();
     station_service.add_channel(&acq.id, "temp", "Temperature", "f64", "°C").await.unwrap();
 
@@ -335,10 +335,10 @@ async fn schema_verification() {
 
     // Extensions accessible
     assert!(module_repo.get_robotics_extension(&modules.iter().find(|m| m.kind == "robotics").unwrap().id).await.unwrap().is_some());
-    assert!(module_repo.get_interconnection_extension(&modules.iter().find(|m| m.kind == "acquisition").unwrap().id).await.unwrap().is_some());
+    assert!(module_repo.get_interconnection_extension(&modules.iter().find(|m| m.kind == "interconnection").unwrap().id).await.unwrap().is_some());
 
     // Channels with real metadata
-    let channels = module_repo.list_channels(&modules.iter().find(|m| m.kind == "acquisition").unwrap().id).await.unwrap();
+    let channels = module_repo.list_channels(&modules.iter().find(|m| m.kind == "interconnection").unwrap().id).await.unwrap();
     assert_eq!(channels.len(), 1);
     assert_eq!(channels[0].symbol, "temp");
     assert_eq!(channels[0].name, "Temperature");

@@ -216,6 +216,7 @@ impl StationService {
         station_id: &StationId,
         robot_id: &str,
         name: &str,
+        configuration_json: &str,
     ) -> Result<EquipmentModule, StationError> {
         // 1. Station exists?
         self.station_repo
@@ -248,7 +249,7 @@ impl StationService {
         let extension_record = RoboticsModuleRecord {
             module_id: module_id.0.clone(),
             robot_id: robot_id.to_string(),
-            configuration_json: "{}".to_string(),
+            configuration_json: configuration_json.to_string(),
         };
 
         self.equipment_module_repo

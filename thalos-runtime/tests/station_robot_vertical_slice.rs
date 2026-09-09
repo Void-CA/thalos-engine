@@ -77,7 +77,7 @@ async fn station_module_robot_lifecycle() {
     let robot_id = record.id.clone();
 
     let station = ctx.station_service.create_station("assembly", "Assembly").await.unwrap();
-    ctx.station_service.add_robotics_module(&station.id, &robot_id, "Arm").await.unwrap();
+    ctx.station_service.add_robotics_module(&station.id, &robot_id, "Arm", "{}").await.unwrap();
 
     assert_eq!(check_robot_availability(&robot_id, &ctx.workspace, ctx.robot_service.repo().unwrap()).await, RobotAvailability::Materialized);
     assert_eq!(ctx.module_repo.find_robot_references(&robot_id).await.unwrap().len(), 1);
@@ -104,7 +104,7 @@ async fn station_module_robot_survives_reopen() {
         robot_id = rec.id.clone();
 
         let st = ss.create_station("cell", "Cell").await.unwrap();
-        ss.add_robotics_module(&st.id, &robot_id, "Arm").await.unwrap();
+        ss.add_robotics_module(&st.id, &robot_id, "Arm", "{}").await.unwrap();
     }
 
     let db = dir.path().join("workspace.db");
@@ -125,7 +125,7 @@ async fn station_module_robot_survives_reopen() {
 async fn broken_reference_rejected_by_service() {
     let ctx = setup().await;
     let st = ctx.station_service.create_station("ghost", "Ghost").await.unwrap();
-    let result = ctx.station_service.add_robotics_module(&st.id, "nonexistent", "Arm").await;
+    let result = ctx.station_service.add_robotics_module(&st.id, "nonexistent", "Arm", "{}").await;
     assert!(result.is_err());
     assert!(matches!(result.unwrap_err(), thalos_runtime::station::StationError::RobotNotFound(_)));
 }
@@ -144,9 +144,9 @@ async fn multiple_stations_different_robots() {
     assert_ne!(ra.id, rb.id);
 
     let sa = ctx.station_service.create_station("ca", "Cell A").await.unwrap();
-    ctx.station_service.add_robotics_module(&sa.id, &ra.id, "Arm A").await.unwrap();
+    ctx.station_service.add_robotics_module(&sa.id, &ra.id, "Arm A", "{}").await.unwrap();
     let sb = ctx.station_service.create_station("cb", "Cell B").await.unwrap();
-    ctx.station_service.add_robotics_module(&sb.id, &rb.id, "Arm B").await.unwrap();
+    ctx.station_service.add_robotics_module(&sb.id, &rb.id, "Arm B", "{}").await.unwrap();
 
     assert_eq!(ctx.module_repo.find_robot_references(&ra.id).await.unwrap()[0].station_id, "ca");
     assert_eq!(ctx.module_repo.find_robot_references(&rb.id).await.unwrap()[0].station_id, "cb");

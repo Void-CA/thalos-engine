@@ -115,7 +115,7 @@ async fn create_station_with_robotics_only() {
         .expect("create station");
 
     let module = ctx.station_service
-        .add_robotics_module(&station.id, &record.id, "Primary Arm")
+        .add_robotics_module(&station.id, &record.id, "Primary Arm", "{}")
         .await
         .expect("add robotics module");
 
@@ -140,7 +140,7 @@ async fn create_station_with_both() {
         .expect("create station");
 
     ctx.station_service
-        .add_robotics_module(&station.id, &record.id, "Arm")
+        .add_robotics_module(&station.id, &record.id, "Arm", "{}")
         .await
         .expect("add robotics");
 
@@ -260,7 +260,7 @@ async fn delete_referenced_robot_fails() {
         .expect("create station");
 
     ctx.station_service
-        .add_robotics_module(&station.id, &record.id, "Arm")
+        .add_robotics_module(&station.id, &record.id, "Arm", "{}")
         .await
         .expect("add module");
 
@@ -292,7 +292,7 @@ async fn delete_robotics_module_does_not_delete_robot() {
         .expect("create station");
 
     let module = ctx.station_service
-        .add_robotics_module(&station.id, &record.id, "Arm")
+        .add_robotics_module(&station.id, &record.id, "Arm", "{}")
         .await
         .expect("add module");
 
@@ -323,7 +323,7 @@ async fn find_robot_references_works() {
         .expect("create station");
 
     ctx.station_service
-        .add_robotics_module(&station_a.id, &record.id, "Arm A")
+        .add_robotics_module(&station_a.id, &record.id, "Arm A", "{}")
         .await
         .expect("add module");
 
@@ -334,7 +334,7 @@ async fn find_robot_references_works() {
 
     // Station B references the SAME robot (different module)
     ctx.station_service
-        .add_robotics_module(&station_b.id, &record.id, "Arm B")
+        .add_robotics_module(&station_b.id, &record.id, "Arm B", "{}")
         .await
         .expect("add module");
 
@@ -363,7 +363,7 @@ async fn foreign_keys_are_enabled() {
         .expect("create station");
 
     ctx.station_service
-        .add_robotics_module(&station.id, &record.id, "Arm")
+        .add_robotics_module(&station.id, &record.id, "Arm", "{}")
         .await
         .expect("add module");
 
