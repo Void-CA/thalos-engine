@@ -72,7 +72,7 @@ pub use planning::{
     AnalysisOutput, AnalysisService, MotionPlanRequest, PlanAnalysisResult, PlanAnalysisService,
     PlanningService,
 };
-pub use ports::{PersistenceError, RobotRecord, RobotRepository, RobotSource, WorkspaceRepository};
+pub use ports::{PersistenceError, ProgramRecord, ProgramRepository, RobotRecord, RobotRepository, RobotSource, WorkspaceRepository};
 pub use robot::service::RobotService;
 pub use robot::{RobotCatalog, RobotCatalogEntry, RobotCatalogError, RobotCatalogResolution};
 pub use workspace::{ActiveWorkspace, OpenedWorkspace, RobotId, Workspace, WorkspaceConfiguration, WorkspaceId, WorkspaceService};

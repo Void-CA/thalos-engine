@@ -1,6 +1,7 @@
 pub use thalos_ports::device;
 pub use thalos_ports::robot;
 pub mod equipment_module_repository;
+pub mod program_repository;
 pub mod robot_reference_checker;
 pub mod robot_repository;
 pub mod station_repository;
@@ -13,6 +14,7 @@ pub use equipment_module_repository::{
     ChannelRecord, EquipmentModuleRecord, EquipmentModuleRepository,
     InterconnectionModuleRecord, RobotReference as ModuleRobotReference, RoboticsModuleRecord,
 };
+pub use program_repository::{ProgramRecord, ProgramRepository};
 pub use robot_reference_checker::{RobotReference, RobotReferenceChecker};
 pub use robot_repository::{
     PersistenceError, Result as PersistenceResult, RobotRecord, RobotRepository, RobotSource,

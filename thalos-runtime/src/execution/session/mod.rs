@@ -5,6 +5,7 @@ pub mod history;
 pub mod manager;
 pub mod runner;
 pub mod session_data;
+pub mod tick_loop;
 
 pub use domain::{
     Action, Cardinality, ChannelAccessError, ControlTick, CycleState, Decision,
@@ -28,3 +29,4 @@ pub use runner::{
     TelemetryExecutionRunner, TransportCommandProvider,
 };
 pub use session_data::{SessionData, SessionWithTrace};
+pub use tick_loop::{run_execution_loop, run_simulation_session, run_plan_execution_session, plan_driven_eval_fn, ExecutionLoopError, EvalFn, DEFAULT_TICK_INTERVAL};

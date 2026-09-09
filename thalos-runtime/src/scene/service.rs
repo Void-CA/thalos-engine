@@ -126,6 +126,17 @@ fn session_from_state(
     Some(crate::plan::ExecutionSession::derived(status, progress))
 }
 
+/// IK solution result with convergence information.
+///
+/// Simple DTO that avoids exposing thalos-core types to the application layer.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct IkSolution {
+    pub joints: Vec<f64>,
+    pub converged: bool,
+    pub iterations: usize,
+    pub final_error: f64,
+}
+
 pub struct SceneService {
     runtime: RwLock<SceneRuntime>,
     manager: Arc<BackendManager>,
@@ -413,6 +424,27 @@ impl SceneService {
         let q0 = runtime.active_robot.joints.clone();
         let result = solver.solve(&q0, goal)?;
         Ok((result.q.clone(), result))
+    }
+
+    /// Solve IK for a target position using simple types.
+    ///
+    /// Convenience wrapper that constructs IKGoal::Position from `[f64; 3]`
+    /// and returns an `IkSolution` without exposing thalos-core types.
+    pub async fn solve_ik_at_position(
+        &self,
+        position: [f64; 3],
+    ) -> Result<IkSolution, RuntimeError> {
+        use thalos_engine::math::Vector3;
+
+        let goal = IKGoal::Position(Vector3::new(position[0], position[1], position[2]));
+        let (joints, result) = self.solve_ik(FrameId::World, goal).await?;
+
+        Ok(IkSolution {
+            joints,
+            converged: matches!(result.status, thalos_engine::core::kinematics::inverse::IKStatus::Converged),
+            iterations: result.iterations,
+            final_error: result.final_error,
+        })
     }
 
     // ── Program management ──
