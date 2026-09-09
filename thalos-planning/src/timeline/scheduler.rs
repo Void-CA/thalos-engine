@@ -87,6 +87,7 @@ impl TimelineScheduler {
                         if let RuntimeAction::Delay(d) = &stamped.action {
                             cursor += *d;
                         }
+                        // ExecuteCommand (and legacy SetOutput) fires at cursor; no time added.
                         temporal.push(stamped);
                         event_idx += 1;
                     }

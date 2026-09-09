@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use thalos_core::{
+    command::{Command, TriggerCommand, TriggerValue},
     execution::{
         program::{ExecutionProgram, ProgramInstruction},
         runtime::{RuntimeAction, RuntimeEvent, RuntimeProgram},
@@ -8,6 +9,7 @@ use thalos_core::{
     kinematics::inverse::{IKGoal, IKSolver, IKStatus},
     motion::segment::MotionSegment,
     motion::target::MotionTarget,
+    resource::{ResourceKind, ResourceRef},
     spatial::{
         frame::{FrameId, FrameRegistry},
         pose::Pose,
@@ -168,13 +170,24 @@ impl<'a> MotionResolver<'a> {
                     channel,
                     value,
                 } => {
+                    // ADR-019 Phase C: Lower ProgramInstruction::SetOutput to
+                    // RuntimeAction::ExecuteCommand(Command::Trigger). The DSL's
+                    // set_output is a discrete event (trigger), not a setpoint.
+                    let trigger_value = match value {
+                        thalos_core::motion::target::OutputValue::Bool(b) => TriggerValue::Bool(*b),
+                        thalos_core::motion::target::OutputValue::Integer(i) => TriggerValue::Integer(*i),
+                        thalos_core::motion::target::OutputValue::Float(f) => TriggerValue::Integer(*f as i32),
+                    };
                     runtime_events.push(RuntimeEvent {
                         at_time: Duration::ZERO,
                         operation_id: origin.clone(),
-                        action: RuntimeAction::SetOutput {
-                            channel: channel.clone(),
-                            value: value.clone(),
-                        },
+                        action: RuntimeAction::ExecuteCommand(Command::Trigger(
+                            TriggerCommand {
+                                target: ResourceRef::new(&channel.name, ResourceKind::Device),
+                                channel: channel.name.clone(),
+                                value: trigger_value,
+                            },
+                        )),
                     });
                 }
             }
@@ -477,9 +490,10 @@ mod tests {
             result.runtime.events[0].action,
             RuntimeAction::Delay(_)
         ));
+        // ADR-019 Phase C: SetOutput lowers to ExecuteCommand(Trigger)
         assert!(matches!(
             result.runtime.events[1].action,
-            RuntimeAction::SetOutput { .. }
+            RuntimeAction::ExecuteCommand(_)
         ));
     }
 

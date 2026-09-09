@@ -3,6 +3,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use thalos_core::device::ChannelObservation;
+use crate::execution::executor::ExecutionSessionState;
 
 /// Identificador único para una sesión de ejecución.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -75,27 +76,6 @@ impl Default for ExecutionConfiguration {
             reactivity: Reactivity::NonReactive,
             termination: TerminationPolicy::NaturalCompletion,
         }
-    }
-}
-
-/// Estados del ciclo de vida de la entidad ExecutionSession.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum LifecycleState {
-    Created,
-    Initializing,
-    Running,
-    Paused,
-    Completed,
-    Stopped,
-    Faulted(String),
-}
-
-impl LifecycleState {
-    pub fn is_terminal(&self) -> bool {
-        matches!(
-            self,
-            Self::Completed | Self::Stopped | Self::Faulted(_)
-        )
     }
 }
 
@@ -216,7 +196,7 @@ pub struct SessionState {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("Transición de ciclo de vida inválida desde {from:?} hasta {to_action}")]
 pub struct InvalidLifecycleTransition {
-    pub from: LifecycleState,
+    pub from: ExecutionSessionState,
     pub to_action: &'static str,
 }
 
@@ -230,10 +210,13 @@ pub enum ExecutionDomainError {
     InvalidLifecycle(#[from] InvalidLifecycleTransition),
 
     #[error("La sesión no está en estado Running (estado actual: {0:?})")]
-    NotRunning(LifecycleState),
+    NotRunning(ExecutionSessionState),
 }
 
 /// Entidad de dominio ExecutionSession.
+///
+/// Lifecycle authority: `ExecutionSessionState`.
+/// `TrackingState` in HardwareExecutor is orthogonal and does NOT compete.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionSession {
     pub id: ExecutionSessionId,
@@ -241,54 +224,56 @@ pub struct ExecutionSession {
     pub station_id: Option<String>,
     pub robotics_module_id: Option<String>,
     pub configuration: ExecutionConfiguration,
-    pub lifecycle: LifecycleState,
+    pub lifecycle: ExecutionSessionState,
     pub state: SessionState,
-    pub history: Vec<LifecycleState>,
+    pub history: Vec<ExecutionSessionState>,
 }
 
 impl ExecutionSession {
     pub fn new(program_id: impl Into<String>, configuration: ExecutionConfiguration) -> Self {
-        let initial_state = LifecycleState::Created;
+        let initial_state = ExecutionSessionState::Created;
         Self {
             id: ExecutionSessionId::generate(),
             program_id: program_id.into(),
             station_id: None,
             robotics_module_id: None,
             configuration,
-            lifecycle: initial_state.clone(),
+            lifecycle: initial_state,
             state: SessionState::default(),
             history: vec![initial_state],
         }
     }
 
-    fn record_transition(&mut self, next: LifecycleState) {
-        self.lifecycle = next.clone();
+    fn record_transition(&mut self, next: ExecutionSessionState) {
+        self.lifecycle = next;
         self.history.push(next);
     }
 
-    /// Transición: Created -> Initializing
+    /// Transición: Created -> Reserved
     pub fn initialize(&mut self) -> Result<(), InvalidLifecycleTransition> {
         match self.lifecycle {
-            LifecycleState::Created => {
-                self.record_transition(LifecycleState::Initializing);
+            ExecutionSessionState::Created => {
+                self.record_transition(ExecutionSessionState::Reserved);
                 Ok(())
             }
             _ => Err(InvalidLifecycleTransition {
-                from: self.lifecycle.clone(),
+                from: self.lifecycle,
                 to_action: "initialize",
             }),
         }
     }
 
-    /// Transición: Initializing / Paused -> Running
+    /// Transición: Reserved/Dispatched/Paused -> Running
     pub fn start(&mut self) -> Result<(), InvalidLifecycleTransition> {
         match self.lifecycle {
-            LifecycleState::Initializing | LifecycleState::Paused => {
-                self.record_transition(LifecycleState::Running);
+            ExecutionSessionState::Reserved
+            | ExecutionSessionState::Dispatched
+            | ExecutionSessionState::Paused => {
+                self.record_transition(ExecutionSessionState::Running);
                 Ok(())
             }
             _ => Err(InvalidLifecycleTransition {
-                from: self.lifecycle.clone(),
+                from: self.lifecycle,
                 to_action: "start",
             }),
         }
@@ -297,40 +282,43 @@ impl ExecutionSession {
     /// Transición: Running -> Paused
     pub fn pause(&mut self) -> Result<(), InvalidLifecycleTransition> {
         match self.lifecycle {
-            LifecycleState::Running => {
-                self.record_transition(LifecycleState::Paused);
+            ExecutionSessionState::Running => {
+                self.record_transition(ExecutionSessionState::Paused);
                 Ok(())
             }
             _ => Err(InvalidLifecycleTransition {
-                from: self.lifecycle.clone(),
+                from: self.lifecycle,
                 to_action: "pause",
             }),
         }
     }
 
-    /// Transición: Running / Paused -> Stopped
+    /// Transición: Running/Paused -> Cancelled
     pub fn stop(&mut self) -> Result<(), InvalidLifecycleTransition> {
         match self.lifecycle {
-            LifecycleState::Running | LifecycleState::Paused => {
-                self.record_transition(LifecycleState::Stopped);
+            ExecutionSessionState::Running | ExecutionSessionState::Paused => {
+                self.record_transition(ExecutionSessionState::Cancelled);
                 Ok(())
             }
             _ => Err(InvalidLifecycleTransition {
-                from: self.lifecycle.clone(),
+                from: self.lifecycle,
                 to_action: "stop",
             }),
         }
     }
 
-    /// Transición: Cualquier estado activo -> Faulted
+    /// Transición: Cualquier estado activo -> Failed
     pub fn fault(&mut self, reason: impl Into<String>) -> Result<(), InvalidLifecycleTransition> {
         match self.lifecycle {
-            LifecycleState::Completed | LifecycleState::Stopped => Err(InvalidLifecycleTransition {
-                from: self.lifecycle.clone(),
-                to_action: "fault",
-            }),
+            ExecutionSessionState::Completed | ExecutionSessionState::Cancelled => {
+                Err(InvalidLifecycleTransition {
+                    from: self.lifecycle,
+                    to_action: "fault",
+                })
+            }
             _ => {
-                self.record_transition(LifecycleState::Faulted(reason.into()));
+                // Store fault reason in session state for observability
+                self.record_transition(ExecutionSessionState::Failed);
                 Ok(())
             }
         }
@@ -339,12 +327,12 @@ impl ExecutionSession {
     /// Transición: Running -> Completed
     pub fn complete(&mut self) -> Result<(), InvalidLifecycleTransition> {
         match self.lifecycle {
-            LifecycleState::Running => {
-                self.record_transition(LifecycleState::Completed);
+            ExecutionSessionState::Running => {
+                self.record_transition(ExecutionSessionState::Completed);
                 Ok(())
             }
             _ => Err(InvalidLifecycleTransition {
-                from: self.lifecycle.clone(),
+                from: self.lifecycle,
                 to_action: "complete",
             }),
         }
@@ -373,9 +361,9 @@ impl ExecutionSession {
         context: TickContext,
         eval_fn: impl FnOnce(&ObservationBundle, &RobotState) -> (Decision, Action),
     ) -> Result<TickResult, InvalidLifecycleTransition> {
-        if self.lifecycle != LifecycleState::Running {
+        if self.lifecycle != ExecutionSessionState::Running {
             return Err(InvalidLifecycleTransition {
-                from: self.lifecycle.clone(),
+                from: self.lifecycle,
                 to_action: "evaluate_tick",
             });
         }
@@ -561,9 +549,9 @@ impl DomainExecutionCoordinator {
 
     pub fn initialize(&self, id: &ExecutionSessionId) -> Result<(), ExecutionDomainError> {
         self.registry.with_session_mut(id, |session| {
-            let prev = session.lifecycle.clone();
+            let prev = session.lifecycle;
             session.initialize()?;
-            let curr = session.lifecycle.clone();
+            let curr = session.lifecycle;
 
             let now_us = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -583,9 +571,9 @@ impl DomainExecutionCoordinator {
 
     pub fn start(&self, id: &ExecutionSessionId) -> Result<(), ExecutionDomainError> {
         self.registry.with_session_mut(id, |session| {
-            let prev = session.lifecycle.clone();
+            let prev = session.lifecycle;
             session.start()?;
-            let curr = session.lifecycle.clone();
+            let curr = session.lifecycle;
 
             let now_us = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -605,9 +593,9 @@ impl DomainExecutionCoordinator {
 
     pub fn pause(&self, id: &ExecutionSessionId) -> Result<(), ExecutionDomainError> {
         self.registry.with_session_mut(id, |session| {
-            let prev = session.lifecycle.clone();
+            let prev = session.lifecycle;
             session.pause()?;
-            let curr = session.lifecycle.clone();
+            let curr = session.lifecycle;
 
             let now_us = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -627,9 +615,9 @@ impl DomainExecutionCoordinator {
 
     pub fn stop(&self, id: &ExecutionSessionId) -> Result<(), ExecutionDomainError> {
         self.registry.with_session_mut(id, |session| {
-            let prev = session.lifecycle.clone();
+            let prev = session.lifecycle;
             session.stop()?;
-            let curr = session.lifecycle.clone();
+            let curr = session.lifecycle;
 
             let now_us = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -657,8 +645,8 @@ impl DomainExecutionCoordinator {
     ) -> Result<TickResult, ExecutionDomainError> {
         let sampled_at_us = context.observations.captured_at_us;
         let res = self.registry.with_session_mut(id, |session| {
-            if session.lifecycle != LifecycleState::Running {
-                return Err(ExecutionDomainError::NotRunning(session.lifecycle.clone()));
+            if session.lifecycle != ExecutionSessionState::Running {
+                return Err(ExecutionDomainError::NotRunning(session.lifecycle));
             }
             let res = session.evaluate_tick(context, eval_fn)?;
             Ok(res)
@@ -685,8 +673,8 @@ impl DomainExecutionCoordinator {
         let sampled_at_us = context.observations.captured_at_us;
 
         let mut result = self.registry.with_session_mut(id, |session| {
-            if session.lifecycle != LifecycleState::Running {
-                return Err(ExecutionDomainError::NotRunning(session.lifecycle.clone()));
+            if session.lifecycle != ExecutionSessionState::Running {
+                return Err(ExecutionDomainError::NotRunning(session.lifecycle));
             }
             let res = session.evaluate_tick(context, eval_fn)?;
             Ok(res)
@@ -805,23 +793,23 @@ mod tests {
     #[test]
     fn test_lifecycle_transitions() {
         let mut session = ExecutionSession::new("weld_main", ExecutionConfiguration::default());
-        assert_eq!(session.lifecycle, LifecycleState::Created);
+        assert_eq!(session.lifecycle, ExecutionSessionState::Created);
 
         assert!(session.pause().is_err());
         assert!(session.initialize().is_ok());
-        assert_eq!(session.lifecycle, LifecycleState::Initializing);
+        assert_eq!(session.lifecycle, ExecutionSessionState::Reserved);
 
         assert!(session.start().is_ok());
-        assert_eq!(session.lifecycle, LifecycleState::Running);
+        assert_eq!(session.lifecycle, ExecutionSessionState::Running);
 
         assert!(session.pause().is_ok());
-        assert_eq!(session.lifecycle, LifecycleState::Paused);
+        assert_eq!(session.lifecycle, ExecutionSessionState::Paused);
 
         assert!(session.start().is_ok());
-        assert_eq!(session.lifecycle, LifecycleState::Running);
+        assert_eq!(session.lifecycle, ExecutionSessionState::Running);
 
         assert!(session.complete().is_ok());
-        assert_eq!(session.lifecycle, LifecycleState::Completed);
+        assert_eq!(session.lifecycle, ExecutionSessionState::Completed);
     }
 
     #[test]

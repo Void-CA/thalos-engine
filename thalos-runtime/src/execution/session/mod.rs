@@ -10,7 +10,7 @@ pub use domain::{
     Action, Cardinality, ChannelAccessError, ControlTick, CycleState, Decision,
     DomainExecutionCoordinator, Environment, ExecutionConfiguration, ExecutionDomainError,
     ExecutionSession as DomainExecutionSession, ExecutionSessionId, ExpectedState,
-    InvalidLifecycleTransition, LifecycleState, ObservationBundle, ProgramState, Reactivity,
+    InvalidLifecycleTransition, ObservationBundle, ProgramState, Reactivity,
     RobotState, SessionRegistry, SessionState, TerminationPolicy, TickContext, TickOutcome,
     TickResult, eval_channel_access, eval_derived_signal, extract_scalar,
 };

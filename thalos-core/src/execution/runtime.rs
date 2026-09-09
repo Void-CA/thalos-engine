@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
+use crate::command::Command;
 use crate::ids::OperationId;
 use crate::motion::target::{OutputChannel, OutputValue};
 
@@ -11,12 +12,17 @@ use crate::motion::target::{OutputChannel, OutputValue};
 
 /// A runtime action that cannot be planned geometrically.
 ///
-/// Two variants exist in v1:
+/// Three variants exist in v2:
 /// - `Delay`: wait for a specified duration
-/// - `SetOutput`: set a digital/analog output channel to a value
+/// - `ExecuteCommand`: dispatch a semantically explicit command to a resource
+/// - `SetOutput`: **legacy** — set a digital/analog output channel to a value
+///
+/// `SetOutput` is retained temporarily for migration compatibility and will
+/// be removed once all producers emit `ExecuteCommand`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum RuntimeAction {
     Delay(Duration),
+    ExecuteCommand(Command),
     SetOutput {
         channel: OutputChannel,
         value: OutputValue,
@@ -153,6 +159,43 @@ mod tests {
         let json = serde_json::to_string(&output).expect("serialize");
         let decoded: RuntimeAction = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(output, decoded);
+    }
+
+    #[test]
+    fn execute_command_serde_round_trip() {
+        use crate::command::*;
+        use crate::resource::{ResourceKind, ResourceRef};
+
+        let cmd = Command::Trigger(TriggerCommand {
+            target: ResourceRef::new("gripper-01", ResourceKind::Device),
+            channel: "close".into(),
+            value: TriggerValue::Bool(true),
+        });
+        let action = RuntimeAction::ExecuteCommand(cmd.clone());
+        let json = serde_json::to_string(&action).expect("serialize");
+        // RuntimeAction uses default externally-tagged serde: {"ExecuteCommand": {...}}
+        assert!(json.contains("ExecuteCommand"));
+        let decoded: RuntimeAction = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(action, decoded);
+    }
+
+    #[test]
+    fn execute_command_preserves_command_semantics() {
+        use crate::command::*;
+        use crate::resource::{ResourceKind, ResourceRef};
+
+        let setpoint = Command::Setpoint(SetpointCommand {
+            target: ResourceRef::new("heater-01", ResourceKind::Device),
+            variable: "temperature".into(),
+            value: SetpointValue::Float(70.0),
+        });
+        let action = RuntimeAction::ExecuteCommand(setpoint);
+        match &action {
+            RuntimeAction::ExecuteCommand(cmd) => {
+                assert_eq!(cmd.semantics(), CommandSemantics::Setpoint);
+            }
+            _ => panic!("expected ExecuteCommand"),
+        }
     }
 
     #[test]

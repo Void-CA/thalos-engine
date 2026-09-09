@@ -204,7 +204,7 @@ impl SimulationController {
                         // Freeze the trajectory starting NOW, for `d`.
                         *delay_until = Some(*clock + *d);
                     }
-                    RuntimeAction::SetOutput { .. } => {
+                    RuntimeAction::SetOutput { .. } | RuntimeAction::ExecuteCommand(_) => {
                         dispatched.push(event.clone());
                     }
                 }

@@ -1,6 +1,7 @@
 pub mod analysis;
 pub mod capability;
 pub mod collision;
+pub mod command;
 pub mod device;
 pub mod deviation;
 pub mod evaluation;

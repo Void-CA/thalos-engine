@@ -18,10 +18,10 @@ use std::time::Duration;
 use tokio::sync::RwLock;
 
 use thalos_engine::core::{
+    command::{CommandSemantics, TriggerValue},
     execution::runtime::{RuntimeAction, RuntimeProgram},
     ids::OperationId,
     models::{RobotModel, RobotRegistry},
-    motion::target::OutputValue,
     robot::state::RobotState,
     spatial::frame::FrameRegistry,
 };
@@ -151,31 +151,31 @@ async fn compiled_plan_executes_with_frozen_delay_and_ordered_output_dispatch() 
     let grip_at = runtime
         .events
         .iter()
-        .find(|e| {
-            matches!(
-                &e.action,
-                RuntimeAction::SetOutput {
-                    value: OutputValue::Bool(true),
-                    ..
+        .find_map(|e| {
+            if let RuntimeAction::ExecuteCommand(cmd) = &e.action {
+                if let thalos_engine::core::command::Command::Trigger(t) = cmd {
+                    if t.value == TriggerValue::Bool(true) {
+                        return Some(e.at_time);
+                    }
                 }
-            )
+            }
+            None
         })
-        .expect("grip SetOutput(true) event")
-        .at_time;
+        .expect("grip ExecuteCommand(Trigger(true)) event");
     let ungrip_at = runtime
         .events
         .iter()
-        .find(|e| {
-            matches!(
-                &e.action,
-                RuntimeAction::SetOutput {
-                    value: OutputValue::Bool(false),
-                    ..
+        .find_map(|e| {
+            if let RuntimeAction::ExecuteCommand(cmd) = &e.action {
+                if let thalos_engine::core::command::Command::Trigger(t) = cmd {
+                    if t.value == TriggerValue::Bool(false) {
+                        return Some(e.at_time);
+                    }
                 }
-            )
+            }
+            None
         })
-        .expect("ungrip SetOutput(false) event")
-        .at_time;
+        .expect("ungrip ExecuteCommand(Trigger(false)) event");
 
     // Final position contract: assert against the plan's own final waypoint.
     let first_waypoint = compiled
@@ -222,10 +222,8 @@ async fn compiled_plan_executes_with_frozen_delay_and_ordered_output_dispatch() 
     assert!(
         matches!(
             &dispatched[0].action,
-            RuntimeAction::SetOutput {
-                value: OutputValue::Bool(true),
-                ..
-            }
+            RuntimeAction::ExecuteCommand(cmd)
+                if cmd.semantics() == CommandSemantics::Trigger
         ),
         "grip closes the gripper (true)"
     );
@@ -295,20 +293,16 @@ async fn compiled_plan_executes_with_frozen_delay_and_ordered_output_dispatch() 
     assert!(
         matches!(
             &dispatched[0].action,
-            RuntimeAction::SetOutput {
-                value: OutputValue::Bool(true),
-                ..
-            }
+            RuntimeAction::ExecuteCommand(cmd)
+                if cmd.semantics() == CommandSemantics::Trigger
         ),
         "first dispatched output must be grip (true)"
     );
     assert!(
         matches!(
             &dispatched[1].action,
-            RuntimeAction::SetOutput {
-                value: OutputValue::Bool(false),
-                ..
-            }
+            RuntimeAction::ExecuteCommand(cmd)
+                if cmd.semantics() == CommandSemantics::Trigger
         ),
         "second dispatched output must be ungrip (false)"
     );

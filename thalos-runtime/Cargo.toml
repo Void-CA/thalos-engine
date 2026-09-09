@@ -27,6 +27,7 @@ thalos_transport = { path = "../thalos-transport" }
 tracing = "0.1"
 [features]
 test-support = []
+physical-e2e = ["thalos_transport/physical-e2e"]
 
 [dev-dependencies]
 thalos-engine = { path = "../thalos-engine", features = ["test-support"] }

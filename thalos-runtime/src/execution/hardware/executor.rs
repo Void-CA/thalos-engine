@@ -178,8 +178,8 @@ impl<T: RobotTransport> HardwareExecutor<T> {
             }
         }
 
-        // Check signal quality
-        if obs.signal_quality == SignalQuality::Invalid {
+        // Check signal quality — Lost means observation is untrustworthy
+        if obs.signal_quality == SignalQuality::Lost {
             return Err(PhysicalExecutionError::ObservationInvalid {
                 quality: obs.signal_quality,
             });
@@ -226,6 +226,7 @@ impl<T: RobotTransport> HardwareExecutor<T> {
 
     /// Advance execution by `dt` seconds: poll transport observation and evaluate tracking.
     /// Returns Ok(progress) or Err(PhysicalExecutionError) if a safety condition is violated.
+    /// On error, the session state is transitioned to Failed.
     pub fn tick(&mut self, dt: f64) -> Result<f64, PhysicalExecutionError> {
         if self.state != ExecutionSessionState::Running {
             return Ok(self.progress());
@@ -234,7 +235,10 @@ impl<T: RobotTransport> HardwareExecutor<T> {
         self.elapsed_seconds += dt;
 
         // 0. Transport connectivity check
-        self.check_transport()?;
+        if let Err(e) = self.check_transport() {
+            self.fail(e.clone());
+            return Err(e);
+        }
 
         // 1. Poll observation from transport
         if let Ok(Some(obs)) = self.transport.try_receive_observation() {
@@ -260,7 +264,10 @@ impl<T: RobotTransport> HardwareExecutor<T> {
         }
 
         // 3. Check observation timeout (if awaiting)
-        self.check_observation_timeout()?;
+        if let Err(e) = self.check_observation_timeout() {
+            self.fail(e.clone());
+            return Err(e);
+        }
 
         // 4. Evaluate convergence against current waypoint using validated evidence
         if let Some(target_waypoint) = self.waypoints.get(self.current_waypoint_idx).cloned() {
@@ -278,12 +285,18 @@ impl<T: RobotTransport> HardwareExecutor<T> {
                         return Ok(self.progress());
                     } else {
                         // Dispatch next waypoint command
-                        self.dispatch_current_waypoint()?;
+                        if let Err(e) = self.dispatch_current_waypoint() {
+                            self.fail(e.clone());
+                            return Err(e);
+                        }
                     }
                 } else {
                     self.tracking_state = TrackingState::Tracking;
                     // 5. Check convergence timeout
-                    self.check_convergence_timeout()?;
+                    if let Err(e) = self.check_convergence_timeout() {
+                        self.fail(e.clone());
+                        return Err(e);
+                    }
                 }
             } else {
                 self.tracking_state = TrackingState::AwaitingObservation;
@@ -350,12 +363,13 @@ impl<T: RobotTransport> ExecutionExecutor for HardwareExecutor<T> {
         self.elapsed_seconds = 0.0;
         self.fault_reason = None;
 
-        self.dispatch_current_waypoint().map_err(|e| {
-            ExecutionError::PreflightFailed(ExecutionPreflight::new(vec![PreflightCheck::fail(
+        if let Err(e) = self.dispatch_current_waypoint() {
+            self.fail(e.clone());
+            return Err(ExecutionError::PreflightFailed(ExecutionPreflight::new(vec![PreflightCheck::fail(
                 PreflightCheckKind::Transport,
                 format!("Failed to dispatch first waypoint: {e}"),
-            )]))
-        })?;
+            )])));
+        }
         Ok(())
     }
 
@@ -570,7 +584,7 @@ mod tests {
         executor.transport.state = TransportState::Disconnected;
 
         let result = executor.tick(0.1);
-        assert!(result.is_err());
+        assert!(result.is_err(), "tick should return error when transport is disconnected");
         assert_eq!(executor.state(), ExecutionSessionState::Failed);
         assert!(matches!(
             result.unwrap_err(),
@@ -583,20 +597,16 @@ mod tests {
         let session_id = ExecutionSessionId("session-hw-05".into());
         let waypoints = vec![vec![0.5, 0.2, 0.0]];
         let transport = FakeRobotTransport::new();
-        let safety = HardwareSafetyConfig {
-            observation_timeout: Duration::from_millis(100),
-            ..default_safety()
-        };
         let mut executor = HardwareExecutor::new(session_id, waypoints, transport, 0.05)
-            .with_safety(safety);
+            .with_safety(default_safety());
 
         executor.start().unwrap();
 
-        // Tick multiple times without observation to exceed timeout
-        std::thread::sleep(Duration::from_millis(150));
-        let result = executor.tick(0.1);
+        // Manually backdate waypoint_started_at to simulate timeout
+        executor.waypoint_started_at = Some(Instant::now() - Duration::from_secs(10));
 
-        assert!(result.is_err());
+        let result = executor.tick(0.1);
+        assert!(result.is_err(), "tick should return error on observation timeout");
         assert_eq!(executor.state(), ExecutionSessionState::Failed);
         assert!(matches!(
             result.unwrap_err(),
@@ -607,7 +617,7 @@ mod tests {
     #[test]
     fn test_stale_observation_not_used_as_evidence() {
         let session_id = ExecutionSessionId("session-hw-06".into());
-        let waypoints = vec![vec![0.5, 0.2, 0.0]];
+        let waypoints = vec![vec![0.5, 0.2, 0.0], vec![1.0, 0.5, -0.2]];
         let transport = FakeRobotTransport::new();
         let safety = HardwareSafetyConfig {
             observation_staleness_limit: Duration::from_millis(50),
@@ -618,7 +628,7 @@ mod tests {
 
         executor.start().unwrap();
 
-        // Inject observation
+        // Inject valid observation for waypoint 0
         executor.transport.push_observation(RobotObservation {
             sampled_at_ns: 1000,
             sequence: 1,
@@ -628,32 +638,37 @@ mod tests {
             signal_quality: SignalQuality::Nominal,
         });
 
-        // Tick to consume observation
+        // Tick to consume observation and advance to waypoint 1
         executor.tick(0.01).unwrap();
         assert_eq!(executor.current_waypoint_idx, 1);
 
-        // Now inject another observation for waypoint 1
+        // Inject observation for waypoint 1 (wrong position)
         executor.transport.push_observation(RobotObservation {
             sampled_at_ns: 2000,
             sequence: 2,
-            joint_positions_rad: vec![0.5, 0.2, 0.0], // Wrong position for waypoint 1
+            joint_positions_rad: vec![0.5, 0.2, 0.0], // Wrong for waypoint 1
             joint_velocities_rad_s: vec![0.0, 0.0, 0.0],
             tcp_pose: None,
             signal_quality: SignalQuality::Nominal,
         });
 
-        // Wait for staleness
-        std::thread::sleep(Duration::from_millis(80));
-
-        // Tick: observation should be stale, not used as evidence
+        // First tick: consume the observation (sets last_observation_at to now)
         executor.tick(0.01).unwrap();
-        // Should still be on waypoint 1 because stale evidence was discarded
+        // Observation was consumed, but position was wrong so we're in Tracking state
+        assert_eq!(executor.tracking_state, TrackingState::Tracking);
+
+        // Now backdate last_observation_at to make the observation stale
+        executor.last_observation_at = Some(Instant::now() - Duration::from_secs(10));
+
+        // Next tick: observation should be stale, not used as evidence
+        // Should return to AwaitingObservation because stale evidence is discarded
+        executor.tick(0.01).unwrap();
         assert_eq!(executor.current_waypoint_idx, 1);
         assert_eq!(executor.tracking_state, TrackingState::AwaitingObservation);
     }
 
     #[test]
-    fn test_invalid_observation_not_used_as_evidence() {
+    fn test_lost_observation_not_used_as_evidence() {
         let session_id = ExecutionSessionId("session-hw-07".into());
         let waypoints = vec![vec![0.5, 0.2, 0.0]];
         let transport = FakeRobotTransport::new();
@@ -661,18 +676,18 @@ mod tests {
 
         executor.start().unwrap();
 
-        // Inject invalid observation (matching position but invalid quality)
+        // Inject observation with Lost quality (matching position but untrustworthy)
         executor.transport.push_observation(RobotObservation {
             sampled_at_ns: 1000,
             sequence: 1,
             joint_positions_rad: vec![0.5, 0.2, 0.0],
             joint_velocities_rad_s: vec![0.0, 0.0, 0.0],
             tcp_pose: None,
-            signal_quality: SignalQuality::Invalid,
+            signal_quality: SignalQuality::Lost,
         });
 
         executor.tick(0.1).unwrap();
-        // Should still be on waypoint 0 because invalid evidence was discarded
+        // Should still be on waypoint 0 because Lost evidence was discarded
         assert_eq!(executor.current_waypoint_idx, 0);
         assert_eq!(executor.tracking_state, TrackingState::AwaitingObservation);
     }
@@ -691,21 +706,25 @@ mod tests {
 
         executor.start().unwrap();
 
-        // Inject observation that never converges
+        // Inject observation that never converges (wrong position)
         executor.transport.push_observation(RobotObservation {
             sampled_at_ns: 1000,
             sequence: 1,
-            joint_positions_rad: vec![0.0, 0.0, 0.0], // Wrong position
+            joint_positions_rad: vec![0.0, 0.0, 0.0],
             joint_velocities_rad_s: vec![0.0, 0.0, 0.0],
             tcp_pose: None,
             signal_quality: SignalQuality::Nominal,
         });
 
-        // Wait for convergence timeout
-        std::thread::sleep(Duration::from_millis(150));
-        let result = executor.tick(0.1);
+        // Tick to set tracking state to Tracking (observation doesn't converge)
+        executor.tick(0.1).unwrap();
+        assert_eq!(executor.tracking_state, TrackingState::Tracking);
 
-        assert!(result.is_err());
+        // Backdate waypoint_started_at to simulate timeout
+        executor.waypoint_started_at = Some(Instant::now() - Duration::from_secs(10));
+
+        let result = executor.tick(0.1);
+        assert!(result.is_err(), "tick should return error on convergence timeout");
         assert_eq!(executor.state(), ExecutionSessionState::Failed);
         assert!(matches!(
             result.unwrap_err(),
@@ -722,7 +741,24 @@ mod tests {
         let mut executor = HardwareExecutor::new(session_id, waypoints, transport, 0.05);
 
         let result = executor.start();
-        assert!(result.is_err());
+        assert!(result.is_err(), "start should fail when command send fails");
         assert_eq!(executor.state(), ExecutionSessionState::Failed);
+    }
+
+    #[test]
+    fn test_fail_sets_fault_reason() {
+        let session_id = ExecutionSessionId("session-hw-10".into());
+        let waypoints = vec![vec![0.5, 0.2, 0.0]];
+        let transport = FakeRobotTransport::new();
+        let mut executor = HardwareExecutor::new(session_id, waypoints, transport, 0.05);
+
+        executor.start().unwrap();
+
+        // Simulate transport disconnection
+        executor.transport.state = TransportState::Disconnected;
+
+        let _ = executor.tick(0.1);
+        assert!(executor.fault_reason.is_some());
+        assert!(executor.fault_reason.unwrap().contains("Transport connection lost"));
     }
 }

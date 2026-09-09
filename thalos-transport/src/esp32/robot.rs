@@ -7,9 +7,20 @@ use thalos_ports::SignalQuality;
 use crate::common::Transport;
 use crate::esp32::codec::{Esp32Codec, Esp32Frame};
 
-/// Physical ESP32 Robot Transport Adapter (ADR-014).
+/// Physical ESP32 Robot Transport Adapter (ADR-014, ADR-015).
 ///
 /// Wraps a byte-level `Transport` (Serial/TCP) and adapts protocol frames to `RobotTransport`.
+///
+/// Bridging strategy: Uses `tokio::task::block_in_place` + `Handle::block_on` to run
+/// async I/O from sync context. This requires the `rt-multi-thread` Tokio feature.
+///
+/// ADR-015 decision: This adapter is acceptable for physical integration because:
+/// 1. `block_in_place` panics if called from a non-Tokio context (safety net)
+/// 2. The async operations have timeouts (serial: 2s, TCP: configurable)
+/// 3. Each transport operation completes quickly (send is fire-and-forget, receive has timeout)
+///
+/// For production with many concurrent robots, consider Option C from ADR-015
+/// (channel-based adapter with dedicated async task).
 pub struct Esp32RobotAdapter<T: Transport> {
     inner_transport: T,
     state: TransportState,

@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
-use super::domain::{ExecutionSessionId, LifecycleState, TickResult};
+use super::domain::{ExecutionSessionId, TickResult};
+use crate::execution::executor::ExecutionSessionState;
 
 /// Invariante temporal con distinción explícita de relojes de medición, recepción y evaluación.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -50,8 +51,8 @@ pub enum ExecutionEvent {
     /// Transición autoritativa en la máquina de estados de ciclo de vida.
     LifecycleChanged {
         session_id: ExecutionSessionId,
-        previous: LifecycleState,
-        current: LifecycleState,
+        previous: ExecutionSessionState,
+        current: ExecutionSessionState,
         timestamp_us: u64,
     },
     /// Agregado completo de observabilidad emitido tras la evaluación y ejecución (post-act) del tick k.

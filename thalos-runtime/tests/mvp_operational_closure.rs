@@ -14,7 +14,7 @@ use thalos_core::robot::RobotCommand;
 use thalos_runtime::execution::session::{
     Action, CapturingCommandProvider, ChannelAccessError, CommandProvider, Decision,
     DomainExecutionCoordinator, Environment, eval_channel_access, eval_derived_signal,
-    ExecutionConfiguration, InMemoryObservationProvider, LifecycleState, NoopCommandProvider,
+    ExecutionConfiguration, InMemoryObservationProvider, NoopCommandProvider,
     ObservationBundle, ObservationProvider, Reactivity, RobotState,
     SharedRobotObservation, TelemetryExecutionRunner, TickOutcome,
 };

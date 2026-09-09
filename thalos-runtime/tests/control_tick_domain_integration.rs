@@ -2,10 +2,11 @@ use thalos_runtime::execution::session::{
     Action, Decision, DomainExecutionCoordinator,
     DomainExecutionSession as ExecutionSession, Environment, EventSubscriber,
     ExecutionConfiguration, ExecutionDomainError, ExecutionEvent, ExecutionEventBus, ExecutionHistory,
-    ExecutionHistoryStore, ExpectedState, InMemoryObservationProvider, LifecycleState, NoopCommandProvider,
+    ExecutionHistoryStore, ExpectedState, InMemoryObservationProvider, NoopCommandProvider,
     PhysicalRunner, ObservationBundle, Reactivity, RobotState, SharedRobotObservation, SimulationRunner,
     TelemetryExecutionRunner, TerminationPolicy, TickContext, TickOutcome, TickResult,
 };
+use thalos_runtime::execution::executor::ExecutionSessionState;
 use thalos_ports::device::{ChannelObservation, ChannelValue, SignalQuality};
 
 #[test]
@@ -19,7 +20,7 @@ fn test_control_tick_deterministic_branching_and_invariants() {
     let mut session = ExecutionSession::new("reactive_branch_program", config);
     session.initialize().expect("must initialize");
     session.start().expect("must start");
-    assert_eq!(session.lifecycle, LifecycleState::Running);
+    assert_eq!(session.lifecycle, ExecutionSessionState::Running);
 
     let eval_logic = |acq: &ObservationBundle, _robot: &RobotState| {
         let target_x = acq.observations.get("camera.target_x").map(|o| match o.value { ChannelValue::Scalar(v) => v, _ => 0.0 }).unwrap_or(0.0);
@@ -176,7 +177,7 @@ fn test_control_tick_termination_policy_evaluation() {
         }
     );
     assert_eq!(res.outcome, TickOutcome::SessionCompleted);
-    assert_eq!(session.lifecycle, LifecycleState::Completed);
+    assert_eq!(session.lifecycle, ExecutionSessionState::Completed);
 }
 
 #[test]
@@ -186,17 +187,17 @@ fn test_coordinator_session_lifecycle_and_tick_rejection_when_paused() {
     // 1. create_session
     let session_id = coordinator.create_session("cell_weld_routine", ExecutionConfiguration::default());
     let session = coordinator.registry.get(&session_id).unwrap();
-    assert_eq!(session.lifecycle, LifecycleState::Created);
+    assert_eq!(session.lifecycle, ExecutionSessionState::Created);
 
     // 2. initialize
     coordinator.initialize(&session_id).expect("initialize must succeed");
     let session = coordinator.registry.get(&session_id).unwrap();
-    assert_eq!(session.lifecycle, LifecycleState::Initializing);
+    assert_eq!(session.lifecycle, ExecutionSessionState::Reserved);
 
     // 3. start
     coordinator.start(&session_id).expect("start must succeed");
     let session = coordinator.registry.get(&session_id).unwrap();
-    assert_eq!(session.lifecycle, LifecycleState::Running);
+    assert_eq!(session.lifecycle, ExecutionSessionState::Running);
 
     let dummy_eval = |_acq: &ObservationBundle, _rob: &RobotState| (Decision::Continue, Action::None);
 
@@ -213,17 +214,17 @@ fn test_coordinator_session_lifecycle_and_tick_rejection_when_paused() {
     // 6. pause
     coordinator.pause(&session_id).expect("pause must succeed");
     let session = coordinator.registry.get(&session_id).unwrap();
-    assert_eq!(session.lifecycle, LifecycleState::Paused);
+    assert_eq!(session.lifecycle, ExecutionSessionState::Paused);
 
     // 7. tick 2 -> REJECTED (NotRunning(Paused))
     let ctx2 = TickContext::default();
     let err = coordinator.tick(&session_id, ctx2, dummy_eval).unwrap_err();
-    assert_eq!(err, ExecutionDomainError::NotRunning(LifecycleState::Paused));
+    assert_eq!(err, ExecutionDomainError::NotRunning(ExecutionSessionState::Paused));
 
     // 8. start (resume)
     coordinator.start(&session_id).expect("resume must succeed");
     let session = coordinator.registry.get(&session_id).unwrap();
-    assert_eq!(session.lifecycle, LifecycleState::Running);
+    assert_eq!(session.lifecycle, ExecutionSessionState::Running);
 
     // 9. tick 2 -> ok
     let ctx3 = TickContext::default();
@@ -233,18 +234,18 @@ fn test_coordinator_session_lifecycle_and_tick_rejection_when_paused() {
     // 10. stop
     coordinator.stop(&session_id).expect("stop must succeed");
     let session = coordinator.registry.get(&session_id).unwrap();
-    assert_eq!(session.lifecycle, LifecycleState::Stopped);
+    assert_eq!(session.lifecycle, ExecutionSessionState::Cancelled);
 
     // Verify full history
     assert_eq!(
         session.history,
         vec![
-            LifecycleState::Created,
-            LifecycleState::Initializing,
-            LifecycleState::Running,
-            LifecycleState::Paused,
-            LifecycleState::Running,
-            LifecycleState::Stopped,
+            ExecutionSessionState::Created,
+            ExecutionSessionState::Reserved,
+            ExecutionSessionState::Running,
+            ExecutionSessionState::Paused,
+            ExecutionSessionState::Running,
+            ExecutionSessionState::Cancelled,
         ]
     );
 }
@@ -510,8 +511,8 @@ fn test_execution_event_bus_pub_sub_and_temporal_invariants() {
     // Event 1: LifecycleChanged (Created -> Initializing)
     match &captured[1] {
         ExecutionEvent::LifecycleChanged { previous, current, .. } => {
-            assert_eq!(*previous, LifecycleState::Created);
-            assert_eq!(*current, LifecycleState::Initializing);
+            assert_eq!(*previous, ExecutionSessionState::Created);
+            assert_eq!(*current, ExecutionSessionState::Reserved);
         }
         other => panic!("Esperado LifecycleChanged, recibido: {:?}", other),
     }
@@ -519,8 +520,8 @@ fn test_execution_event_bus_pub_sub_and_temporal_invariants() {
     // Event 2: LifecycleChanged (Initializing -> Running)
     match &captured[2] {
         ExecutionEvent::LifecycleChanged { previous, current, .. } => {
-            assert_eq!(*previous, LifecycleState::Initializing);
-            assert_eq!(*current, LifecycleState::Running);
+            assert_eq!(*previous, ExecutionSessionState::Reserved);
+            assert_eq!(*current, ExecutionSessionState::Running);
         }
         other => panic!("Esperado LifecycleChanged, recibido: {:?}", other),
     }
@@ -598,14 +599,14 @@ fn test_execution_history_reconstruction_from_event_bus() {
 
     assert_eq!(history.session_id, session_id);
     assert_eq!(history.program_id, "assembly_line_v2");
-    assert_eq!(history.final_lifecycle, LifecycleState::Stopped);
+    assert_eq!(history.final_lifecycle, ExecutionSessionState::Cancelled);
     assert!(history.completed_at_us.is_some());
 
     // Reconstrucción de transiciones
     assert_eq!(history.lifecycle_transitions.len(), 3);
-    assert_eq!(history.lifecycle_transitions[0].current, LifecycleState::Initializing);
-    assert_eq!(history.lifecycle_transitions[1].current, LifecycleState::Running);
-    assert_eq!(history.lifecycle_transitions[2].current, LifecycleState::Stopped);
+    assert_eq!(history.lifecycle_transitions[0].current, ExecutionSessionState::Reserved);
+    assert_eq!(history.lifecycle_transitions[1].current, ExecutionSessionState::Running);
+    assert_eq!(history.lifecycle_transitions[2].current, ExecutionSessionState::Cancelled);
 
     // Reconstrucción de ticks
     assert_eq!(history.ticks.len(), 1);

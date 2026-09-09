@@ -3,11 +3,14 @@ name = "thalos_transport"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+physical-e2e = []
+
 [dependencies]
 thalos-core = { path = "../thalos-core" }
 thalos_ports = { path = "../thalos-ports", features = ["test-support"] }
 async-trait = "0.1"
-tokio = { version = "1", features = ["sync", "rt", "net", "io-util", "time"] }
+tokio = { version = "1", features = ["sync", "rt", "rt-multi-thread", "net", "io-util", "time"] }
 tokio-serial = "5"
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"

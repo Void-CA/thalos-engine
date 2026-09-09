@@ -72,6 +72,10 @@ pub use crate::ids::{
 
 
 pub use crate::capability::{CapabilityRequirement, ResourceRequirement};
+pub use crate::command::{
+    Command, CommandSemantics, MotionCommand, MotionKind, SetpointCommand, SetpointValue,
+    TriggerCommand, TriggerValue,
+};
 pub use crate::resource::{Resource, ResourceKind, ResourceRef};
 pub use crate::station::Station;
 

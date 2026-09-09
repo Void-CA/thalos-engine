@@ -2,8 +2,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 
-use super::domain::{ExecutionConfiguration, ExecutionSessionId, LifecycleState, TickOutcome, TickResult};
+use super::domain::{ExecutionConfiguration, ExecutionSessionId, TickOutcome, TickResult};
 use super::events::{EventSubscriber, ExecutionEvent, TemporalInvariants};
+use crate::execution::executor::ExecutionSessionState;
 
 /// Registro inmutable de un tick evaluado dentro de una historia de ejecución.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -17,8 +18,8 @@ pub struct HistoricalTickRecord {
 /// Registro inmutable de una transición de ciclo de vida.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HistoricalLifecycleTransition {
-    pub previous: LifecycleState,
-    pub current: LifecycleState,
+    pub previous: ExecutionSessionState,
+    pub current: ExecutionSessionState,
     pub timestamp_us: u64,
 }
 
@@ -41,7 +42,7 @@ pub struct ExecutionHistory {
     pub configuration: ExecutionConfiguration,
     pub created_at_us: u64,
     pub completed_at_us: Option<u64>,
-    pub final_lifecycle: LifecycleState,
+    pub final_lifecycle: ExecutionSessionState,
     pub lifecycle_transitions: Vec<HistoricalLifecycleTransition>,
     pub ticks: Vec<HistoricalTickRecord>,
     pub faults: Vec<HistoricalFaultRecord>,
@@ -60,15 +61,15 @@ impl ExecutionHistory {
             configuration,
             created_at_us,
             completed_at_us: None,
-            final_lifecycle: LifecycleState::Created,
+            final_lifecycle: ExecutionSessionState::Created,
             lifecycle_transitions: Vec::new(),
             ticks: Vec::new(),
             faults: Vec::new(),
         }
     }
 
-    pub fn record_lifecycle(&mut self, previous: LifecycleState, current: LifecycleState, timestamp_us: u64) {
-        self.final_lifecycle = current.clone();
+    pub fn record_lifecycle(&mut self, previous: ExecutionSessionState, current: ExecutionSessionState, timestamp_us: u64) {
+        self.final_lifecycle = current;
         if current.is_terminal() {
             self.completed_at_us = Some(timestamp_us);
         }
@@ -153,7 +154,7 @@ impl EventSubscriber for ExecutionHistoryStore {
                 timestamp_us,
             } => {
                 if let Some(history) = map.get_mut(session_id) {
-                    history.record_lifecycle(previous.clone(), current.clone(), *timestamp_us);
+                    history.record_lifecycle(*previous, *current, *timestamp_us);
                 }
             }
             ExecutionEvent::TickEvaluated {

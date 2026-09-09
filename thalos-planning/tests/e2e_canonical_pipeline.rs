@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use thalos_core::{
+    command::CommandSemantics,
     execution::program::{ExecutionProgram, ProgramInstruction},
     execution::runtime::{RuntimeAction, RuntimeEvent, RuntimeProgram},
     ids::OperationId,
@@ -231,31 +232,36 @@ fn timed_events_align_to_compiled_segment_timing() {
 
     let set_outputs: Vec<&RuntimeEvent> = events
         .iter()
-        .filter(|e| matches!(e.action, RuntimeAction::SetOutput { .. }))
+        .filter(|e| matches!(e.action, RuntimeAction::ExecuteCommand(_)))
         .collect();
     assert_eq!(
         set_outputs.len(),
         2,
-        "exactly two SetOutput events (grip + ungrip)"
+        "exactly two ExecuteCommand events (grip + ungrip)"
     );
     match (&set_outputs[0].action, &set_outputs[1].action) {
         (
-            RuntimeAction::SetOutput {
-                channel,
-                value: OutputValue::Bool(true),
-            },
-            RuntimeAction::SetOutput {
-                channel: _,
-                value: OutputValue::Bool(false),
-            },
+            RuntimeAction::ExecuteCommand(cmd0),
+            RuntimeAction::ExecuteCommand(cmd1),
         ) => {
-            assert_eq!(
-                channel.name, "gripper",
-                "grip must target the gripper channel"
-            );
+            // ADR-019: both are Trigger commands with Bool values
+            assert_eq!(cmd0.semantics(), CommandSemantics::Trigger);
+            assert_eq!(cmd1.semantics(), CommandSemantics::Trigger);
+            // grip = true, ungrip = false
+            match (cmd0, cmd1) {
+                (
+                    thalos_core::command::Command::Trigger(t0),
+                    thalos_core::command::Command::Trigger(t1),
+                ) => {
+                    assert_eq!(t0.channel, "gripper", "grip must target the gripper channel");
+                    assert_eq!(t0.value, thalos_core::command::TriggerValue::Bool(true));
+                    assert_eq!(t1.value, thalos_core::command::TriggerValue::Bool(false));
+                }
+                _ => panic!("expected two Trigger commands"),
+            }
         }
         _ => panic!(
-            "expected SetOutput(true) before SetOutput(false), got {:?}",
+            "expected ExecuteCommand(Trigger(true)) before ExecuteCommand(Trigger(false)), got {:?}",
             events
         ),
     }
