@@ -174,13 +174,13 @@ impl SceneService {
     ///
     /// No requiere `RobotModel` — el `SerialChain`, el nombre y las mallas
     /// derivan de la definición resuelta. El runtime conserva explícitamente
-    /// qué `robot_definition_id` produjo el chain, para que el controlador y
+    /// qué `robot_id` produjo el chain, para que el controlador y
     /// el viewport deriven de la misma fuente que declaró el módulo.
     pub fn with_resolved_robot(
         manager: Arc<BackendManager>,
         chain: SerialChain,
         robot: Robot,
-        robot_definition_id: String,
+        robot_id: String,
         robot_name: String,
         sessions: Arc<SessionManager>,
     ) -> Self {
@@ -189,7 +189,7 @@ impl SceneService {
         let mut runtime = SceneRuntime::new(active_robot, robot_name);
         // El robot resuelto porta su identidad de definición (spec robot-identity R1)
         // y su modelo URDF completo para el pipeline visual (mapping de mallas).
-        runtime.robot_id = robot_definition_id;
+        runtime.robot_id = robot_id;
         runtime.robot_source = Some(robot.clone());
         // Joint metadata derived from the URDF — keeps the DTO invariant
         // (`joints_meta.is_empty() ⇔ robot.is_some()`) and reports the real
@@ -378,14 +378,14 @@ impl SceneService {
     }
 
     /// Load an already-parsed URDF robot into the scene, keyed by an explicit
-    /// `robot_definition_id` (A2.4). Used by the catalog resolution path so the
+    /// `robot_id` (A2.4). Used by the catalog resolution path so the
     /// runtime preserves the definition identity instead of a content hash.
     pub async fn load_urdf_robot_command(
         &self,
         robot: Robot,
         chain: SerialChain,
         robot_name: String,
-        robot_definition_id: &str,
+        robot_id: &str,
     ) -> Result<RuntimeSnapshot, RuntimeError> {
         use super::snapshot::JointMeta;
 
@@ -407,7 +407,7 @@ impl SceneService {
             joints_meta,
             chain,
             robot,
-            robot_id: robot_definition_id.to_string(),
+            robot_id: robot_id.to_string(),
         };
 
         self.execute(cmd).await

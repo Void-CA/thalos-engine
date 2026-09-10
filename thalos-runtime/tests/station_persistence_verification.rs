@@ -133,7 +133,7 @@ async fn delete_robot_with_reference_fails() {
     ctx.station_service.add_robotics_module(&station.id, &robot.id, "Arm", "{}").await.unwrap();
 
     // Delete should fail
-    let result = ctx.robot_service.delete_robot(&robot.id, ctx.module_repo.as_ref()).await;
+    let result = ctx.robot_service.delete_robot(&robot.id, ctx._dir.path(), ctx.module_repo.as_ref()).await;
     assert!(result.is_err());
 }
 
@@ -149,7 +149,7 @@ async fn delete_robot_without_reference_succeeds() {
     let robot = ctx.robot_service.import_urdf(URDF_SIMPLE).await.unwrap();
 
     // No station references this robot
-    let result = ctx.robot_service.delete_robot(&robot.id, ctx.module_repo.as_ref()).await;
+    let result = ctx.robot_service.delete_robot(&robot.id, ctx._dir.path(), ctx.module_repo.as_ref()).await;
     assert!(result.is_ok());
     assert!(ctx.robot_service.repo().unwrap().get(&robot.id).await.unwrap().is_none());
 }

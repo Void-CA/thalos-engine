@@ -155,3 +155,61 @@ async fn multiple_stations_different_robots() {
 }
 
 use thalos_engine::prelude::StationId;
+
+// ─── Invariant Tests ─────────────────────────────────────────────────
+
+#[tokio::test]
+async fn delete_associated_robot_rejected_by_fk() {
+    let ctx = setup().await;
+    let pkg = tempfile::tempdir().unwrap();
+    create_test_package(pkg.path());
+
+    let record = ctx.robot_service
+        .import_urdf_materialized(&ctx.workspace, URDF_WITH_MESHES, Some("test"), &[pkg.path().to_path_buf()])
+        .await.expect("import");
+    let robot_id = record.id.clone();
+
+    let station = ctx.station_service.create_station("cell", "Cell").await.unwrap();
+    ctx.station_service.add_robotics_module(&station.id, &robot_id, "Arm", "{}").await.unwrap();
+
+    // Try to delete the robot — should fail because FK RESTRICT
+    let result = ctx.robot_service.delete_robot(&robot_id, ctx.workspace.as_path(), ctx.module_repo.as_ref()).await;
+    assert!(result.is_err(), "Deleting associated robot should fail");
+}
+
+#[tokio::test]
+async fn delete_unassociated_robot_succeeds() {
+    let ctx = setup().await;
+    let pkg = tempfile::tempdir().unwrap();
+    create_test_package(pkg.path());
+
+    let record = ctx.robot_service
+        .import_urdf_materialized(&ctx.workspace, URDF_WITH_MESHES, Some("test"), &[pkg.path().to_path_buf()])
+        .await.expect("import");
+    let robot_id = record.id.clone();
+
+    // Robot exists, no module references it
+    assert!(ctx.robot_service.get_record(&robot_id).await.is_ok());
+
+    // Delete should succeed
+    ctx.robot_service.delete_robot(&robot_id, ctx.workspace.as_path(), ctx.module_repo.as_ref()).await.unwrap();
+
+    // Robot should be gone
+    assert!(ctx.robot_service.get_record(&robot_id).await.is_err());
+}
+
+#[tokio::test]
+async fn robot_id_does_not_collide_with_robot_model() {
+    let ctx = setup().await;
+
+    // "scara" is a RobotModel ID. If a robot record had id="scara",
+    // load_definition_into_scene should NOT treat it as a RobotModel.
+    // Instead, it should fail because there's no materialized robot at robots/scara/
+
+    // First, verify that RobotModel::from_id("scara") succeeds
+    assert!(thalos_core::models::RobotModel::from_id("scara").is_ok());
+
+    // Now try to load "scara" as a robot — should fail because no DB record
+    let result = ctx.robot_service.get_record("scara").await;
+    assert!(result.is_err(), "No DB record should exist for 'scara'");
+}

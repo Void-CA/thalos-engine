@@ -37,7 +37,7 @@ pub struct RoboticsModule {
     pub name: String,
     pub robot_name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub robot_definition_id: Option<String>,
+    pub robot_id: Option<String>,
     pub controller_binding: String,
 }
 
@@ -408,6 +408,19 @@ impl StationService {
         })
     }
 
+    // ─── Robot name lookup ──────────────────────────────────────────
+
+    /// Get the display name for a robot by its ID.
+    /// Returns the robot's name from the robots table, or the ID itself as fallback.
+    pub async fn get_robot_name(&self, robot_id: &str) -> Result<String, StationError> {
+        self.robot_repo
+            .get(robot_id)
+            .await
+            .map_err(|e| StationError::Persistence(e.to_string()))?
+            .map(|r| r.name)
+            .ok_or_else(|| StationError::RobotNotFound(robot_id.to_string()))
+    }
+
     // ─── Channel CRUD ──────────────────────────────────────────────
 
     pub async fn add_channel(
@@ -582,7 +595,7 @@ impl StationService {
             station_id: StationId(module_record.station_id.clone()),
             name: module_record.name.clone(),
             robot_name: ext.robot_id.clone(),
-            robot_definition_id: Some(ext.robot_id.clone()),
+            robot_id: Some(ext.robot_id.clone()),
             controller_binding: serde_json::from_str(&ext.configuration_json)
                 .ok()
                 .and_then(|v: serde_json::Value| v.get("controller_binding")

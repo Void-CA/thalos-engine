@@ -52,6 +52,9 @@ impl RobotService {
     /// This is the primary import path for new robots. The URDF and all referenced
     /// meshes are materialized into the workspace directory, and both the robot record
     /// and asset metadata are persisted to SQLite.
+    ///
+    /// If DB persistence fails after filesystem materialization, the materialized
+    /// directory is cleaned up to avoid orphans.
     pub async fn import_urdf_materialized(
         &self,
         workspace_root: &Path,
@@ -72,17 +75,38 @@ impl RobotService {
             })?;
 
         // Persist record + assets to SQLite
+        // If DB fails, clean up the materialized filesystem directory
         let repo = self.repo.as_ref().ok_or_else(|| RuntimeError::Persistence {
             message: "No robot repository configured".to_string(),
         })?;
-        repo.save(&result.record).await.map_err(|e| RuntimeError::Persistence {
-            message: e.to_string(),
-        })?;
-        repo.save_assets(&result.robot_id, &result.assets).await.map_err(|e| RuntimeError::Persistence {
-            message: e.to_string(),
-        })?;
+
+        if let Err(e) = repo.save(&result.record).await {
+            self.cleanup_materialized(workspace_root, &result.robot_id);
+            return Err(RuntimeError::Persistence { message: e.to_string() });
+        }
+
+        if let Err(e) = repo.save_assets(&result.robot_id, &result.assets).await {
+            // Best-effort: try to remove the robot record we just inserted
+            let _ = repo.delete(&result.robot_id).await;
+            self.cleanup_materialized(workspace_root, &result.robot_id);
+            return Err(RuntimeError::Persistence { message: e.to_string() });
+        }
 
         Ok(result.record)
+    }
+
+    /// Remove materialized robot directory from filesystem (best-effort).
+    fn cleanup_materialized(&self, workspace_root: &Path, robot_id: &str) {
+        let robot_dir = workspace_root.join("robots").join(robot_id);
+        if robot_dir.exists() {
+            if let Err(e) = std::fs::remove_dir_all(&robot_dir) {
+                tracing::warn!(
+                    robot_id = %robot_id,
+                    error = %e,
+                    "Failed to clean up materialized robot directory after DB failure"
+                );
+            }
+        }
     }
 
     /// Import a robot package with materialization.
@@ -106,12 +130,17 @@ impl RobotService {
         let repo = self.repo.as_ref().ok_or_else(|| RuntimeError::Persistence {
             message: "No robot repository configured".to_string(),
         })?;
-        repo.save(&result.record).await.map_err(|e| RuntimeError::Persistence {
-            message: e.to_string(),
-        })?;
-        repo.save_assets(&result.robot_id, &result.assets).await.map_err(|e| RuntimeError::Persistence {
-            message: e.to_string(),
-        })?;
+
+        if let Err(e) = repo.save(&result.record).await {
+            self.cleanup_materialized(workspace_root, &result.robot_id);
+            return Err(RuntimeError::Persistence { message: e.to_string() });
+        }
+
+        if let Err(e) = repo.save_assets(&result.robot_id, &result.assets).await {
+            let _ = repo.delete(&result.robot_id).await;
+            self.cleanup_materialized(workspace_root, &result.robot_id);
+            return Err(RuntimeError::Persistence { message: e.to_string() });
+        }
 
         Ok(result.record)
     }
@@ -140,7 +169,9 @@ impl RobotService {
             let repo = self.repo.as_ref().ok_or_else(|| RuntimeError::Persistence {
                 message: "No robot repository configured".to_string(),
             })?;
-            let assets = repo.get_assets(id).await.unwrap_or_default();
+            let assets = repo.get_assets(id).await.map_err(|e| RuntimeError::Persistence {
+                message: format!("Failed to load robot assets: {e}"),
+            })?;
 
             let resolution = if assets.is_empty() {
                 Resolution::default()
@@ -180,18 +211,11 @@ impl RobotService {
         workspace_root: &Path,
         scene: &crate::scene::service::SceneService,
     ) -> Result<crate::scene::snapshot::RuntimeSnapshot, RuntimeError> {
-        // Check if already materialized in workspace
         let repo = self.repo.as_ref().ok_or_else(|| RuntimeError::Persistence {
             message: "No robot repository configured".to_string(),
         })?;
 
-        // Look for existing record with this definition_id
-        if let Ok(Some(_record)) = repo.get(definition_id).await {
-            // Already materialized — load from filesystem
-            return self.load_materialized_robot(definition_id, workspace_root, scene).await;
-        }
-
-        // Not yet materialized — materialize from catalog
+        // Materialize from catalog
         let resolution = self
             .catalog
             .load_catalog_entry(definition_id)
@@ -332,32 +356,6 @@ impl RobotService {
         Ok(record)
     }
 
-    /// Load a robot (canonical engine model or imported persistence record) into `SceneService`.
-    pub async fn load_robot_into_scene(
-        &self,
-        id: &str,
-        scene: &crate::scene::service::SceneService,
-    ) -> Result<crate::scene::snapshot::RuntimeSnapshot, RuntimeError> {
-        if let Ok(model) = RobotModel::from_id(id) {
-            scene.execute(crate::commands::Command::LoadRobot(model)).await
-        } else {
-            // Try loading from filesystem
-            let _record = self.get_record(id).await?;
-            let urdf_path = std::path::PathBuf::from("robots").join(id).join("robot.urdf");
-            if urdf_path.exists() {
-                let urdf_xml = std::fs::read_to_string(&urdf_path)
-                    .map_err(|e| RuntimeError::InvalidUrdf {
-                        message: format!("Cannot read URDF: {e}"),
-                    })?;
-                scene.load_urdf_robot(&urdf_xml).await
-            } else {
-                Err(RuntimeError::InvalidUrdf {
-                    message: format!("Robot '{id}' has no URDF on filesystem"),
-                })
-            }
-        }
-    }
-
     /// Delete a robot record from persistence.
     ///
     /// Before deleting, checks if any station module references this robot
@@ -366,6 +364,7 @@ impl RobotService {
     pub async fn delete_robot(
         &self,
         id: &str,
+        workspace_root: &std::path::Path,
         module_repo: &dyn crate::ports::equipment_module_repository::EquipmentModuleRepository,
     ) -> Result<(), RuntimeError> {
         // 1. Check if robot is referenced by any station module (via DB)
@@ -386,7 +385,7 @@ impl RobotService {
             });
         }
 
-        // 2. Delete from repository
+        // 2. Delete from repository (DB + assets via CASCADE)
         let repo = self.repo.as_ref().ok_or_else(|| RuntimeError::Persistence {
             message: "No robot repository configured".to_string(),
         })?;
@@ -395,7 +394,26 @@ impl RobotService {
             .await
             .map_err(|e| RuntimeError::Persistence {
                 message: e.to_string(),
-            })
+            })?;
+
+        // 3. Delete filesystem directory (best-effort, log warning on failure)
+        let robot_dir = workspace_root.join("robots").join(id);
+        if robot_dir.exists() {
+            match std::fs::remove_dir_all(&robot_dir) {
+                Ok(()) => {
+                    tracing::info!(robot_id = %id, "Deleted robot filesystem directory");
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        robot_id = %id,
+                        error = %e,
+                        "Failed to delete robot filesystem directory — orphan on disk"
+                    );
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// Check if persistence is available.

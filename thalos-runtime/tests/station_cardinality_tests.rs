@@ -234,7 +234,7 @@ async fn delete_unreferenced_robot_succeeds() {
 
     // Delete should succeed
     ctx.robot_service
-        .delete_robot(&record.id, ctx.module_repo.as_ref())
+        .delete_robot(&record.id, ctx._dir.path(), ctx.module_repo.as_ref())
         .await
         .expect("delete unreferenced robot must succeed");
 
@@ -265,7 +265,7 @@ async fn delete_referenced_robot_fails() {
         .expect("add module");
 
     // Delete should fail
-    let result = ctx.robot_service.delete_robot(&record.id, ctx.module_repo.as_ref()).await;
+    let result = ctx.robot_service.delete_robot(&record.id, ctx._dir.path(), ctx.module_repo.as_ref()).await;
     assert!(result.is_err(), "delete referenced robot must fail");
     let err_msg = result.unwrap_err().to_string();
     assert!(err_msg.contains("referenced"), "error must mention reference: {err_msg}");
@@ -368,6 +368,6 @@ async fn foreign_keys_are_enabled() {
         .expect("add module");
 
     // Application-level validation blocks deletion
-    let result = ctx.robot_service.delete_robot(&record.id, ctx.module_repo.as_ref()).await;
+    let result = ctx.robot_service.delete_robot(&record.id, ctx._dir.path(), ctx.module_repo.as_ref()).await;
     assert!(result.is_err());
 }
