@@ -304,7 +304,7 @@ impl StationService {
         })?;
 
         // 3. DB transaction: persist robot + assets + module atomically
-        self.equipment_module_repo
+        let module_id = self.equipment_module_repo
             .create_robotics_module_with_robot(
                 &import_result.record,
                 &import_result.assets,
@@ -315,7 +315,7 @@ impl StationService {
             .await?;
 
         let module = EquipmentModule {
-            id: EquipmentModuleId(uuid::Uuid::new_v4().to_string()), // placeholder, real ID is in DB
+            id: EquipmentModuleId(module_id),
             station_id: station_id.clone(),
             name: module_name.to_string(),
             kind: EquipmentModuleKind::Robotics,
