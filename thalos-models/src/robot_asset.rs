@@ -40,6 +40,4 @@ pub struct RobotAsset {
     pub stored_path: PathBuf,
     /// Full SHA-256 hex digest of the file content.
     pub sha256: String,
-    /// The file name (e.g. `link_1.stl`).
-    pub filename: String,
 }

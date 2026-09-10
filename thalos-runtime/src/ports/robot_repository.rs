@@ -3,8 +3,6 @@ use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use thiserror::Error;
 
-use thalos_models::robot_asset::RobotAsset;
-
 #[derive(Error, Debug)]
 pub enum PersistenceError {
     #[error("Database error: {0}")]
@@ -58,16 +56,9 @@ impl FromStr for RobotSource {
 pub struct RobotRecord {
     pub id: String,
     pub name: String,
-    pub manufacturer: Option<String>,
-    pub model: Option<String>,
     pub source_type: RobotSource,
     /// Human-readable label for the import source (e.g. "abb_irb140_support" or "/home/user/robot.urdf").
     pub source_label: Option<String>,
-    /// LEGACY: URDF XML stored inline. Retained for backward compatibility
-    /// with robots imported before the materialization system. Will be
-    /// removed after all existing robots are migrated.
-    #[deprecated(note = "Legacy field — robots should use filesystem URDF + assets")]
-    pub urdf_xml: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -85,3 +76,5 @@ pub trait RobotRepository: Send + Sync {
     /// Persist assets for a robot (replaces any existing assets for that robot).
     async fn save_assets(&self, robot_id: &str, assets: &[RobotAsset]) -> Result<()>;
 }
+
+pub use thalos_models::robot_asset::RobotAsset;

@@ -245,27 +245,23 @@ async fn legacy_robot_detected_as_requires_reimport() {
             .expect("init robot repo"),
     );
 
-    // Simulate a legacy robot: urdf_xml in SQLite, no filesystem artifacts
-    #[allow(deprecated)]
+    // Simulate a legacy robot: record in SQLite, no filesystem artifacts
     let legacy_record = thalos_runtime::ports::RobotRecord {
         id: "legacy-robot-001".to_string(),
         name: "Legacy Bot".to_string(),
-        manufacturer: None,
-        model: None,
         source_type: thalos_runtime::ports::RobotSource::ImportedUrdf,
         source_label: None,
-        urdf_xml: Some(URDF_WITH_MESHES.to_string()),
         created_at: chrono::Utc::now().to_rfc3339(),
         updated_at: chrono::Utc::now().to_rfc3339(),
     };
     robot_repo.save(&legacy_record).await.expect("save legacy");
 
-    // Check availability — should be Legacy
+    // Check availability — should be RequiresReimport (no filesystem artifacts, no urdf_xml in record)
     let availability = check_robot_availability("legacy-robot-001", &workspace_path, robot_repo.as_ref())
         .await;
-    assert_eq!(availability, RobotAvailability::Legacy);
+    assert_eq!(availability, RobotAvailability::RequiresReimport);
 
-    // Nonexistent robot — also Legacy
+    // Nonexistent robot — Legacy (no record in DB)
     let availability = check_robot_availability("nonexistent", &workspace_path, robot_repo.as_ref())
         .await;
     assert_eq!(availability, RobotAvailability::Legacy);

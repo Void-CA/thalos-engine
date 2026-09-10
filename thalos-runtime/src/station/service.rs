@@ -14,6 +14,7 @@ use crate::ports::equipment_module_repository::{
 use crate::ports::robot_repository::RobotRepository;
 use crate::ports::station_repository::StationRepository;
 use crate::ports::StationRecord;
+use crate::robot::importer::{RobotImporter, ImportError};
 use crate::station::equipment_module::{
     Channel, EquipmentModule, EquipmentModuleId, EquipmentModuleKind,
     InterconnectionModuleExtension, RoboticsModuleExtension,
@@ -100,6 +101,9 @@ pub enum StationError {
 
     #[error("Invalid module kind: expected {expected}, got {actual}")]
     InvalidModuleKind { expected: String, actual: String },
+
+    #[error("Invalid module: {0}")]
+    InvalidModule(String),
 
     #[error("Invalid channel: {0}")]
     InvalidChannel(String),
@@ -264,6 +268,62 @@ impl StationService {
         })
     }
 
+    /// Create a robotics module from a URDF source.
+    ///
+    /// 1. Import URDF → materialize to workspace (filesystem)
+    /// 2. Persist robot record + assets + module atomically in a single transaction
+    /// 3. Returns the created module and robot record
+    ///
+    /// The caller is responsible for loading the robot into the viewport after creation.
+    pub async fn create_module_from_urdf(
+        &self,
+        station_id: &StationId,
+        module_name: &str,
+        urdf_xml: &str,
+        workspace_root: &std::path::Path,
+        source_label: Option<&str>,
+        extra_roots: &[std::path::PathBuf],
+        configuration_json: &str,
+    ) -> Result<(EquipmentModule, crate::ports::robot_repository::RobotRecord), StationError> {
+        // 1. Validate station exists
+        self.station_repo
+            .get(&station_id.0)
+            .await?
+            .ok_or_else(|| StationError::NotFound(station_id.0.clone()))?;
+
+        // 2. Import URDF (filesystem materialization — may fail, but no DB side effects yet)
+        let import_result = RobotImporter::import_urdf(
+            workspace_root, urdf_xml, source_label, extra_roots
+        ).map_err(|e| match e {
+            ImportError::InvalidUrdf(msg) => StationError::InvalidModule(msg),
+            ImportError::ChainError(msg) => StationError::InvalidModule(msg),
+            ImportError::MissingAssets(missing) => StationError::InvalidModule(
+                format!("Missing assets: {:?}", missing),
+            ),
+            other => StationError::InvalidModule(other.to_string()),
+        })?;
+
+        // 3. DB transaction: persist robot + assets + module atomically
+        self.equipment_module_repo
+            .create_robotics_module_with_robot(
+                &import_result.record,
+                &import_result.assets,
+                &station_id.0,
+                module_name,
+                configuration_json,
+            )
+            .await?;
+
+        let module = EquipmentModule {
+            id: EquipmentModuleId(uuid::Uuid::new_v4().to_string()), // placeholder, real ID is in DB
+            station_id: station_id.clone(),
+            name: module_name.to_string(),
+            kind: EquipmentModuleKind::Robotics,
+        };
+
+        Ok((module, import_result.record))
+    }
+
     pub async fn add_interconnection_module(
         &self,
         station_id: &StationId,
@@ -290,7 +350,6 @@ impl StationService {
 
         let extension_record = InterconnectionModuleRecord {
             module_id: module_id.0.clone(),
-            configuration_json: "{}".to_string(),
         };
 
         self.equipment_module_repo
@@ -356,7 +415,6 @@ impl StationService {
         module_id: &EquipmentModuleId,
         symbol: &str,
         name: &str,
-        data_type: &str,
         unit: &str,
     ) -> Result<Channel, StationError> {
         // 1. Module exists?
@@ -384,7 +442,6 @@ impl StationService {
             interconnection_module_id: module_id.clone(),
             symbol: symbol.to_string(),
             name: name.to_string(),
-            data_type: data_type.to_string(),
             unit: unit.to_string(),
         };
         channel.validate().map_err(StationError::InvalidChannel)?;
@@ -395,7 +452,6 @@ impl StationService {
             interconnection_module_id: module_id.0.clone(),
             symbol: channel.symbol.clone(),
             name: channel.name.clone(),
-            data_type: channel.data_type.clone(),
             unit: channel.unit.clone(),
         };
         self.equipment_module_repo.save_channel(&record).await?;
@@ -462,7 +518,6 @@ impl StationService {
 
         Ok(record.map(|r| InterconnectionModuleExtension {
             module_id: EquipmentModuleId(r.module_id),
-            configuration_json: r.configuration_json,
         }))
     }
 
@@ -482,7 +537,6 @@ impl StationService {
                 interconnection_module_id: EquipmentModuleId(r.interconnection_module_id),
                 symbol: r.symbol,
                 name: r.name,
-                data_type: r.data_type,
                 unit: r.unit,
             })
             .collect())

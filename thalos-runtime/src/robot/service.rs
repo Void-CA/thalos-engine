@@ -167,12 +167,10 @@ impl RobotService {
                 .await;
         }
 
-        // Fallback: legacy robot with urdf_xml in SQLite
-        #[allow(deprecated)]
-        let urdf_xml = record.urdf_xml.ok_or_else(|| RuntimeError::InvalidUrdf {
-            message: format!("Robot '{id}' has no URDF on filesystem and no legacy URDF in database"),
-        })?;
-        scene.load_urdf_robot(&urdf_xml).await
+        // No URDF on filesystem — cannot load
+        Err(RuntimeError::InvalidUrdf {
+            message: format!("Robot '{id}' has no URDF on filesystem"),
+        })
     }
 
     /// Load a catalog definition into the scene, materializing it to the workspace.
@@ -239,11 +237,8 @@ impl RobotService {
                 RobotRecord {
                     id: meta.id.to_string(),
                     name: meta.display_name.to_string(),
-                    manufacturer: None,
-                    model: None,
                     source_type: RobotSource::Canonical,
                     source_label: None,
-                    urdf_xml: None,
                     created_at: String::new(),
                     updated_at: String::new(),
                 }
@@ -308,15 +303,11 @@ impl RobotService {
         // 3. Build a RobotRecord from the validated URDF
         let id = urdf_robot_id(urdf_xml);
         let now = chrono::Utc::now().to_rfc3339();
-        #[allow(deprecated)]
         let record = RobotRecord {
             id: id.clone(),
             name: robot.name.clone(),
-            manufacturer: None,
-            model: None,
             source_type: RobotSource::ImportedUrdf,
             source_label: None,
-            urdf_xml: Some(urdf_xml.to_string()),
             created_at: now.clone(),
             updated_at: now,
         };
@@ -350,12 +341,20 @@ impl RobotService {
         if let Ok(model) = RobotModel::from_id(id) {
             scene.execute(crate::commands::Command::LoadRobot(model)).await
         } else {
-            let record = self.get_record(id).await?;
-            #[allow(deprecated)]
-            let urdf_xml = record.urdf_xml.ok_or_else(|| RuntimeError::InvalidUrdf {
-                message: format!("Record '{id}' contains no URDF XML"),
-            })?;
-            scene.load_urdf_robot(&urdf_xml).await
+            // Try loading from filesystem
+            let _record = self.get_record(id).await?;
+            let urdf_path = std::path::PathBuf::from("robots").join(id).join("robot.urdf");
+            if urdf_path.exists() {
+                let urdf_xml = std::fs::read_to_string(&urdf_path)
+                    .map_err(|e| RuntimeError::InvalidUrdf {
+                        message: format!("Cannot read URDF: {e}"),
+                    })?;
+                scene.load_urdf_robot(&urdf_xml).await
+            } else {
+                Err(RuntimeError::InvalidUrdf {
+                    message: format!("Robot '{id}' has no URDF on filesystem"),
+                })
+            }
         }
     }
 

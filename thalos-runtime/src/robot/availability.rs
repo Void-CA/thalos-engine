@@ -17,7 +17,7 @@ pub enum RobotAvailability {
     /// Robot record exists but asset files are corrupted or missing.
     /// Integrity verification failed.
     Corrupted { missing: Vec<String> },
-    /// Robot record is legacy (urdf_xml in SQLite) with no filesystem artifacts.
+    /// Robot record is not found in the database (legacy or unknown robot).
     Legacy,
 }
 
@@ -34,8 +34,8 @@ pub async fn check_robot_availability(
     repo: &dyn RobotRepository,
 ) -> RobotAvailability {
     // 1. Check record exists
-    let record = match repo.get(robot_id).await {
-        Ok(Some(r)) => r,
+    match repo.get(robot_id).await {
+        Ok(Some(_)) => {},
         Ok(None) => return RobotAvailability::Legacy,
         Err(_) => return RobotAvailability::Legacy,
     };
@@ -43,10 +43,6 @@ pub async fn check_robot_availability(
     // 2. Check URDF exists on filesystem
     let urdf_path = workspace_root.join("robots").join(robot_id).join("robot.urdf");
     if !urdf_path.exists() {
-        #[allow(deprecated)]
-        if record.urdf_xml.is_some() {
-            return RobotAvailability::Legacy;
-        }
         return RobotAvailability::RequiresReimport;
     }
 
@@ -57,10 +53,6 @@ pub async fn check_robot_availability(
     };
 
     if assets.is_empty() {
-        #[allow(deprecated)]
-        if record.urdf_xml.is_some() {
-            return RobotAvailability::Legacy;
-        }
         return RobotAvailability::RequiresReimport;
     }
 

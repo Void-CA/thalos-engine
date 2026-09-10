@@ -69,7 +69,6 @@ pub struct RoboticsModuleExtension {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InterconnectionModuleExtension {
     pub module_id: EquipmentModuleId,
-    pub configuration_json: String,
 }
 
 /// A channel definition within an Interconnection module.
@@ -82,7 +81,6 @@ pub struct Channel {
     pub interconnection_module_id: EquipmentModuleId,
     pub symbol: String,
     pub name: String,
-    pub data_type: String,
     pub unit: String,
 }
 
@@ -94,9 +92,6 @@ impl Channel {
         }
         if self.name.trim().is_empty() {
             return Err("Channel name must not be empty".into());
-        }
-        if self.data_type.trim().is_empty() {
-            return Err("Channel data_type must not be empty".into());
         }
         Ok(())
     }

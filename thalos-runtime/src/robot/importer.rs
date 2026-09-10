@@ -239,7 +239,6 @@ impl RobotImporter {
                 original_uri: asset_ref.uri.clone(),
                 stored_path,
                 sha256: sha256_hex,
-                filename: filename.to_string(),
             });
         }
 
@@ -258,15 +257,11 @@ impl RobotImporter {
 
         // Build the record
         let now = chrono::Utc::now().to_rfc3339();
-        #[allow(deprecated)]
         let record = RobotRecord {
             id: robot_id.to_string(),
             name: robot.name.clone(),
-            manufacturer: None,
-            model: None,
             source_type,
             source_label: source_label.map(|s| s.to_string()),
-            urdf_xml: None, // New import — URDF lives in filesystem
             created_at: now.clone(),
             updated_at: now,
         };

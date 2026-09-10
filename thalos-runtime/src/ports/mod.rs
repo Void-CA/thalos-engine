@@ -17,7 +17,7 @@ pub use equipment_module_repository::{
 pub use program_repository::{ProgramRecord, ProgramRepository};
 pub use robot_reference_checker::{RobotReference, RobotReferenceChecker};
 pub use robot_repository::{
-    PersistenceError, Result as PersistenceResult, RobotRecord, RobotRepository, RobotSource,
+    PersistenceError, Result as PersistenceResult, RobotAsset, RobotRecord, RobotRepository, RobotSource,
 };
 pub use station_repository::{StationRecord, StationRepository};
 pub use workspace_repository::WorkspaceRepository;

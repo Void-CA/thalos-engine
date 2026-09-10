@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 
 use crate::ports::PersistenceError;
+use crate::ports::robot_repository::{RobotRecord, RobotAsset};
 use crate::station::{
     Channel, EquipmentModule, EquipmentModuleId, InterconnectionModuleExtension,
     RoboticsModuleExtension,
@@ -27,7 +28,6 @@ pub struct RoboticsModuleRecord {
 #[derive(Debug, Clone)]
 pub struct InterconnectionModuleRecord {
     pub module_id: String,
-    pub configuration_json: String,
 }
 
 #[derive(Debug, Clone)]
@@ -36,7 +36,6 @@ pub struct ChannelRecord {
     pub interconnection_module_id: String,
     pub symbol: String,
     pub name: String,
-    pub data_type: String,
     pub unit: String,
 }
 
@@ -67,6 +66,22 @@ pub trait EquipmentModuleRepository: Send + Sync {
         module: &EquipmentModuleRecord,
         extension: &RoboticsModuleRecord,
     ) -> Result<(), PersistenceError>;
+
+    /// Create a robotics module with its robot definition in a single transaction.
+    ///
+    /// Combines:
+    /// - robots INSERT
+    /// - robot_assets DELETE + INSERT
+    /// - equipment_modules INSERT
+    /// - robotics_modules INSERT (with real robot UUID)
+    async fn create_robotics_module_with_robot(
+        &self,
+        robot: &RobotRecord,
+        assets: &[RobotAsset],
+        station_id: &str,
+        module_name: &str,
+        configuration_json: &str,
+    ) -> Result<String, PersistenceError>; // returns module_id
 
     async fn create_interconnection_module(
         &self,

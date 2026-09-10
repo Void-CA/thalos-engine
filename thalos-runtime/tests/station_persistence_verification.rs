@@ -254,8 +254,8 @@ async fn channel_metadata_survives_reopen() {
     let station = station_service.create_station("monitoring", "Monitoring").await.unwrap();
     let acq_module = station_service.add_interconnection_module(&station.id, "Sensors").await.unwrap();
 
-    let ch1 = station_service.add_channel(&acq_module.id, "temperature", "Temperature", "f64", "°C").await.unwrap();
-    let ch2 = station_service.add_channel(&acq_module.id, "pressure", "Pressure", "f64", "Pa").await.unwrap();
+    let ch1 = station_service.add_channel(&acq_module.id, "temperature", "Temperature", "°C").await.unwrap();
+    let ch2 = station_service.add_channel(&acq_module.id, "pressure", "Pressure", "Pa").await.unwrap();
 
     // Verify channels persisted
     let channels = station_service.get_module_channels(&acq_module.id).await.unwrap();
@@ -263,7 +263,6 @@ async fn channel_metadata_survives_reopen() {
 
     let ch1_found = channels.iter().find(|c| c.symbol == "temperature").unwrap();
     assert_eq!(ch1_found.name, "Temperature");
-    assert_eq!(ch1_found.data_type, "f64");
     assert_eq!(ch1_found.unit, "°C");
     assert_eq!(ch1_found.id, ch1.id);
 
@@ -288,7 +287,6 @@ async fn channel_metadata_survives_reopen() {
 
     let ch1_found = channels.iter().find(|c| c.symbol == "temperature").unwrap();
     assert_eq!(ch1_found.name, "Temperature");
-    assert_eq!(ch1_found.data_type, "f64");
     assert_eq!(ch1_found.unit, "°C");
     assert_eq!(ch1_found.id, ch1.id);
 
@@ -322,7 +320,7 @@ async fn schema_verification() {
     let station = station_service.create_station("test_station", "Test Station").await.unwrap();
     station_service.add_robotics_module(&station.id, &robot.id, "Arm", "{}").await.unwrap();
     let acq = station_service.add_interconnection_module(&station.id, "Sensors").await.unwrap();
-    station_service.add_channel(&acq.id, "temp", "Temperature", "f64", "°C").await.unwrap();
+    station_service.add_channel(&acq.id, "temp", "Temperature", "°C").await.unwrap();
 
     // Station loads from relational tables
     let loaded = station_repo.get(&station.id.0).await.unwrap();
