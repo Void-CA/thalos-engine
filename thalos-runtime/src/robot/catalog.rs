@@ -65,6 +65,10 @@ pub struct RobotCatalog {
 }
 
 impl RobotCatalog {
+
+    pub fn new(definitions: Vec<RobotCatalogEntry>) -> Self {
+        Self { definitions }
+    }
     /// Directorio base de assets del catálogo — `assets/robots/` del crate.
     fn asset_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/robots")

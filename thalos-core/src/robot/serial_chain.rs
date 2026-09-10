@@ -10,6 +10,16 @@ pub struct SerialChain {
 }
 
 impl SerialChain {
+    pub fn empty() -> Self {
+        let mut frames = FrameRegistry::new();
+        frames.register(Frame::world());
+        Self {
+            segments: Vec::new(),
+            frames,
+            end_effector: FrameId::World,
+        }
+    }
+
     pub fn frame(&self, id: &FrameId) -> Option<&Frame> {
         self.frames.get(id)
     }

@@ -44,20 +44,21 @@ impl ExecutableCommand for Command {
     fn execute(&self, runtime: &mut SceneRuntime) -> Result<Option<IKResult>, RuntimeError> {
         match self {
             Command::SetJoints(joints) => {
-                let expected = runtime.active_robot.chain.dof_count();
+                let robot = runtime.active_robot.as_ref().ok_or(RuntimeError::NoRobot)?;
+                let expected = robot.chain.dof_count();
                 if joints.len() != expected {
                     return Err(RuntimeError::JointCountMismatch {
                         expected,
                         received: joints.len(),
                     });
                 }
-                runtime.active_robot.joints = joints.clone();
+                runtime.active_robot.as_mut().unwrap().joints = joints.clone();
                 Ok(None)
             }
             Command::LoadRobot(model) => {
                 let dof = model.metadata().dof;
                 let chain = RobotRegistry::create_default(*model);
-                runtime.active_robot = ActiveRobot::new(Some(*model), chain, vec![0.0; dof]);
+                runtime.active_robot = Some(ActiveRobot::new(Some(*model), chain, vec![0.0; dof]));
                 runtime.robot_name = model.metadata().display_name.to_string();
                 runtime.robot_id = model.metadata().id.to_string(); // spec R1.3
                 runtime.joints_meta.clear();
@@ -75,7 +76,7 @@ impl ExecutableCommand for Command {
                 robot_id,
             } => {
                 let dof = chain.dof_count();
-                runtime.active_robot = ActiveRobot::new(None, chain.clone(), vec![0.0; dof]);
+                runtime.active_robot = Some(ActiveRobot::new(None, chain.clone(), vec![0.0; dof]));
                 runtime.robot_name = name.clone();
                 runtime.robot_id = robot_id.clone();
                 runtime.joints_meta = joints_meta.clone();
@@ -217,7 +218,7 @@ mod tests {
         }
 
         // Joints must remain unchanged after the rejected command.
-        assert_eq!(runtime.active_robot.joints, vec![0.0, 0.0]);
+        assert_eq!(runtime.active_robot.as_ref().unwrap().joints, vec![0.0, 0.0]);
     }
 
     #[test]
@@ -239,7 +240,7 @@ mod tests {
         }
 
         // Joints must remain unchanged after the rejected command.
-        assert_eq!(runtime.active_robot.joints, vec![0.0, 0.0]);
+        assert_eq!(runtime.active_robot.as_ref().unwrap().joints, vec![0.0, 0.0]);
     }
 
     #[test]
@@ -252,6 +253,6 @@ mod tests {
         .execute(&mut runtime)
         .expect("MoveJ with correct DOF must succeed");
 
-        assert_eq!(runtime.active_robot.joints, vec![1.0, 2.0]);
+        assert_eq!(runtime.active_robot.as_ref().unwrap().joints, vec![1.0, 2.0]);
     }
 }

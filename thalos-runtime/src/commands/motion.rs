@@ -75,14 +75,15 @@ impl ExecutableCommand for MotionCommands {
     fn execute(&self, runtime: &mut SceneRuntime) -> Result<Option<IKResult>, RuntimeError> {
         match self {
             Self::MoveJ { target } => {
-                let expected = runtime.active_robot.chain.dof_count();
+                let robot = runtime.active_robot.as_ref().ok_or(RuntimeError::NoRobot)?;
+                let expected = robot.chain.dof_count();
                 if target.len() != expected {
                     return Err(RuntimeError::JointCountMismatch {
                         expected,
                         received: target.len(),
                     });
                 }
-                runtime.active_robot.joints = target.clone();
+                runtime.active_robot.as_mut().unwrap().joints = target.clone();
                 Ok(None)
             }
 
@@ -92,7 +93,8 @@ impl ExecutableCommand for MotionCommands {
                 max_acceleration,
                 time_step,
             } => {
-                let chain = runtime.active_robot.chain.clone();
+                let robot = runtime.active_robot.as_ref().ok_or(RuntimeError::NoRobot)?;
+                let chain = robot.chain.clone();
                 let expected = chain.dof_count();
                 if target.len() != expected {
                     return Err(RuntimeError::JointCountMismatch {
@@ -101,7 +103,7 @@ impl ExecutableCommand for MotionCommands {
                     });
                 }
                 let ee = *chain.end_effector();
-                let state = RobotState::from_positions(runtime.active_robot.joints.clone());
+                let state = RobotState::from_positions(robot.joints.clone());
                 let solver = make_ik_solver(&chain, ee);
                 let ctx = make_planning_ctx(&chain, &state, &solver, runtime.active_tcp.as_ref());
 
@@ -124,7 +126,7 @@ impl ExecutableCommand for MotionCommands {
                     .last()
                     .map(|p| p.joints().to_vec())
                     .unwrap_or_else(|| target.clone());
-                runtime.active_robot.joints = last;
+                runtime.active_robot.as_mut().unwrap().joints = last;
                 runtime.set_completed_plan(trajectory, MotionType::MoveJ);
 
                 Ok(None)
@@ -138,8 +140,9 @@ impl ExecutableCommand for MotionCommands {
                 time_step: _,
                 cartesian_step: _,
             } => {
-                let joints = runtime.active_robot.joints.clone();
-                let chain = runtime.active_robot.chain.clone();
+                let robot = runtime.active_robot.as_ref().ok_or(RuntimeError::NoRobot)?;
+                let joints = robot.joints.clone();
+                let chain = robot.chain.clone();
 
                 // Solve IK for the target position (position-only to handle
                 // under-actuated arms like Planar2R that can't match a full pose).
@@ -166,7 +169,7 @@ impl ExecutableCommand for MotionCommands {
                 };
                 let trajectory = planner.plan(&ctx, &goal)?;
 
-                runtime.active_robot.joints = target;
+                runtime.active_robot.as_mut().unwrap().joints = target;
                 runtime.set_completed_plan(trajectory, MotionType::MoveL);
 
                 Ok(None)

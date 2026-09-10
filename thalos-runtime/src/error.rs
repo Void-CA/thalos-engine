@@ -177,6 +177,11 @@ pub enum RuntimeError {
 
     #[error("workspace not found: {id}")]
     WorkspaceNotFound { id: String },
+
+    /// No robot is loaded in the scene — operations requiring a kinematic
+    /// chain (IK, FK, motion, tool-frame selection) cannot proceed.
+    #[error("no robot loaded in the scene")]
+    NoRobot,
 }
 
 #[cfg(test)]
@@ -277,6 +282,7 @@ impl RuntimeError {
             RuntimeError::RobotNotFound { .. } => "robot_not_found",
             RuntimeError::RobotDefinition(_) => "robot_definition_unresolved",
             RuntimeError::WorkspaceNotFound { .. } => "workspace_not_found",
+            RuntimeError::NoRobot => "no_robot_loaded",
         }
     }
 

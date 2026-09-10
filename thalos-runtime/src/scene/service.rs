@@ -215,26 +215,45 @@ impl SceneService {
         }
     }
 
+    /// Create an empty `SceneService` with no robot loaded.
+    ///
+    /// The scene is valid but has no kinematic chain. Operations requiring
+    /// a robot (IK, FK, motion, tool-frame selection) return
+    /// [`RuntimeError::NoRobot`]. Load a robot via `execute(Command::LoadRobot(..))`
+    /// or `load_urdf_robot(...)` to make the scene fully operational.
+    pub fn empty(manager: Arc<BackendManager>, sessions: Arc<SessionManager>) -> Self {
+        Self {
+            runtime: RwLock::new(SceneRuntime::empty()),
+            manager,
+            sessions,
+            recording: Arc::new(RwLock::new(None)),
+        }
+    }
+
     fn compute_fk(chain: &SerialChain, joints: &[f64]) -> FKResult {
         let fk = ForwardKinematics::new(chain.clone());
         fk.evaluate(joints)
     }
 
     fn build_snapshot(runtime: &SceneRuntime, ik_result: Option<IKResult>) -> RuntimeSnapshot {
-        let fk_result = Self::compute_fk(&runtime.active_robot.chain, &runtime.active_robot.joints);
+        let (model, joints, chain) = match runtime.active_robot.as_ref() {
+            Some(robot) => (robot.model, robot.joints.clone(), robot.chain.clone()),
+            None => (None, Vec::new(), SerialChain::empty()),
+        };
+        let fk_result = Self::compute_fk(&chain, &joints);
 
         let scheduled_plan = runtime.scheduled_plan.as_ref().map(|sp| {
             ActiveMotionPlan::from_compiled_plan("preview", sp.clone())
         });
 
         RuntimeSnapshot {
-            robot: runtime.active_robot.model,
+            robot: model,
             robot_source: runtime.robot_source.clone(),
             robot_name: runtime.robot_name.clone(),
             robot_id: runtime.robot_id.clone(),
             joints_meta: runtime.joints_meta.clone(),
-            joints: runtime.active_robot.joints.clone(),
-            chain: runtime.active_robot.chain.clone(),
+            joints,
+            chain,
             fk_result,
             ik_result,
             active_plan: runtime.active_plan.clone(),
@@ -260,7 +279,6 @@ impl SceneService {
         let mut rt = runtime.write().await;
         rt.set_joints_from_state(&state.joints.positions);
 
-        let fk_result = Self::compute_fk(&rt.active_robot.chain, &rt.active_robot.joints);
         // R4-001: the derived session carries the ACTIVE controller's source so
         // the badge reports Hardware/Esp32 when the ESP32 backend is connected.
         let source = ctrl.execution_source();
@@ -290,14 +308,20 @@ impl SceneService {
             ActiveMotionPlan::from_compiled_plan("preview", sp.clone())
         });
 
+        let (model, joints, chain) = match rt.active_robot.as_ref() {
+            Some(robot) => (robot.model, robot.joints.clone(), robot.chain.clone()),
+            None => (None, Vec::new(), SerialChain::empty()),
+        };
+        let fk_result = Self::compute_fk(&chain, &joints);
+
         RuntimeSnapshot {
-            robot: rt.active_robot.model,
+            robot: model,
             robot_source: rt.robot_source.clone(),
             robot_name: rt.robot_name.clone(),
             robot_id: rt.robot_id.clone(),
             joints_meta: rt.joints_meta.clone(),
-            joints: rt.active_robot.joints.clone(),
-            chain: rt.active_robot.chain.clone(),
+            joints,
+            chain,
             fk_result,
             ik_result: None,
             active_plan: rt.active_plan.clone(),
@@ -327,12 +351,14 @@ impl SceneService {
         if is_robot_change {
             let dof = {
                 let rt = self.runtime.read().await;
-                rt.active_robot.chain.dof_count()
+                rt.active_robot.as_ref().map(|r| r.chain.dof_count()).unwrap_or(0)
             };
-            let new_ctrl = Arc::new(RwLock::new(SimulationController::new(dof)))
-                as Arc<RwLock<dyn RobotController + Send + Sync>>;
-            // Silently replace — the manager handles disconnection
-            let _ = self.manager.replace_controller(new_ctrl).await;
+            if dof > 0 {
+                let new_ctrl = Arc::new(RwLock::new(SimulationController::new(dof)))
+                    as Arc<RwLock<dyn RobotController + Send + Sync>>;
+                // Silently replace — the manager handles disconnection
+                let _ = self.manager.replace_controller(new_ctrl).await;
+            }
         }
 
         let runtime = self.runtime.read().await;
@@ -419,9 +445,10 @@ impl SceneService {
         goal: IKGoal,
     ) -> Result<(Vec<f64>, IKResult), RuntimeError> {
         let runtime = self.runtime.read().await;
-        let fk = ForwardKinematics::new(runtime.active_robot.chain.clone());
+        let robot = runtime.active_robot.as_ref().ok_or(RuntimeError::NoRobot)?;
+        let fk = ForwardKinematics::new(robot.chain.clone());
         let solver = DampedLeastSquaresSolver::from_config(fk, frame, IK_CONFIG);
-        let q0 = runtime.active_robot.joints.clone();
+        let q0 = robot.joints.clone();
         let result = solver.solve(&q0, goal)?;
         Ok((result.q.clone(), result))
     }
@@ -1394,12 +1421,15 @@ impl SceneService {
                 }
             }
 
-            let fk_result =
-                Self::compute_fk(&runtime.active_robot.chain, &runtime.active_robot.joints);
+            let (joints, chain) = match runtime.active_robot.as_ref() {
+                Some(robot) => (robot.joints.clone(), robot.chain.clone()),
+                None => (Vec::new(), SerialChain::empty()),
+            };
+            let fk_result = Self::compute_fk(&chain, &joints);
 
             let mut delta = TickDelta::from_robot_state(
                 &state,
-                runtime.active_robot.chain.clone(),
+                chain,
                 fk_result,
                 plan_duration,
                 runtime.active_tcp.clone(),
@@ -1453,10 +1483,14 @@ impl SceneService {
 
         // Fallback: no controller — read-only snapshot
         let runtime = self.runtime.read().await;
-        let fk_result = Self::compute_fk(&runtime.active_robot.chain, &runtime.active_robot.joints);
+        let (joints, chain) = match runtime.active_robot.as_ref() {
+            Some(robot) => (robot.joints.clone(), robot.chain.clone()),
+            None => (Vec::new(), SerialChain::empty()),
+        };
+        let fk_result = Self::compute_fk(&chain, &joints);
         Ok(TickDelta {
-            joints: runtime.active_robot.joints.clone(),
-            chain: runtime.active_robot.chain.clone(),
+            joints,
+            chain,
             fk_result,
             execution: None,
             plan_duration: 0.0,
@@ -1481,13 +1515,17 @@ impl SceneService {
             .as_ref()
             .map(|p| p.trajectory.duration())
             .unwrap_or(0.0);
-        let fk_result = Self::compute_fk(&runtime.active_robot.chain, &runtime.active_robot.joints);
+        let (joints, chain) = match runtime.active_robot.as_ref() {
+            Some(robot) => (robot.joints.clone(), robot.chain.clone()),
+            None => (Vec::new(), SerialChain::empty()),
+        };
+        let fk_result = Self::compute_fk(&chain, &joints);
         let mut state = crate::state::robot_state::RobotState::default();
-        state.joints.positions = runtime.active_robot.joints.clone();
+        state.joints.positions = joints.clone();
         let state = Arc::new(state);
         let mut delta = TickDelta::from_robot_state(
             &state,
-            runtime.active_robot.chain.clone(),
+            chain,
             fk_result,
             plan_duration,
             runtime.active_tcp.clone(),

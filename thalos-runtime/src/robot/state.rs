@@ -3,7 +3,7 @@ use thalos_engine::core::spatial::frame::FrameId;
 use thalos_engine::core::{
     kinematics::{
         forward::ForwardKinematics,
-        inverse::{DampedLeastSquaresSolver, IKGoal, IKResult, IKSolver, IkError},
+        inverse::{DampedLeastSquaresSolver, IKGoal, IKResult, IKSolver},
     },
     prelude::Trajectory,
 };
@@ -37,7 +37,7 @@ pub const SCENE_WRITEBACK_FLAG: &str = "scene-writeback";
 /// via `BackendManager`. This struct manages only plan metadata and
 /// the kinematic model.
 pub struct SceneRuntime {
-    pub active_robot: ActiveRobot,
+    pub active_robot: Option<ActiveRobot>,
     pub robot_name: String,
     /// Canonical robot identity (spec robot-identity R1): catalog robots
     /// carry `metadata.id`; URDF imports carry `urdf:<sha256-trunc-12>`.
@@ -89,9 +89,28 @@ impl SceneRuntime {
             .map(|m| m.metadata().id.to_string())
             .unwrap_or_default();
         Self {
-            active_robot,
+            active_robot: Some(active_robot),
             robot_name,
             robot_id,
+            robot_source: None,
+            joints_meta: Vec::new(),
+            active_tcp: None,
+            scheduled_plan: None,
+            active_plan: None,
+            active_program_id: None,
+            active_program_revision: None,
+            active_source_fingerprint: None,
+            scene_writeback_enabled: false,
+            command_history: CommandHistory::new(),
+            next_plan_id: 0,
+        }
+    }
+
+    pub fn empty() -> Self {
+        Self {
+            active_robot: None,
+            robot_name: String::new(),
+            robot_id: String::new(),
             robot_source: None,
             joints_meta: Vec::new(),
             active_tcp: None,
@@ -115,12 +134,16 @@ impl SceneRuntime {
     /// validation; callers should fix the upstream validator instead of
     /// relaxing this guard.
     pub fn set_joints_from_state(&mut self, joints: &[f64]) {
-        if joints.len() == self.active_robot.joints.len() {
-            self.active_robot.joints.copy_from_slice(joints);
+        let robot = match self.active_robot.as_mut() {
+            Some(r) => r,
+            None => return,
+        };
+        if joints.len() == robot.joints.len() {
+            robot.joints.copy_from_slice(joints);
         } else {
             tracing::warn!(
                 controller_len = joints.len(),
-                chain_len = self.active_robot.joints.len(),
+                chain_len = robot.joints.len(),
                 "set_joints_from_state: controller joint count differs from chain DOF — update dropped"
             );
         }
@@ -130,13 +153,14 @@ impl SceneRuntime {
         &mut self,
         frame: FrameId,
         goal: IKGoal,
-    ) -> Result<IKResult, IkError> {
-        let fk = ForwardKinematics::new(self.active_robot.chain.clone());
+    ) -> Result<IKResult, RuntimeError> {
+        let robot = self.active_robot.as_mut().ok_or(RuntimeError::NoRobot)?;
+        let fk = ForwardKinematics::new(robot.chain.clone());
         let solver =
             DampedLeastSquaresSolver::new(fk, frame, IK_MAX_ITERS, IK_TOLERANCE, IK_LAMBDA);
-        let q0 = self.active_robot.joints.clone();
-        let result = solver.solve(&q0, goal)?;
-        self.active_robot.joints = result.q.clone();
+        let q0 = robot.joints.clone();
+        let result = solver.solve(&q0, goal).map_err(RuntimeError::Ik)?;
+        robot.joints = result.q.clone();
         Ok(result)
     }
 
@@ -414,10 +438,10 @@ impl SceneRuntime {
     ///
     /// Returns an error if the frame does not exist in the chain.
     pub fn select_tool_frame(&mut self, tool_frame: Option<ToolFrame>) -> Result<(), RuntimeError> {
+        let robot = self.active_robot.as_ref().ok_or(RuntimeError::NoRobot)?;
         if let Some(tcp) = &tool_frame {
             // Validate that the frame exists in the chain
-            if self
-                .active_robot
+            if robot
                 .chain
                 .frames
                 .get(&tcp.base_frame)
