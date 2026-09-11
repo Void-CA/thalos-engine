@@ -1,6 +1,7 @@
 pub use thalos_ports::device;
 pub use thalos_ports::robot;
 pub mod equipment_module_repository;
+pub mod execution_repository;
 pub mod program_repository;
 pub mod robot_reference_checker;
 pub mod robot_repository;
@@ -13,6 +14,9 @@ pub use robot::{RobotObservation, RobotTransport, TransportError, TransportState
 pub use equipment_module_repository::{
     ChannelRecord, EquipmentModuleRecord, EquipmentModuleRepository,
     InterconnectionModuleRecord, RobotReference as ModuleRobotReference, RoboticsModuleRecord,
+};
+pub use execution_repository::{
+    ExecutionHistory, ExecutionRepository, ExecutionSession, ExecutionSessionId,
 };
 pub use program_repository::{ProgramRecord, ProgramRepository};
 pub use robot_reference_checker::{RobotReference, RobotReferenceChecker};
