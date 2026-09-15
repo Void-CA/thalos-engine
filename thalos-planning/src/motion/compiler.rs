@@ -15,6 +15,7 @@ use crate::goal::{
     GoalResolver, GoalResolverConfig, JointGoal, ResolvedPositionGoal, ValidatedGoal,
 };
 use crate::motion::move_j::{MoveJConfig, MoveJPlanner};
+use crate::motion::move_c::{MoveCConfig, MoveCPlanner};
 use crate::motion::move_l::{MoveLConfig, MoveLPlanner};
 use crate::motion::planner::{SegmentPlanner, SegmentPlanningContext};
 use crate::motion::program::{CompiledPlan, PlannedSegment, PlanningProgram};
@@ -144,6 +145,38 @@ impl MotionPlannerDispatcher for DefaultPlannerDispatcher {
                     cartesian_step: 0.01,
                 });
                 planner.plan_position(ctx, &goal)
+            }
+
+            MotionSegment::MoveC {
+                frame: _,
+                via_position,
+                target_position,
+                max_velocity,
+                ..
+            } => {
+                let resolver = GoalResolver::new(self.goal_resolver_config.clone());
+                let via = thalos_math::Vector3::new(
+                    via_position[0],
+                    via_position[1],
+                    via_position[2],
+                );
+                let target = thalos_math::Vector3::new(
+                    target_position[0],
+                    target_position[1],
+                    target_position[2],
+                );
+                // Validate the final target (position-only IK) before planning
+                // the arc so an unreachable endpoint fails as IkFailedPosition.
+                let goal: ValidatedGoal<ResolvedPositionGoal> =
+                    resolver.resolve_position(ctx, target)?;
+
+                let planner = MoveCPlanner::new(MoveCConfig {
+                    max_velocity: max_velocity.unwrap_or(0.25),
+                    max_acceleration: 0.125,
+                    time_step: 0.01,
+                    cartesian_step: 0.01,
+                });
+                planner.plan(ctx, via, &goal)
             }
         }
     }

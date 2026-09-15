@@ -20,6 +20,8 @@ pub enum PlanInstruction {
     MoveJ,
     /// Cartesian linear move to a target pose.
     MoveL,
+    /// Cartesian circular move through a via point.
+    MoveC,
 }
 
 /// One executed move, mapped 1:1 from a `PlannedSegment`.

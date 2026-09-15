@@ -125,6 +125,7 @@ fn wire_lines(plan: &CompiledPlan) -> Vec<String> {
         let inst = match seg.instruction {
             thalos_runtime::execution_boundary::ManifestInstruction::MoveJ => "movej",
             thalos_runtime::execution_boundary::ManifestInstruction::MoveL => "movel",
+            thalos_runtime::execution_boundary::ManifestInstruction::MoveC => "movec",
         };
         lines.push(Esp32Codec::encode_segment(i, inst, seg.sample_start, seg.sample_count));
     }

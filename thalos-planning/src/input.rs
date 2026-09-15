@@ -45,32 +45,66 @@ impl PlanningInput {
                         .clone()
                         .unwrap_or_else(|| "anonymous".to_string()),
                 );
-                match &m.target {
-                    MotionTarget::Joints(j) => MotionSegment::MoveJ {
-                        origin,
-                        target: j.values.clone(),
-                        max_velocity: None,
-                        max_acceleration: None,
-                    },
-                    MotionTarget::Position(p) => MotionSegment::MoveLPosition {
-                        origin,
-                        frame: FrameId::World,
-                        target_position: [p.point.x, p.point.y, p.point.z],
-                        max_velocity: None,
-                    },
-                    MotionTarget::Pose(pose) => MotionSegment::MoveL {
-                        origin,
-                        frame: FrameId::World,
-                        target_pose: thalos_core::spatial::pose::Pose::new(
-                            FrameId::World,
-                            FrameId::World,
-                            pose.transform.clone(),
-                        ),
-                        max_velocity: None,
-                    },
+                // `movec` is a circular move: it needs cartesian via + target
+                // (validated upstream). For any non-cartesian shape, fall back
+                // to the target-derived segment so this stays total.
+                if let MotionKind::MoveC { via } = &m.kind {
+                    if let (Some(via_position), Some(target_position)) =
+                        (target_position(via), target_position(&m.target))
+                    {
+                        return MotionSegment::MoveC {
+                            origin,
+                            frame: FrameId::World,
+                            via_position,
+                            target_position,
+                            max_velocity: None,
+                        };
+                    }
                 }
+                target_segment(origin, &m.target)
             })
             .collect();
         PlanningProgram::new(segments)
+    }
+}
+
+/// Cartesian position of a motion target, if it has one (joints do not).
+fn target_position(target: &MotionTarget) -> Option<[f64; 3]> {
+    match target {
+        MotionTarget::Position(p) => Some([p.point.x, p.point.y, p.point.z]),
+        MotionTarget::Pose(p) => Some([
+            p.transform.translation.x,
+            p.transform.translation.y,
+            p.transform.translation.z,
+        ]),
+        MotionTarget::Joints(_) => None,
+    }
+}
+
+/// Map a resolved target to its segment, independent of the motion kind.
+fn target_segment(origin: OperationId, target: &MotionTarget) -> MotionSegment {
+    match target {
+        MotionTarget::Joints(j) => MotionSegment::MoveJ {
+            origin,
+            target: j.values.clone(),
+            max_velocity: None,
+            max_acceleration: None,
+        },
+        MotionTarget::Position(p) => MotionSegment::MoveLPosition {
+            origin,
+            frame: FrameId::World,
+            target_position: [p.point.x, p.point.y, p.point.z],
+            max_velocity: None,
+        },
+        MotionTarget::Pose(pose) => MotionSegment::MoveL {
+            origin,
+            frame: FrameId::World,
+            target_pose: thalos_core::spatial::pose::Pose::new(
+                FrameId::World,
+                FrameId::World,
+                pose.transform.clone(),
+            ),
+            max_velocity: None,
+        },
     }
 }

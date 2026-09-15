@@ -323,6 +323,7 @@ enum SegmentKind {
     MoveJ,
     MoveL,
     MoveLPosition,
+    MoveC,
 }
 
 impl SegmentKind {
@@ -333,6 +334,7 @@ impl SegmentKind {
             thalos_core::motion::segment::MotionSegment::MoveLPosition { .. } => {
                 SegmentKind::MoveLPosition
             }
+            thalos_core::motion::segment::MotionSegment::MoveC { .. } => SegmentKind::MoveC,
         }
     }
 }

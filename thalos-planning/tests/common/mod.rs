@@ -198,6 +198,7 @@ pub fn compact_task(program: &PlanningProgram) -> Vec<(&'static str, String)> {
             MotionSegment::MoveJ { .. } => "MoveJ",
             MotionSegment::MoveL { .. } => "MoveL",
             MotionSegment::MoveLPosition { .. } => "MoveLPosition",
+            MotionSegment::MoveC { .. } => "MoveC",
         };
         let key = (kind, segment.origin().0.clone());
         match runs.last() {

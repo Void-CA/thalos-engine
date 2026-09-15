@@ -1366,4 +1366,179 @@ mod tests {
         let val = eval_derived_signal(&derived, &bundle).unwrap();
         assert!((val - 0.0).abs() < 0.001);
     }
+
+    // ── C: lifecycle controls (Pause / Resume / Stop) ──────────────────────
+
+    use crate::execution::session::events::{EventSubscriber, ExecutionEvent};
+
+    struct LifecycleCollector {
+        events: std::sync::Arc<Mutex<Vec<ExecutionEvent>>>,
+    }
+
+    impl EventSubscriber for LifecycleCollector {
+        fn on_event(&self, event: &ExecutionEvent) {
+            self.events.lock().unwrap().push(event.clone());
+        }
+    }
+
+    fn running_session(coordinator: &DomainExecutionCoordinator) -> ExecutionSessionId {
+        let id = coordinator.create_session("p", ExecutionConfiguration::default());
+        coordinator.initialize(&id).unwrap();
+        coordinator.start(&id).unwrap();
+        id
+    }
+
+    fn lifecycle_sequence(events: &std::sync::Arc<Mutex<Vec<ExecutionEvent>>>) -> Vec<(String, String)> {
+        events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|e| match e {
+                ExecutionEvent::LifecycleChanged { previous, current, .. } => Some((
+                    format!("{previous:?}").to_lowercase(),
+                    format!("{current:?}").to_lowercase(),
+                )),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn pause_running_session() {
+        let coordinator = DomainExecutionCoordinator::new();
+        let id = running_session(&coordinator);
+
+        coordinator.pause(&id).unwrap();
+
+        assert_eq!(
+            coordinator.registry.get(&id).unwrap().lifecycle,
+            ExecutionSessionState::Paused
+        );
+    }
+
+    #[test]
+    fn resume_paused_session() {
+        let coordinator = DomainExecutionCoordinator::new();
+        let id = running_session(&coordinator);
+        coordinator.pause(&id).unwrap();
+
+        coordinator.start(&id).unwrap();
+
+        assert_eq!(
+            coordinator.registry.get(&id).unwrap().lifecycle,
+            ExecutionSessionState::Running
+        );
+    }
+
+    #[test]
+    fn stop_running_session() {
+        let coordinator = DomainExecutionCoordinator::new();
+        let id = running_session(&coordinator);
+
+        coordinator.stop(&id).unwrap();
+
+        assert_eq!(
+            coordinator.registry.get(&id).unwrap().lifecycle,
+            ExecutionSessionState::Cancelled
+        );
+    }
+
+    #[test]
+    fn pause_then_resume_continues_same_session() {
+        let coordinator = DomainExecutionCoordinator::new();
+        let id = running_session(&coordinator);
+        coordinator.pause(&id).unwrap();
+        coordinator.start(&id).unwrap();
+
+        let session = coordinator.registry.get(&id).unwrap();
+        assert_eq!(session.id.0, id.0, "must be the SAME session, not a new one");
+        assert_eq!(session.lifecycle, ExecutionSessionState::Running);
+
+        let history: Vec<String> = session.history.iter().map(|h| format!("{h:?}")).collect();
+        assert!(
+            history.windows(2).any(|w| w == ["Running", "Paused"]),
+            "history must record Running → Paused, got {history:?}"
+        );
+        assert!(
+            history.windows(2).any(|w| w == ["Paused", "Running"]),
+            "history must record Paused → Running, got {history:?}"
+        );
+    }
+
+    #[test]
+    fn stop_is_terminal() {
+        let coordinator = DomainExecutionCoordinator::new();
+        let id = running_session(&coordinator);
+        coordinator.stop(&id).unwrap();
+
+        assert!(coordinator.start(&id).is_err(), "cannot resume a stopped session");
+        assert!(coordinator.pause(&id).is_err(), "cannot pause a stopped session");
+        assert!(coordinator.registry.get(&id).unwrap().lifecycle.is_terminal());
+    }
+
+    #[test]
+    fn completed_session_rejects_pause() {
+        let coordinator = DomainExecutionCoordinator::new();
+        let id = running_session(&coordinator);
+        coordinator
+            .registry
+            .with_session_mut(&id, |session| {
+                session
+                    .complete()
+                    .map_err(ExecutionDomainError::InvalidLifecycle)
+            })
+            .unwrap();
+
+        assert!(
+            coordinator.pause(&id).is_err(),
+            "a completed session must reject pause"
+        );
+    }
+
+    #[test]
+    fn unknown_session_rejects_control() {
+        let coordinator = DomainExecutionCoordinator::new();
+        let bogus = ExecutionSessionId::new("does-not-exist");
+
+        assert!(coordinator.pause(&bogus).is_err());
+        assert!(coordinator.start(&bogus).is_err());
+        assert!(coordinator.stop(&bogus).is_err());
+    }
+
+    #[test]
+    fn lifecycle_events_share_session_id_and_sequence() {
+        let coordinator = DomainExecutionCoordinator::new();
+        let events = std::sync::Arc::new(Mutex::new(Vec::new()));
+        coordinator.event_bus.subscribe(std::sync::Arc::new(LifecycleCollector {
+            events: events.clone(),
+        }));
+
+        let id = running_session(&coordinator);
+        coordinator.pause(&id).unwrap();
+        coordinator.start(&id).unwrap();
+        coordinator.stop(&id).unwrap();
+
+        // Every event must reference the SAME execution.
+        for event in events.lock().unwrap().iter() {
+            match event {
+                ExecutionEvent::LifecycleChanged { session_id, .. }
+                | ExecutionEvent::SessionCreated { session_id, .. }
+                | ExecutionEvent::TickEvaluated { session_id, .. }
+                | ExecutionEvent::SessionFaulted { session_id, .. } => {
+                    assert_eq!(session_id.0, id.0, "all events must share the session_id");
+                }
+            }
+        }
+
+        assert_eq!(
+            lifecycle_sequence(&events),
+            vec![
+                ("created".to_string(), "reserved".to_string()),
+                ("reserved".to_string(), "running".to_string()),
+                ("running".to_string(), "paused".to_string()),
+                ("paused".to_string(), "running".to_string()),
+                ("running".to_string(), "cancelled".to_string()),
+            ]
+        );
+    }
 }

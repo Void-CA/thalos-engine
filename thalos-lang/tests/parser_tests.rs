@@ -49,3 +49,28 @@ fn test_parse_simple_program() {
         _ => panic!("expected FnDecl"),
     }
 }
+
+#[test]
+fn test_parse_movec_circular_move() {
+    let source = r#"
+        fn main() {
+            movec(VIA_POINT, END_POINT)
+        }
+    "#;
+
+    let program = parse_source(source).expect("failed to parse movec program");
+
+    match &program.items[0] {
+        Item::Function(f) => {
+            assert_eq!(f.body.len(), 1);
+            assert_eq!(
+                f.body[0],
+                Statement::MoveC {
+                    via: Expr::Identifier("VIA_POINT".to_string()),
+                    target: Expr::Identifier("END_POINT".to_string()),
+                }
+            );
+        }
+        _ => panic!("expected FnDecl"),
+    }
+}

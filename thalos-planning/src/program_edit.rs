@@ -317,6 +317,7 @@ fn split_move(segment: &MotionSegment, point: &[f64]) -> Option<(MotionSegment, 
         )),
         MotionSegment::MoveL { .. } => None,
         MotionSegment::MoveLPosition { .. } => None,
+        MotionSegment::MoveC { .. } => None,
     }
 }
 
@@ -372,6 +373,7 @@ fn move_waypoint(segment: &MotionSegment, new_target: &[f64]) -> Option<MotionSe
         }),
         MotionSegment::MoveL { .. } => None,
         MotionSegment::MoveLPosition { .. } => None,
+        MotionSegment::MoveC { .. } => None,
     }
 }
 
@@ -1044,6 +1046,9 @@ mod property_tests {
                 MotionSegment::MoveJ { target, .. } => target.clone(),
                 MotionSegment::MoveL { .. } => unreachable!("property programs are MoveJ-only"),
                 MotionSegment::MoveLPosition { .. } => {
+                    unreachable!("property programs are MoveJ-only")
+                }
+                MotionSegment::MoveC { .. } => {
                     unreachable!("property programs are MoveJ-only")
                 }
             };

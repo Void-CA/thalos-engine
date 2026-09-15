@@ -16,6 +16,8 @@ pub enum ManifestInstruction {
     MoveJ,
     /// Cartesian-space linear movement (movel).
     MoveL,
+    /// Cartesian-space circular movement through a via point (movec).
+    MoveC,
 }
 
 /// A single timed waypoint in an execution manifest.

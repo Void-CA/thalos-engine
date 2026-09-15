@@ -671,6 +671,7 @@ impl SceneService {
                             MotionSegment::MoveJ { .. } => PlanInstruction::MoveJ,
                             MotionSegment::MoveL { .. } => PlanInstruction::MoveL,
                             MotionSegment::MoveLPosition { .. } => PlanInstruction::MoveL,
+                            MotionSegment::MoveC { .. } => PlanInstruction::MoveC,
                         },
                         waypoint_range: seg.waypoint_range.clone(),
                     })

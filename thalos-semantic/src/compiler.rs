@@ -302,6 +302,9 @@ fn lower_statement(
             let via_target = match evaluator.eval_expr(via) {
                 EvalResult::Value(CompileTimeValue::Position(p)) => MotionTarget::Position(p),
                 EvalResult::Value(CompileTimeValue::Pose(p)) => MotionTarget::Pose(p),
+                EvalResult::Value(CompileTimeValue::Joints(vals)) => {
+                    MotionTarget::Joints(JointConfiguration::new(vals))
+                }
                 _ => MotionTarget::Position(Position { point: thalos_math::Vector3::zero() }),
             };
             SemanticStatement::Motion(SemanticMotion {

@@ -1,4 +1,5 @@
 pub mod compiler;
+pub mod move_c;
 pub mod move_j;
 pub mod move_l;
 pub mod planner;

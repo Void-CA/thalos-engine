@@ -45,6 +45,19 @@ pub enum MotionSegment {
         target_position: [f64; 3],
         max_velocity: Option<f64>,
     },
+    /// Cartesian **circular** move through a via point to a target position.
+    ///
+    /// The arc is defined by three points in world space: the current TCP
+    /// position (start), `via_position`, and `target_position`. Orientation is
+    /// unconstrained (position-only IK), matching `MoveLPosition`.
+    MoveC {
+        /// The IR-0 operation this segment was derived from.
+        origin: OperationId,
+        frame: FrameId,
+        via_position: [f64; 3],
+        target_position: [f64; 3],
+        max_velocity: Option<f64>,
+    },
 }
 
 impl MotionSegment {
@@ -53,7 +66,8 @@ impl MotionSegment {
         match self {
             MotionSegment::MoveJ { origin, .. }
             | MotionSegment::MoveL { origin, .. }
-            | MotionSegment::MoveLPosition { origin, .. } => origin,
+            | MotionSegment::MoveLPosition { origin, .. }
+            | MotionSegment::MoveC { origin, .. } => origin,
         }
     }
 }

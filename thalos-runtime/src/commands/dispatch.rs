@@ -57,15 +57,22 @@ impl ExecutableCommand for Command {
             }
             Command::LoadRobot(model) => {
                 let dof = model.metadata().dof;
+                let new_id = model.metadata().id.to_string();
+                // spec command-endpoints "Robot Change Cleanup": cleanup is for a
+                // robot CHANGE. Re-loading the SAME robot must be idempotent and
+                // must NOT discard a scheduled/active plan or the command history.
+                let changed = runtime.robot_id != new_id;
                 let chain = RobotRegistry::create_default(*model);
                 runtime.active_robot = Some(ActiveRobot::new(Some(*model), chain, vec![0.0; dof]));
                 runtime.robot_name = model.metadata().display_name.to_string();
-                runtime.robot_id = model.metadata().id.to_string(); // spec R1.3
+                runtime.robot_id = new_id; // spec R1.3
                 runtime.joints_meta.clear();
-                runtime.active_plan = None;
-                runtime.scheduled_plan = None; // spec command-endpoints "Robot Change Cleanup"
-                runtime.active_tcp = None; // Clear TCP when changing robot
-                runtime.clear_command_history(); // stale inverses die with the robot
+                if changed {
+                    runtime.active_plan = None;
+                    runtime.scheduled_plan = None;
+                    runtime.active_tcp = None; // Clear TCP when changing robot
+                    runtime.clear_command_history(); // stale inverses die with the robot
+                }
                 Ok(None)
             }
             Command::LoadUrdfRobot {
@@ -76,15 +83,18 @@ impl ExecutableCommand for Command {
                 robot_id,
             } => {
                 let dof = chain.dof_count();
+                let changed = runtime.robot_id != *robot_id;
                 runtime.active_robot = Some(ActiveRobot::new(None, chain.clone(), vec![0.0; dof]));
                 runtime.robot_name = name.clone();
                 runtime.robot_id = robot_id.clone();
                 runtime.joints_meta = joints_meta.clone();
                 runtime.robot_source = Some(robot.clone());
-                runtime.active_plan = None;
-                runtime.scheduled_plan = None; // spec command-endpoints "Robot Change Cleanup"
-                runtime.active_tcp = None; // Clear TCP when changing robot
-                runtime.clear_command_history(); // stale inverses die with the robot
+                if changed {
+                    runtime.active_plan = None;
+                    runtime.scheduled_plan = None;
+                    runtime.active_tcp = None; // Clear TCP when changing robot
+                    runtime.clear_command_history(); // stale inverses die with the robot
+                }
                 Ok(None)
             }
             Command::Kinematics(cmd) => cmd.execute(runtime).map(Some),
@@ -145,12 +155,12 @@ mod tests {
 
     #[test]
     fn load_robot_clears_command_history_and_scheduled_plan() {
-        // Spec command-endpoints "Robot Change Cleanup": a robot change must
+        // Spec command-endpoints "Robot Change Cleanup": a robot CHANGE must
         // clear BOTH the command history (stale inverses) and the scheduled
         // plan — undo from a different robot's history is invalid.
-        let mut runtime = seeded_runtime();
+        let mut runtime = seeded_runtime(); // active: Planar2R
 
-        Command::LoadRobot(RobotModel::Planar2R)
+        Command::LoadRobot(RobotModel::Scara)
             .execute(&mut runtime)
             .expect("catalog robot load must succeed");
 
@@ -166,6 +176,33 @@ mod tests {
         assert!(
             runtime.active_plan.is_none(),
             "LoadRobot must clear the active plan"
+        );
+    }
+
+    #[test]
+    fn load_same_robot_preserves_scheduled_plan_and_history() {
+        // Re-loading the SAME robot is NOT a robot change: the scheduled plan
+        // (and its content) and the command history must survive. Regression:
+        // a redundant same-robot load used to wipe the freshly scheduled plan.
+        let mut runtime = seeded_runtime(); // active: Planar2R ("planar_2r")
+        let plan_before = runtime.scheduled_plan.clone();
+        assert!(plan_before.is_some(), "setup: a scheduled plan");
+
+        Command::LoadRobot(RobotModel::Planar2R)
+            .execute(&mut runtime)
+            .expect("re-loading the same robot must succeed");
+
+        let plan_after = runtime.scheduled_plan.as_ref().expect(
+            "re-loading the SAME robot must NOT clear the scheduled plan",
+        );
+        assert_eq!(
+            plan_after.duration, 1.0,
+            "the scheduled plan content must be preserved"
+        );
+        assert_eq!(
+            runtime.history_len(),
+            1,
+            "re-loading the SAME robot must NOT clear the command history"
         );
     }
 
@@ -199,6 +236,34 @@ mod tests {
             runtime.active_plan.is_none(),
             "LoadUrdfRobot must clear the active plan"
         );
+    }
+
+    #[test]
+    fn load_same_urdf_robot_preserves_scheduled_plan() {
+        // Triangulation of the same-identity rule on the URDF arm: re-importing
+        // the SAME urdf robot (same robot_id) must keep the scheduled plan.
+        let mut runtime = test_runtime(); // active: Planar2R ("planar_2r")
+        let chain = RobotRegistry::create_default(RobotModel::Planar2R);
+        let cmd = || Command::LoadUrdfRobot {
+            name: "test-urdf".into(),
+            joints_meta: vec![],
+            chain: chain.clone(),
+            robot: Robot::new("test-urdf", "base"),
+            robot_id: "urdf:test".into(),
+        };
+
+        // First load IS a change (planar_2r -> urdf:test): cleanup runs.
+        cmd().execute(&mut runtime).expect("first URDF load must succeed");
+        runtime.schedule_plan(compiled_plan(1.0));
+        assert!(runtime.scheduled_plan.is_some(), "setup: a scheduled plan");
+
+        // Re-loading the SAME urdf robot preserves the plan.
+        cmd().execute(&mut runtime).expect("second URDF load must succeed");
+        let plan = runtime
+            .scheduled_plan
+            .as_ref()
+            .expect("re-loading the SAME urdf robot must NOT clear the scheduled plan");
+        assert_eq!(plan.duration, 1.0, "plan content must be preserved");
     }
 
     #[test]

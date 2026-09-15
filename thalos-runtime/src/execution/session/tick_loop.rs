@@ -3,8 +3,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use super::domain::{
-    Decision, DomainExecutionCoordinator, ExecutionSessionId, ObservationBundle, RobotState,
-    TickContext, TickOutcome,
+    Decision, DomainExecutionCoordinator, ExecutionDomainError, ExecutionSessionId,
+    ObservationBundle, RobotState, TickContext, TickOutcome,
 };
 use super::runner::{ExecutionRunner, SimulationRunner};
 use crate::execution::executor::ExecutionSessionState;
@@ -63,6 +63,10 @@ pub async fn run_execution_loop<R: ExecutionRunner>(
             eval_fn(obs, robot)
         }) {
             Ok(result) => result,
+            // Pause/Stop raced with this tick: the session is no longer Running.
+            // Not a fault — re-evaluate the lifecycle on the next iteration
+            // (the top of the loop sleeps if paused, or breaks if terminal).
+            Err(ExecutionDomainError::NotRunning(_)) => continue,
             Err(e) => {
                 tracing::error!(target: "execution",
                     session_id = %session_id.0,
@@ -219,6 +223,7 @@ pub fn plan_driven_eval_fn(
         let motion_type = match segment.map(|s| &s.instruction) {
             Some(thalos_core::execution::plan::PlanInstruction::MoveJ) => "movej",
             Some(thalos_core::execution::plan::PlanInstruction::MoveL) => "movel",
+            Some(thalos_core::execution::plan::PlanInstruction::MoveC) => "movec",
             None => "movej",
         };
 
@@ -403,8 +408,18 @@ mod tests {
 
         let runner = SimulationRunner::new(TickContext::default());
 
-        // Custom eval function that dispatches a motion action
-        let eval_fn: EvalFn = Box::new(|_obs, _robot| {
+        // Custom eval function that dispatches a motion action. It must request
+        // termination itself — the loop no longer completes `Once` after a tick.
+        let evaluations = std::sync::atomic::AtomicU64::new(0);
+        let eval_fn: EvalFn = Box::new(move |_obs, _robot| {
+            if evaluations.fetch_add(1, std::sync::atomic::Ordering::Relaxed) >= 3 {
+                return (
+                    Decision::TerminateSession {
+                        reason: "custom eval complete".to_string(),
+                    },
+                    Action::None,
+                );
+            }
             (
                 Decision::MotionAction {
                     motion_type: "movej".to_string(),
@@ -430,9 +445,15 @@ mod tests {
         let tick_events: Vec<_> = events.iter().filter(|e| matches!(e, ExecutionEvent::TickEvaluated { .. })).collect();
         assert!(tick_events.len() >= 1, "Should have ticks with custom eval");
 
-        // Verify the decision/action in tick events
+        // Verify the decision/action in the motion ticks. The final (requested)
+        // termination tick carries `TerminateSession` instead.
+        let mut motion_ticks = 0;
         for tick_event in &tick_events {
             if let ExecutionEvent::TickEvaluated { result, .. } = tick_event {
+                if matches!(result.decision, Decision::TerminateSession { .. }) {
+                    continue;
+                }
+                motion_ticks += 1;
                 assert!(
                     matches!(&result.decision, Decision::MotionAction { motion_type, target_name }
                         if motion_type == "movej" && target_name == "target_1"),
@@ -447,6 +468,7 @@ mod tests {
                 );
             }
         }
+        assert!(motion_ticks >= 3, "expected 3 motion ticks before termination, got {motion_ticks}");
 
         println!("Custom eval E2E test passed: {} ticks with correct decisions", tick_events.len());
     }
@@ -781,5 +803,110 @@ mod tests {
             coordinator.registry.get(&session_id).unwrap().lifecycle,
             ExecutionSessionState::Completed
         );
+    }
+
+    fn count_ticks(events: &Arc<Mutex<Vec<ExecutionEvent>>>) -> usize {
+        events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|e| matches!(e, ExecutionEvent::TickEvaluated { .. }))
+            .count()
+    }
+
+    /// Pause before the loop runs: no ticks. Resume: ticks continue. Stop:
+    /// terminal, loop ends, no further ticks.
+    #[tokio::test]
+    async fn paused_session_produces_no_ticks_until_resumed() {
+        let coordinator = Arc::new(DomainExecutionCoordinator::new());
+        let (collector, events_ref) = EventCollector::new();
+        coordinator.event_bus.subscribe(Arc::new(collector));
+
+        let session_id = coordinator.create_session("pause_resume", ExecutionConfiguration::default());
+        coordinator.initialize(&session_id).unwrap();
+        coordinator.start(&session_id).unwrap();
+        coordinator.pause(&session_id).unwrap(); // paused BEFORE the loop runs
+
+        let eval_fn = plan_driven_eval_fn(plan_with_timestamps(&[0.0, 10.0]), Duration::from_millis(1));
+        let runner = SimulationRunner::new(TickContext::default());
+        let coord = coordinator.clone();
+        let sid = session_id.clone();
+        let handle = tokio::spawn(async move {
+            run_execution_loop(coord, sid, runner, eval_fn, Duration::from_millis(1)).await
+        });
+
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        assert_eq!(count_ticks(&events_ref), 0, "a paused session must not tick");
+
+        coordinator.start(&session_id).unwrap(); // resume
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        let ticks_after_resume = count_ticks(&events_ref);
+        assert!(ticks_after_resume > 0, "resume must continue ticking");
+
+        coordinator.stop(&session_id).unwrap();
+        let result = handle.await.unwrap();
+        assert!(result.is_ok(), "loop must end cleanly after stop: {:?}", result.err());
+
+        let ticks_after_stop = count_ticks(&events_ref);
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        assert_eq!(
+            count_ticks(&events_ref),
+            ticks_after_stop,
+            "no ticks may appear after stop"
+        );
+        assert_eq!(
+            coordinator.registry.get(&session_id).unwrap().lifecycle,
+            ExecutionSessionState::Cancelled
+        );
+    }
+
+    /// Pausing mid-run must not abort the loop (the in-flight tick may observe
+    /// `NotRunning`) and must not lose or duplicate work on resume.
+    #[tokio::test]
+    async fn pause_racing_a_tick_does_not_abort_the_loop() {
+        let coordinator = Arc::new(DomainExecutionCoordinator::new());
+        let (collector, events_ref) = EventCollector::new();
+        coordinator.event_bus.subscribe(Arc::new(collector));
+
+        let session_id = coordinator.create_session("pause_race", ExecutionConfiguration::default());
+        coordinator.initialize(&session_id).unwrap();
+        coordinator.start(&session_id).unwrap();
+
+        // Long plan (10 s) so it never completes naturally during the test.
+        let eval_fn = plan_driven_eval_fn(plan_with_timestamps(&[0.0, 10.0]), Duration::from_millis(1));
+        let runner = SimulationRunner::new(TickContext::default());
+        let coord = coordinator.clone();
+        let sid = session_id.clone();
+        let handle = tokio::spawn(async move {
+            run_execution_loop(coord, sid, runner, eval_fn, Duration::from_millis(1)).await
+        });
+
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        assert!(count_ticks(&events_ref) > 0, "must be ticking before the pause");
+
+        coordinator.pause(&session_id).unwrap();
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        let paused_ticks = count_ticks(&events_ref);
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        assert_eq!(
+            count_ticks(&events_ref),
+            paused_ticks,
+            "a paused session must not tick"
+        );
+        assert!(
+            !handle.is_finished(),
+            "the loop must survive a pause race, not abort with an error"
+        );
+
+        coordinator.start(&session_id).unwrap(); // resume
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        assert!(
+            count_ticks(&events_ref) > paused_ticks,
+            "resume must continue from where it stopped"
+        );
+
+        coordinator.stop(&session_id).unwrap();
+        let result = handle.await.unwrap();
+        assert!(result.is_ok(), "loop must end cleanly after stop: {:?}", result.err());
     }
 }

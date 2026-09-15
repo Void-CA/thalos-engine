@@ -22,7 +22,7 @@ use thalos_engine::planning::motion::compiler::{DefaultPlannerDispatcher, PlanCo
 use thalos_engine::planning::motion::planner::PlanningContext;
 use thalos_engine::planning::motion::program::PlanningProgram;
 use thalos_engine::semantic::compiler::SemanticCompiler;
-use thalos_engine::semantic::model::MotionTarget;
+use thalos_engine::semantic::model::{MotionKind, MotionTarget};
 use thalos_engine::semantic::resolver::SemanticResolver;
 
 use crate::error::RuntimeError;
@@ -358,6 +358,28 @@ impl PlanningService {
         // 5. Build PlanningInput & check DOF / kinematic invariants
         let planning_input = PlanningInput::from_resolved(&resolved);
         for motion in &planning_input.motions {
+            // `movec` is a cartesian circular move: it requires a cartesian via
+            // and target. Joint targets cannot define an arc.
+            if let MotionKind::MoveC { via } = &motion.kind {
+                let is_cartesian = |t: &MotionTarget| {
+                    matches!(t, MotionTarget::Position(_) | MotionTarget::Pose(_))
+                };
+                if !is_cartesian(via) || !is_cartesian(&motion.target) {
+                    let span = motion.provenance.span.as_ref().map_or(
+                        SourceSpan::new(0, source.len() as u32),
+                        |s| SourceSpan::new(s.start as u32, s.end as u32),
+                    );
+                    let diag = Diagnostic {
+                        severity: DiagnosticSeverity::Error,
+                        code: Some("THL_MOVEC_INVALID".into()),
+                        message: "movec requires cartesian via and target positions \
+                                  (joint targets cannot define a circular arc)"
+                            .into(),
+                        span,
+                    };
+                    return (PlanResult::Diagnostics(vec![diag]), None);
+                }
+            }
             if let MotionTarget::Joints(ref j) = motion.target {
                 if j.values.len() != context.chain.dof_count() {
                     let span = motion.provenance.span.as_ref().map_or(

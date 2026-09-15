@@ -153,6 +153,18 @@ pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
             .then_ignore(just(';').or_not())
             .map(|target| Statement::MoveL { target });
 
+        // movec(VIA, TARGET): circular move through an intermediate (via) point
+        // to the final target. Both are expressions resolving to positions/poses.
+        let movec_stmt = just("movec")
+            .ignore_then(
+                expr.clone()
+                    .then_ignore(just(',').padded())
+                    .then(expr.clone())
+                    .delimited_by(just('(').padded(), just(')').padded()),
+            )
+            .then_ignore(just(';').or_not())
+            .map(|(via, target)| Statement::MoveC { via, target });
+
         let wait_stmt = just("wait")
             .ignore_then(expr.clone().delimited_by(just('('), just(')')))
             .then_ignore(just(';').or_not())
@@ -183,6 +195,7 @@ pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
             let_stmt,
             movej_stmt,
             movel_stmt,
+            movec_stmt,
             wait_stmt,
             expr.clone()
                 .then_ignore(just(';'))
