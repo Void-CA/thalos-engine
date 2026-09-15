@@ -3,8 +3,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use super::domain::{
-    DomainExecutionCoordinator, ExecutionSessionId, ObservationBundle, RobotState,
-    TickContext, TickOutcome, Cardinality,
+    Decision, DomainExecutionCoordinator, ExecutionSessionId, ObservationBundle, RobotState,
+    TickContext, TickOutcome,
 };
 use super::runner::{ExecutionRunner, SimulationRunner};
 use crate::execution::executor::ExecutionSessionState;
@@ -42,8 +42,6 @@ pub async fn run_execution_loop<R: ExecutionRunner>(
     eval_fn: EvalFn,
     tick_interval: Duration,
 ) -> Result<(), ExecutionLoopError> {
-    let mut first_tick = true;
-
     loop {
         // Check if session is in a terminal state before ticking
         let session = coordinator.registry.get(&session_id)
@@ -58,15 +56,13 @@ pub async fn run_execution_loop<R: ExecutionRunner>(
             continue;
         }
 
-        // Execute one tick: acquire → evaluate → act
-        match coordinator.tick_with_runner(&session_id, &mut runner, |obs, robot| {
+        // One evaluation (a CONTROL tick) — never the whole execution. The
+        // session stays Running while plan work remains; completion is decided
+        // by the plan's end or a termination policy, not by this tick count.
+        let result = match coordinator.tick_with_runner(&session_id, &mut runner, |obs, robot| {
             eval_fn(obs, robot)
         }) {
-            Ok(result) => {
-                if result.outcome == TickOutcome::SessionCompleted {
-                    break;
-                }
-            }
+            Ok(result) => result,
             Err(e) => {
                 tracing::error!(target: "execution",
                     session_id = %session_id.0,
@@ -75,37 +71,56 @@ pub async fn run_execution_loop<R: ExecutionRunner>(
                 );
                 return Err(ExecutionLoopError::TickFailed(e.to_string()));
             }
+        };
+
+        // Domain-level completion: a termination policy fired during
+        // `evaluate_tick`, which already transitioned the session. Publish the
+        // Running → Completed observation and stop.
+        if result.outcome == TickOutcome::SessionCompleted {
+            publish_completed(&coordinator, &session_id);
+            break;
         }
 
-        // For Cardinality::Once sessions, complete after the first tick
-        if first_tick {
-            first_tick = false;
-            let session = coordinator.registry.get(&session_id)
-                .ok_or_else(|| ExecutionLoopError::SessionNotFound(session_id.0.clone()))?;
-            if session.configuration.cardinality == Cardinality::Once {
-                // Complete the session (Running → Completed)
-                let _ = coordinator.registry.with_session_mut(&session_id, |session| {
-                    session.complete().map_err(|e| super::domain::ExecutionDomainError::InvalidLifecycle(e))
-                });
-                // Publish lifecycle event
-                let now_us = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_micros() as u64;
-                coordinator.event_bus.publish(super::events::ExecutionEvent::LifecycleChanged {
-                    session_id: session_id.clone(),
-                    previous: ExecutionSessionState::Running,
-                    current: ExecutionSessionState::Completed,
-                    timestamp_us: now_us,
-                });
-                break;
-            }
+        // Program/plan completion: the eval function consumed the plan and
+        // requested termination. Transition Running → Completed, then publish.
+        if matches!(result.decision, Decision::TerminateSession { .. }) {
+            complete_session(&coordinator, &session_id);
+            publish_completed(&coordinator, &session_id);
+            break;
         }
 
         tokio::time::sleep(tick_interval).await;
     }
 
     Ok(())
+}
+
+/// Transition `Running → Completed` if the session is still running.
+///
+/// Idempotent: a session already terminal keeps its state.
+fn complete_session(coordinator: &DomainExecutionCoordinator, session_id: &ExecutionSessionId) {
+    let _ = coordinator.registry.with_session_mut(session_id, |session| {
+        if session.lifecycle == ExecutionSessionState::Running {
+            session
+                .complete()
+                .map_err(super::domain::ExecutionDomainError::InvalidLifecycle)?;
+        }
+        Ok(())
+    });
+}
+
+/// Publish the `Running → Completed` lifecycle observation.
+fn publish_completed(coordinator: &DomainExecutionCoordinator, session_id: &ExecutionSessionId) {
+    let now_us = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_micros() as u64;
+    coordinator.event_bus.publish(super::events::ExecutionEvent::LifecycleChanged {
+        session_id: session_id.clone(),
+        previous: ExecutionSessionState::Running,
+        current: ExecutionSessionState::Completed,
+        timestamp_us: now_us,
+    });
 }
 
 /// Convenience wrapper that creates a default eval function (Continue + None)
@@ -115,8 +130,16 @@ pub async fn run_simulation_session(
     session_id: ExecutionSessionId,
     runner: SimulationRunner,
 ) -> Result<(), ExecutionLoopError> {
+    // A plan-less simulation has no work to consume: one evaluation IS the
+    // execution instance. Termination is requested explicitly — the loop no
+    // longer conflates `Cardinality::Once` with "exactly one tick".
     let eval_fn: EvalFn = Box::new(|_obs, _robot| {
-        (super::domain::Decision::Continue, super::domain::Action::None)
+        (
+            super::domain::Decision::TerminateSession {
+                reason: "plan-less simulation instance complete".to_string(),
+            },
+            super::domain::Action::None,
+        )
     });
 
     run_execution_loop(
@@ -148,40 +171,67 @@ pub fn plan_driven_eval_fn(
     let tick_interval_secs = tick_interval.as_secs_f64();
     let tick_count = AtomicU64::new(0);
 
+    // End of the plan = its last waypoint timestamp. A `TickEvaluated` is an
+    // evaluation WITHIN the execution; reaching the plan end is what completes
+    // the execution (`Cardinality::Once` = one instance of the plan, not one tick).
+    let plan_end = plan
+        .waypoints
+        .iter()
+        .map(|w| w.timestamp)
+        .fold(0.0_f64, f64::max);
+    let has_waypoints = !plan.waypoints.is_empty();
+
     Box::new(move |_obs: &ObservationBundle, _robot: &RobotState| {
+        // Empty/invalid plan: nothing to consume — terminate instead of leaving
+        // the session artificially Running.
+        if !has_waypoints {
+            return (
+                super::domain::Decision::TerminateSession {
+                    reason: "plan is empty".to_string(),
+                },
+                super::domain::Action::None,
+            );
+        }
+
         let current = tick_count.fetch_add(1, Ordering::Relaxed);
         let elapsed = current as f64 * tick_interval_secs;
 
+        // Plan fully consumed. Strictly past the end so the FINAL waypoint is
+        // still dispatched (at `elapsed == plan_end`) before terminating.
+        if elapsed > plan_end {
+            return (
+                super::domain::Decision::TerminateSession {
+                    reason: "plan completed".to_string(),
+                },
+                super::domain::Action::None,
+            );
+        }
+
         // Find the current waypoint: last waypoint whose timestamp <= elapsed
         let idx = plan.waypoints.partition_point(|w| w.timestamp <= elapsed);
-        let waypoint_idx = idx.saturating_sub(1).min(plan.waypoints.len().saturating_sub(1));
+        let waypoint_idx = idx.saturating_sub(1).min(plan.waypoints.len() - 1);
 
-        if let Some(waypoint) = plan.waypoints.get(waypoint_idx) {
-            // Determine which segment this waypoint belongs to
-            let segment = plan.segments.iter().find(|s| {
-                s.waypoint_range.contains(&waypoint_idx)
-            });
+        // Determine which segment this waypoint belongs to
+        let segment = plan.segments.iter().find(|s| {
+            s.waypoint_range.contains(&waypoint_idx)
+        });
 
-            let motion_type = match segment.map(|s| &s.instruction) {
-                Some(thalos_core::execution::plan::PlanInstruction::MoveJ) => "movej",
-                Some(thalos_core::execution::plan::PlanInstruction::MoveL) => "movel",
-                None => "movej",
-            };
+        let motion_type = match segment.map(|s| &s.instruction) {
+            Some(thalos_core::execution::plan::PlanInstruction::MoveJ) => "movej",
+            Some(thalos_core::execution::plan::PlanInstruction::MoveL) => "movel",
+            None => "movej",
+        };
 
-            (
-                super::domain::Decision::MotionAction {
-                    motion_type: motion_type.to_string(),
-                    target_name: format!("waypoint_{waypoint_idx}"),
-                },
-                super::domain::Action::DispatchMotion {
-                    kind: motion_type.to_string(),
-                    target: format!("wp{waypoint_idx}"),
-                },
-            )
-        } else {
-            // Past the end of the plan — continue (session will complete via Cardinality::Once)
-            (super::domain::Decision::Continue, super::domain::Action::None)
-        }
+        (
+            super::domain::Decision::MotionAction {
+                motion_type: motion_type.to_string(),
+                target_name: format!("waypoint_{waypoint_idx}"),
+            },
+            super::domain::Action::DispatchMotion {
+                kind: motion_type.to_string(),
+                target: format!("wp{waypoint_idx}"),
+            },
+        )
     })
 }
 
@@ -545,5 +595,191 @@ mod tests {
         }
 
         println!("Waypoint interpolation test passed");
+    }
+
+    fn plan_with_timestamps(timestamps: &[f64]) -> thalos_core::execution::plan::ExecutionPlan {
+        use thalos_core::execution::plan::{
+            ExecutionPlan, ExecutionSegment, ExecutionWaypoint, PlanInstruction,
+        };
+
+        let waypoints: Vec<ExecutionWaypoint> = timestamps
+            .iter()
+            .enumerate()
+            .map(|(i, t)| ExecutionWaypoint {
+                joints: vec![i as f64, 0.0, 0.0],
+                timestamp: *t,
+            })
+            .collect();
+        let n = waypoints.len();
+
+        ExecutionPlan {
+            waypoints,
+            segments: vec![ExecutionSegment {
+                index: 0,
+                planned_segment_index: 0,
+                instruction: PlanInstruction::MoveJ,
+                waypoint_range: 0..n,
+            }],
+            duration: timestamps.last().copied().unwrap_or(0.0),
+            repeat_count: 1,
+            program_id: Some("test_program".to_string()),
+            program_revision: Some(1),
+            source_fingerprint: Some("hash".to_string()),
+            robot_id: None,
+        }
+    }
+
+    /// The bug this fixes: `Cardinality::Once` used to complete after ONE tick,
+    /// so a multi-step plan never produced a meaningful execution.
+    #[tokio::test]
+    async fn once_multistep_plan_does_not_complete_on_the_first_tick() {
+        let coordinator = Arc::new(DomainExecutionCoordinator::new());
+        let (collector, events_ref) = EventCollector::new();
+        coordinator.event_bus.subscribe(Arc::new(collector));
+
+        let session_id = coordinator.create_session("multi_step", ExecutionConfiguration::default());
+        coordinator.initialize(&session_id).unwrap();
+        coordinator.start(&session_id).unwrap();
+
+        // 3 waypoints over 5 ms → several ticks at a 1 ms interval.
+        let eval_fn = plan_driven_eval_fn(
+            plan_with_timestamps(&[0.0, 0.0025, 0.005]),
+            Duration::from_millis(1),
+        );
+        let runner = SimulationRunner::new(TickContext::default());
+
+        run_execution_loop(
+            coordinator.clone(),
+            session_id.clone(),
+            runner,
+            eval_fn,
+            Duration::from_millis(1),
+        )
+        .await
+        .unwrap();
+
+        let events = events_ref.lock().unwrap();
+
+        let running_idx = events.iter().position(|e| {
+            matches!(
+                e,
+                ExecutionEvent::LifecycleChanged {
+                    current: ExecutionSessionState::Running,
+                    ..
+                }
+            )
+        });
+        let completed_idx = events.iter().position(|e| {
+            matches!(
+                e,
+                ExecutionEvent::LifecycleChanged {
+                    current: ExecutionSessionState::Completed,
+                    ..
+                }
+            )
+        });
+        let tick_indices: Vec<usize> = events
+            .iter()
+            .enumerate()
+            .filter_map(|(i, e)| match e {
+                ExecutionEvent::TickEvaluated { session_id: sid, .. } => {
+                    // The session identity must be stable across the whole run.
+                    assert_eq!(sid.0, session_id.0, "session_id must stay constant");
+                    Some(i)
+                }
+                _ => None,
+            })
+            .collect();
+
+        let running_idx = running_idx.expect("Running lifecycle event");
+        let completed_idx = completed_idx.expect("Completed lifecycle event");
+
+        assert!(
+            running_idx < tick_indices[0],
+            "LifecycleChanged(Running) must precede the ticks"
+        );
+        assert!(
+            tick_indices.len() >= 2,
+            "a multi-step plan must produce multiple TickEvaluated before Completed, got {}",
+            tick_indices.len()
+        );
+        assert!(
+            tick_indices.iter().all(|&i| i < completed_idx),
+            "no TickEvaluated may appear after Completed"
+        );
+        assert!(
+            completed_idx > *tick_indices.last().unwrap(),
+            "Completed must come after the LAST tick, not the first"
+        );
+    }
+
+    #[tokio::test]
+    async fn empty_plan_does_not_stay_running() {
+        let coordinator = Arc::new(DomainExecutionCoordinator::new());
+        let session_id = coordinator.create_session("empty_plan", ExecutionConfiguration::default());
+        coordinator.initialize(&session_id).unwrap();
+        coordinator.start(&session_id).unwrap();
+
+        let eval_fn = plan_driven_eval_fn(plan_with_timestamps(&[]), Duration::from_millis(1));
+        let runner = SimulationRunner::new(TickContext::default());
+
+        run_execution_loop(
+            coordinator.clone(),
+            session_id.clone(),
+            runner,
+            eval_fn,
+            Duration::from_millis(1),
+        )
+        .await
+        .unwrap();
+
+        let session = coordinator.registry.get(&session_id).unwrap();
+        assert_eq!(
+            session.lifecycle,
+            ExecutionSessionState::Completed,
+            "an empty/invalid plan must complete, not linger Running"
+        );
+    }
+
+    #[tokio::test]
+    async fn single_waypoint_plan_dispatches_then_completes() {
+        let coordinator = Arc::new(DomainExecutionCoordinator::new());
+        let (collector, events_ref) = EventCollector::new();
+        coordinator.event_bus.subscribe(Arc::new(collector));
+
+        let session_id = coordinator.create_session("single_wp", ExecutionConfiguration::default());
+        coordinator.initialize(&session_id).unwrap();
+        coordinator.start(&session_id).unwrap();
+
+        let eval_fn = plan_driven_eval_fn(plan_with_timestamps(&[0.0]), Duration::from_millis(1));
+        let runner = SimulationRunner::new(TickContext::default());
+
+        run_execution_loop(
+            coordinator.clone(),
+            session_id.clone(),
+            runner,
+            eval_fn,
+            Duration::from_millis(1),
+        )
+        .await
+        .unwrap();
+
+        let events = events_ref.lock().unwrap();
+        let first_tick = events
+            .iter()
+            .find_map(|e| match e {
+                ExecutionEvent::TickEvaluated { result, .. } => Some(result.clone()),
+                _ => None,
+            })
+            .expect("at least one TickEvaluated");
+
+        assert!(
+            matches!(first_tick.decision, Decision::MotionAction { .. }),
+            "the single waypoint must be dispatched before the session completes"
+        );
+        assert_eq!(
+            coordinator.registry.get(&session_id).unwrap().lifecycle,
+            ExecutionSessionState::Completed
+        );
     }
 }
