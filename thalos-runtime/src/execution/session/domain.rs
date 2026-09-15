@@ -223,6 +223,10 @@ pub struct ExecutionSession {
     pub program_id: String,
     pub station_id: Option<String>,
     pub robotics_module_id: Option<String>,
+    /// Program revision this session was prepared against (see ProgramRecord).
+    pub program_revision: Option<u64>,
+    /// SHA-256 fingerprint of the source that revision had at preparation time.
+    pub source_fingerprint: Option<String>,
     pub configuration: ExecutionConfiguration,
     pub lifecycle: ExecutionSessionState,
     pub state: SessionState,
@@ -237,11 +241,25 @@ impl ExecutionSession {
             program_id: program_id.into(),
             station_id: None,
             robotics_module_id: None,
+            program_revision: None,
+            source_fingerprint: None,
             configuration,
             lifecycle: initial_state,
             state: SessionState::default(),
             history: vec![initial_state],
         }
+    }
+
+    /// True when the captured program snapshot (revision + fingerprint) no
+    /// longer matches the current persisted program — e.g. the program was
+    /// edited and saved after this session was prepared.
+    pub fn is_stale_for(&self, current_revision: u64, current_fingerprint: &str) -> bool {
+        crate::ports::program_repository::program_snapshot_is_stale(
+            self.program_revision,
+            self.source_fingerprint.as_deref(),
+            current_revision,
+            current_fingerprint,
+        )
     }
 
     fn record_transition(&mut self, next: ExecutionSessionState) {
@@ -531,6 +549,40 @@ impl DomainExecutionCoordinator {
         let mut session = ExecutionSession::new(prog.clone(), config);
         session.station_id = Some(st_id);
         session.robotics_module_id = Some(rob_id);
+        let id = self.registry.register(session);
+
+        let now_us = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_micros() as u64;
+
+        self.event_bus.publish(super::events::ExecutionEvent::SessionCreated {
+            session_id: id.clone(),
+            program_id: prog,
+            timestamp_us: now_us,
+        });
+
+        id
+    }
+
+    /// Create a session that captures the exact program snapshot it is prepared
+    /// against: `program_id`, `revision` and `source_fingerprint`. This is the
+    /// canonical creation path for provenance-aware execution.
+    pub fn create_session_with_provenance(
+        &self,
+        program_id: impl Into<String>,
+        program_revision: u64,
+        source_fingerprint: impl Into<String>,
+        station_id: Option<String>,
+        robotics_module_id: Option<String>,
+        config: ExecutionConfiguration,
+    ) -> ExecutionSessionId {
+        let prog = program_id.into();
+        let mut session = ExecutionSession::new(prog.clone(), config);
+        session.program_revision = Some(program_revision);
+        session.source_fingerprint = Some(source_fingerprint.into());
+        session.station_id = station_id;
+        session.robotics_module_id = robotics_module_id;
         let id = self.registry.register(session);
 
         let now_us = std::time::SystemTime::now()

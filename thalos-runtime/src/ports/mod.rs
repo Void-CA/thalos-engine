@@ -18,7 +18,7 @@ pub use equipment_module_repository::{
 pub use execution_repository::{
     ExecutionHistory, ExecutionRepository, ExecutionSession, ExecutionSessionId,
 };
-pub use program_repository::{ProgramRecord, ProgramRepository};
+pub use program_repository::{program_snapshot_is_stale, source_fingerprint, ProgramRecord, ProgramRepository};
 pub use robot_reference_checker::{RobotReference, RobotReferenceChecker};
 pub use robot_repository::{
     PersistenceError, Result as PersistenceResult, RobotAsset, RobotRecord, RobotRepository, RobotSource,
