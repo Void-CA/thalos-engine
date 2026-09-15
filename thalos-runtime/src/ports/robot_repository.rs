@@ -13,6 +13,11 @@ pub enum PersistenceError {
 
     #[error("Serialization error: {0}")]
     Serialization(String),
+
+    /// Optimistic-concurrency conflict: the caller's expected revision does not
+    /// match the persisted one (someone else saved first).
+    #[error("Revision conflict: expected {expected}, found {actual}")]
+    Conflict { expected: i32, actual: i32 },
 }
 
 pub type Result<T> = std::result::Result<T, PersistenceError>;
