@@ -81,6 +81,7 @@ fn test_reactive_execution_e2e() {
                 Action::DispatchMotion {
                     kind: "movej".to_string(),
                     target: "target_high".to_string(),
+                    joints: vec![0.5, 0.0],
                 },
             )
         } else {
@@ -92,6 +93,7 @@ fn test_reactive_execution_e2e() {
                 Action::DispatchMotion {
                     kind: "movej".to_string(),
                     target: "target_low".to_string(),
+                    joints: vec![-0.5, 0.0],
                 },
             )
         }
@@ -124,6 +126,7 @@ fn test_reactive_execution_e2e() {
                 Action::DispatchMotion {
                     kind: "movej".to_string(),
                     target: "target_high".to_string(),
+                    joints: vec![0.5, 0.0],
                 },
             )
         } else {
@@ -135,6 +138,7 @@ fn test_reactive_execution_e2e() {
                 Action::DispatchMotion {
                     kind: "movej".to_string(),
                     target: "target_low".to_string(),
+                    joints: vec![-0.5, 0.0],
                 },
             )
         }

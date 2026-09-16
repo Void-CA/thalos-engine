@@ -33,6 +33,7 @@ fn test_control_tick_deterministic_branching_and_invariants() {
                 Action::DispatchMotion {
                     kind: "move_to".to_string(),
                     target: "target_high".to_string(),
+                    joints: vec![0.3, 0.4],
                 },
             )
         } else {
@@ -71,7 +72,8 @@ fn test_control_tick_deterministic_branching_and_invariants() {
         res0.action,
         Action::DispatchMotion {
             kind: "move_to".to_string(),
-            target: "target_high".to_string()
+            target: "target_high".to_string(),
+            joints: vec![0.3, 0.4]
         }
     );
     assert_eq!(res0.outcome, TickOutcome::Success);
@@ -266,6 +268,7 @@ fn test_same_program_runner_polymorphism_reproducibility() {
                 Action::DispatchMotion {
                     kind: "move_to".to_string(),
                     target: "target_high".to_string(),
+                    joints: vec![0.3, 0.4],
                 },
             )
         } else {
@@ -393,6 +396,7 @@ fn test_telemetry_execution_runner_dynamic_channel_and_robot_observation() {
                 Action::DispatchMotion {
                     kind: "cool_down".to_string(),
                     target: "safe_home".to_string(),
+                    joints: vec![0.0, 0.0, 0.0],
                 },
             )
         } else {
@@ -432,7 +436,8 @@ fn test_telemetry_execution_runner_dynamic_channel_and_robot_observation() {
         res2.action,
         Action::DispatchMotion {
             kind: "cool_down".to_string(),
-            target: "safe_home".to_string()
+            target: "safe_home".to_string(),
+            joints: vec![0.0, 0.0, 0.0]
         }
     );
     assert_eq!(res2.outcome, TickOutcome::Success);
@@ -584,6 +589,7 @@ fn test_execution_history_reconstruction_from_event_bus() {
                 Action::DispatchMotion {
                     kind: "conveyor_sync".to_string(),
                     target: "p1".to_string(),
+                    joints: vec![0.2],
                 },
             )
         })

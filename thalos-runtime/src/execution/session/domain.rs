@@ -158,7 +158,16 @@ pub enum Decision {
 /// Acción de control disparada por la decisión hacia los actuadores/simulador.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Action {
-    DispatchMotion { kind: String, target: String },
+    /// Command a motion to a resolved joint configuration.
+    ///
+    /// `joints` is the COMMANDED configuration the runner must produce — it is
+    /// the runtime state, not a reference to the plan. `kind`/`target` remain
+    /// the plan reference (e.g. `movej` / `wp3`) for traceability.
+    DispatchMotion {
+        kind: String,
+        target: String,
+        joints: Vec<f64>,
+    },
     SetOutput { name: String, value: bool },
     HoldPosition,
     None,
@@ -804,6 +813,19 @@ impl DomainExecutionCoordinator {
         if result.outcome != TickOutcome::SessionCompleted {
             let outcome = runner.act(&result.action);
             result.outcome = outcome;
+
+            // The action PRODUCES runtime state (Command → Runner → new state).
+            // Refresh the tick snapshot and the session latch from the runner so
+            // the emitted observation is the state the runtime actually produced,
+            // not the pre-action context (e.g. the simulation twin).
+            let (robot, expected) = runner.runtime_state();
+            result.tick.robot = robot.clone();
+            result.tick.expected = expected.clone();
+            let _ = self.registry.with_session_mut(id, |session| {
+                session.state.robot = robot;
+                session.state.expected = expected;
+                Ok(())
+            });
         }
 
         let temporal = super::events::TemporalInvariants::current(sampled_at_us);
@@ -976,6 +998,7 @@ mod tests {
                     Action::DispatchMotion {
                         kind: "movej".to_string(),
                         target: "target_high".to_string(),
+                        joints: vec![],
                     },
                 )
             } else {
@@ -987,6 +1010,7 @@ mod tests {
                     Action::DispatchMotion {
                         kind: "movej".to_string(),
                         target: "target_low".to_string(),
+                        joints: vec![],
                     },
                 )
             }

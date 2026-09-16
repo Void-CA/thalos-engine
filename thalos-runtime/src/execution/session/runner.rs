@@ -16,6 +16,15 @@ pub trait ExecutionRunner: Send + Sync {
 
     /// Ejecuta la acción determinada por la decisión del tick en el entorno correspondiente.
     fn act(&mut self, action: &Action) -> TickOutcome;
+
+    /// Estado runtime producido por la última acción: `(robot, expected)`.
+    ///
+    /// `robot` es el estado observado/actual; `expected` es el modelo digital.
+    /// Se consulta DESPUÉS de `act` para que la observación del tick refleje el
+    /// estado que el runtime realmente produjo (no el contexto previo a la acción).
+    fn runtime_state(&self) -> (RobotState, ExpectedState) {
+        (RobotState::default(), ExpectedState::default())
+    }
 }
 
 /// Provides observation data to the execution domain.
@@ -244,10 +253,12 @@ where
         }
 
         match action {
-            Action::DispatchMotion { kind, target } => {
+            Action::DispatchMotion { kind, joints, .. } => {
+                // The commanded configuration is the digital twin's expected state.
+                self.expected_state.simulated_joints = joints.clone();
                 let cmd = match kind.as_str() {
                     "movej" => RobotCommand::MoveJoints {
-                        positions_rad: vec![], // TODO: resolve target to joint positions
+                        positions_rad: joints.clone(),
                         velocities_rad_s: None,
                     },
                     _ => RobotCommand::Stop,
@@ -266,6 +277,10 @@ where
             }
             Action::None => TickOutcome::Success,
         }
+    }
+
+    fn runtime_state(&self) -> (RobotState, ExpectedState) {
+        (self.robot_provider.observe(), self.expected_state.clone())
     }
 }
 
@@ -294,11 +309,24 @@ impl ExecutionRunner for SimulationRunner {
 
     fn act(&mut self, action: &Action) -> TickOutcome {
         match action {
-            Action::DispatchMotion { .. } => TickOutcome::Success,
+            Action::DispatchMotion { joints, .. } => {
+                // In simulation the commanded configuration IS the runtime state.
+                self.current_context.robot.joints = joints.clone();
+                self.current_context.robot.velocities = vec![0.0; joints.len()];
+                self.current_context.expected.simulated_joints = joints.clone();
+                TickOutcome::Success
+            }
             Action::SetOutput { .. } => TickOutcome::Success,
             Action::HoldPosition => TickOutcome::Success,
             Action::None => TickOutcome::Success,
         }
+    }
+
+    fn runtime_state(&self) -> (RobotState, ExpectedState) {
+        (
+            self.current_context.robot.clone(),
+            self.current_context.expected.clone(),
+        )
     }
 }
 
@@ -333,11 +361,23 @@ impl ExecutionRunner for PhysicalRunner {
         }
 
         match action {
-            Action::DispatchMotion { .. } => TickOutcome::Success,
+            Action::DispatchMotion { joints, .. } => {
+                // The digital twin tracks the commanded configuration; the actual
+                // physical state is read back through `acquire`.
+                self.current_context.expected.simulated_joints = joints.clone();
+                TickOutcome::Success
+            }
             Action::SetOutput { .. } => TickOutcome::Success,
             Action::HoldPosition => TickOutcome::Success,
             Action::None => TickOutcome::Success,
         }
+    }
+
+    fn runtime_state(&self) -> (RobotState, ExpectedState) {
+        (
+            self.current_context.robot.clone(),
+            self.current_context.expected.clone(),
+        )
     }
 }
 

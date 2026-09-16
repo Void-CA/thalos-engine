@@ -237,6 +237,9 @@ pub fn plan_driven_eval_fn(
             super::domain::Action::DispatchMotion {
                 kind: motion_type.to_string(),
                 target: format!("wp{waypoint_idx}"),
+                // The waypoint's joint configuration is the COMMANDED runtime
+                // state for this tick — not a plan reference (`target`).
+                joints: plan.waypoints[waypoint_idx].joints.clone(),
             },
         )
     })
@@ -430,6 +433,7 @@ mod tests {
                 Action::DispatchMotion {
                     kind: "movej".to_string(),
                     target: "target_1".to_string(),
+                    joints: vec![0.1, 0.2],
                 },
             )
         });
@@ -463,7 +467,7 @@ mod tests {
                     result.decision
                 );
                 assert!(
-                    matches!(&result.action, Action::DispatchMotion { kind, target }
+                    matches!(&result.action, Action::DispatchMotion { kind, target, .. }
                         if kind == "movej" && target == "target_1"),
                     "Action should be DispatchMotion(movej, target_1), got: {:?}",
                     result.action
@@ -912,11 +916,11 @@ mod tests {
         assert!(result.is_ok(), "loop must end cleanly after stop: {:?}", result.err());
     }
 
-    /// F4 evidence: the plan-driven eval fn reports the plan segment's motion
-    /// type (Operation) and the waypoint label (Target) — the two Live fields
-    /// that are actually verifiable today.
+    /// The plan-driven eval fn reports the plan segment's motion type
+    /// (Operation), the waypoint reference (Target) and, crucially, the
+    /// COMMANDED joint configuration the runner must produce (state).
     #[test]
-    fn plan_driven_eval_fn_reports_motion_type_and_target() {
+    fn plan_driven_eval_fn_reports_motion_type_target_and_joints() {
         use thalos_core::execution::plan::{
             ExecutionPlan, ExecutionSegment, ExecutionWaypoint, PlanInstruction,
         };
@@ -951,23 +955,25 @@ mod tests {
             other => panic!("expected MotionAction, got {other:?}"),
         }
         match action {
-            Action::DispatchMotion { kind, target } => {
+            Action::DispatchMotion { kind, target, joints } => {
                 assert_eq!(kind, "movel");
                 assert_eq!(target, "wp0");
+                assert_eq!(joints, vec![0.0, 0.0], "joints are the waypoint's configuration");
             }
             other => panic!("expected DispatchMotion, got {other:?}"),
         }
     }
 
-    /// F4 evidence: `tick.robot.joints` is the runner's STATIC context, NOT
-    /// runtime state — hence Joints stays `—` in the Live UI.
+    /// The simulation runner produces runtime state: the tick's `robot.joints`
+    /// (and the digital twin's `expected`) reflect the last commanded waypoint,
+    /// so the UI has real state to render — not a static context.
     #[tokio::test]
-    async fn simulation_runner_robot_joints_are_static_not_runtime() {
+    async fn simulation_runner_emits_runtime_joints_per_waypoint() {
         let coordinator = Arc::new(DomainExecutionCoordinator::new());
         let (collector, events_ref) = EventCollector::new();
         coordinator.event_bus.subscribe(Arc::new(collector));
 
-        let session_id = coordinator.create_session("f4_joints", ExecutionConfiguration::default());
+        let session_id = coordinator.create_session("runtime_joints", ExecutionConfiguration::default());
         coordinator.initialize(&session_id).unwrap();
         coordinator.start(&session_id).unwrap();
 
@@ -986,17 +992,35 @@ mod tests {
         .unwrap();
 
         let events = events_ref.lock().unwrap();
-        let first_tick = events
+        let motion_ticks: Vec<_> = events
             .iter()
-            .find_map(|e| match e {
-                ExecutionEvent::TickEvaluated { result, .. } => Some(result.clone()),
+            .filter_map(|e| match e {
+                ExecutionEvent::TickEvaluated { result, .. }
+                    if !matches!(result.decision, Decision::TerminateSession { .. }) =>
+                {
+                    Some(result.clone())
+                }
                 _ => None,
             })
-            .expect("at least one tick");
+            .collect();
 
-        assert!(
-            first_tick.tick.robot.joints.is_empty(),
-            "joints come from the static runner context, so the Live field must stay `—`"
+        assert!(!motion_ticks.is_empty(), "at least one motion tick");
+
+        // The first waypoint's configuration IS the runtime state (not empty).
+        let first = &motion_ticks[0];
+        assert_eq!(
+            first.tick.robot.joints,
+            vec![0.0, 0.0, 0.0],
+            "the runtime emits the commanded configuration, not a static context"
+        );
+        assert_eq!(first.tick.expected.simulated_joints, vec![0.0, 0.0, 0.0]);
+
+        // The final waypoint advances the runtime state to its configuration.
+        let last = motion_ticks.last().unwrap();
+        assert_eq!(
+            last.tick.robot.joints,
+            vec![1.0, 0.0, 0.0],
+            "the runtime state progresses with the plan's waypoints"
         );
     }
 }
