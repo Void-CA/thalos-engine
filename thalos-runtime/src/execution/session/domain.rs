@@ -235,9 +235,19 @@ pub struct ExecutionSession {
 
 impl ExecutionSession {
     pub fn new(program_id: impl Into<String>, configuration: ExecutionConfiguration) -> Self {
+        Self::new_with_id(ExecutionSessionId::generate(), program_id, configuration)
+    }
+
+    /// Like [`new`](Self::new) but with a caller-provided id — so a durable
+    /// record can be created for the session BEFORE any event is published.
+    pub fn new_with_id(
+        id: ExecutionSessionId,
+        program_id: impl Into<String>,
+        configuration: ExecutionConfiguration,
+    ) -> Self {
         let initial_state = ExecutionSessionState::Created;
         Self {
-            id: ExecutionSessionId::generate(),
+            id,
             program_id: program_id.into(),
             station_id: None,
             robotics_module_id: None,
@@ -577,8 +587,33 @@ impl DomainExecutionCoordinator {
         robotics_module_id: Option<String>,
         config: ExecutionConfiguration,
     ) -> ExecutionSessionId {
+        self.create_session_with_provenance_and_id(
+            ExecutionSessionId::generate(),
+            program_id,
+            program_revision,
+            source_fingerprint,
+            station_id,
+            robotics_module_id,
+            config,
+        )
+    }
+
+    /// Like [`create_session_with_provenance`](Self::create_session_with_provenance)
+    /// but with a caller-provided id — lets the caller persist a durable record
+    /// (satisfying the events foreign key) BEFORE `SessionCreated` is published.
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_session_with_provenance_and_id(
+        &self,
+        id: ExecutionSessionId,
+        program_id: impl Into<String>,
+        program_revision: u64,
+        source_fingerprint: impl Into<String>,
+        station_id: Option<String>,
+        robotics_module_id: Option<String>,
+        config: ExecutionConfiguration,
+    ) -> ExecutionSessionId {
         let prog = program_id.into();
-        let mut session = ExecutionSession::new(prog.clone(), config);
+        let mut session = ExecutionSession::new_with_id(id, prog.clone(), config);
         session.program_revision = Some(program_revision);
         session.source_fingerprint = Some(source_fingerprint.into());
         session.station_id = station_id;
