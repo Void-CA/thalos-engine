@@ -3,8 +3,9 @@ use std::sync::{Arc, Mutex};
 use thalos_core::device::{ChannelObservation, SignalQuality};
 use thalos_core::robot::RobotCommand;
 use super::domain::{
-    Action, ExpectedState, ObservationBundle, RobotState, TickContext, TickOutcome,
+    Action, ExpectedState, ObservationBundle, RobotState, RuntimeState, TickContext, TickOutcome,
 };
+use super::kinematics::SharedKinematics;
 
 /// Abstracción del entorno de ejecución (Simulación, Hardware Físico, etc.).
 ///
@@ -17,13 +18,29 @@ pub trait ExecutionRunner: Send + Sync {
     /// Ejecuta la acción determinada por la decisión del tick en el entorno correspondiente.
     fn act(&mut self, action: &Action) -> TickOutcome;
 
-    /// Estado runtime producido por la última acción: `(robot, expected)`.
+    /// Estado runtime producido por la última acción.
     ///
-    /// `robot` es el estado observado/actual; `expected` es el modelo digital.
     /// Se consulta DESPUÉS de `act` para que la observación del tick refleje el
-    /// estado que el runtime realmente produjo (no el contexto previo a la acción).
-    fn runtime_state(&self) -> (RobotState, ExpectedState) {
-        (RobotState::default(), ExpectedState::default())
+    /// estado que el runtime realmente produjo (no el contexto previo a la
+    /// acción). Incluye la pose TCP cuando la autoridad cinemática compartida
+    /// puede resolverla.
+    fn runtime_state(&self) -> RuntimeState {
+        RuntimeState::default()
+    }
+}
+
+/// Compose a runner's produced state, resolving TCP through the SHARED kinematic
+/// authority — never per-runner kinematics.
+fn produced_state(
+    robot: RobotState,
+    expected: ExpectedState,
+    kinematics: &Option<SharedKinematics>,
+) -> RuntimeState {
+    let tcp = kinematics.as_ref().and_then(|k| k.tcp_pose(&robot.joints));
+    RuntimeState {
+        robot,
+        expected,
+        tcp,
     }
 }
 
@@ -204,6 +221,8 @@ where
     pub command_provider: C,
     pub expected_state: ExpectedState,
     pub is_connected: bool,
+    /// Shared kinematic authority (joints → TCP). `None` ⇒ no TCP produced.
+    pub kinematics: Option<SharedKinematics>,
 }
 
 impl<A, R, C> TelemetryExecutionRunner<A, R, C>
@@ -224,11 +243,17 @@ where
             command_provider,
             expected_state,
             is_connected: true,
+            kinematics: None,
         }
     }
 
     pub fn with_connection_status(mut self, is_connected: bool) -> Self {
         self.is_connected = is_connected;
+        self
+    }
+
+    pub fn with_kinematics(mut self, kinematics: SharedKinematics) -> Self {
+        self.kinematics = Some(kinematics);
         self
     }
 }
@@ -279,8 +304,12 @@ where
         }
     }
 
-    fn runtime_state(&self) -> (RobotState, ExpectedState) {
-        (self.robot_provider.observe(), self.expected_state.clone())
+    fn runtime_state(&self) -> RuntimeState {
+        produced_state(
+            self.robot_provider.observe(),
+            self.expected_state.clone(),
+            &self.kinematics,
+        )
     }
 }
 
@@ -288,17 +317,25 @@ where
 #[derive(Debug, Default)]
 pub struct SimulationRunner {
     pub current_context: TickContext,
+    /// Shared kinematic authority (joints → TCP). `None` ⇒ no TCP produced.
+    pub kinematics: Option<SharedKinematics>,
 }
 
 impl SimulationRunner {
     pub fn new(initial_context: TickContext) -> Self {
         Self {
             current_context: initial_context,
+            kinematics: None,
         }
     }
 
     pub fn set_context(&mut self, context: TickContext) {
         self.current_context = context;
+    }
+
+    pub fn with_kinematics(mut self, kinematics: SharedKinematics) -> Self {
+        self.kinematics = Some(kinematics);
+        self
     }
 }
 
@@ -322,10 +359,11 @@ impl ExecutionRunner for SimulationRunner {
         }
     }
 
-    fn runtime_state(&self) -> (RobotState, ExpectedState) {
-        (
+    fn runtime_state(&self) -> RuntimeState {
+        produced_state(
             self.current_context.robot.clone(),
             self.current_context.expected.clone(),
+            &self.kinematics,
         )
     }
 }
@@ -335,6 +373,8 @@ impl ExecutionRunner for SimulationRunner {
 pub struct PhysicalRunner {
     pub current_context: TickContext,
     pub is_connected: bool,
+    /// Shared kinematic authority (joints → TCP). `None` ⇒ no TCP produced.
+    pub kinematics: Option<SharedKinematics>,
 }
 
 impl PhysicalRunner {
@@ -342,11 +382,17 @@ impl PhysicalRunner {
         Self {
             current_context: initial_context,
             is_connected,
+            kinematics: None,
         }
     }
 
     pub fn set_context(&mut self, context: TickContext) {
         self.current_context = context;
+    }
+
+    pub fn with_kinematics(mut self, kinematics: SharedKinematics) -> Self {
+        self.kinematics = Some(kinematics);
+        self
     }
 }
 
@@ -373,10 +419,11 @@ impl ExecutionRunner for PhysicalRunner {
         }
     }
 
-    fn runtime_state(&self) -> (RobotState, ExpectedState) {
-        (
+    fn runtime_state(&self) -> RuntimeState {
+        produced_state(
             self.current_context.robot.clone(),
             self.current_context.expected.clone(),
+            &self.kinematics,
         )
     }
 }

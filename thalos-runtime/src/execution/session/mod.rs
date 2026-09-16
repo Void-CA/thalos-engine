@@ -2,6 +2,7 @@ pub mod domain;
 pub mod events;
 pub mod execution_source;
 pub mod history;
+pub mod kinematics;
 pub mod manager;
 pub mod runner;
 pub mod session_data;
@@ -12,9 +13,10 @@ pub use domain::{
     DomainExecutionCoordinator, Environment, ExecutionConfiguration, ExecutionDomainError,
     ExecutionSession as DomainExecutionSession, ExecutionSessionId, ExpectedState,
     InvalidLifecycleTransition, ObservationBundle, ProgramState, Reactivity,
-    RobotState, SessionRegistry, SessionState, TerminationPolicy, TickContext, TickOutcome,
-    TickResult, eval_channel_access, eval_derived_signal, extract_scalar,
+    RobotState, RuntimeState, SessionRegistry, SessionState, TerminationPolicy, TickContext,
+    TickOutcome, TickResult, eval_channel_access, eval_derived_signal, extract_scalar,
 };
+pub use kinematics::{KinematicContext, SharedKinematics, TcpPose};
 pub use events::{EventSubscriber, ExecutionEvent, ExecutionEventBus, TemporalInvariants};
 pub use execution_source::ExecutionSource;
 pub use history::{

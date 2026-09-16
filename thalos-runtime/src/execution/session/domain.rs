@@ -3,6 +3,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use thalos_core::device::ChannelObservation;
+use super::kinematics::TcpPose;
 use crate::execution::executor::ExecutionSessionState;
 
 /// Identificador único para una sesión de ejecución.
@@ -99,6 +100,19 @@ pub struct ExpectedState {
     pub simulated_joints: Vec<f64>,
 }
 
+/// Estado runtime producido por un runner para el tick k.
+///
+/// `robot` es el estado observado/actual, `expected` el modelo digital, y `tcp`
+/// la pose TCP derivada por la autoridad cinemática compartida (opcional: no
+/// toda ejecución tiene un modelo cinemático resoluble).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct RuntimeState {
+    pub robot: RobotState,
+    pub expected: ExpectedState,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tcp: Option<TcpPose>,
+}
+
 /// A collection of observations associated with a single execution sampling point.
 ///
 /// `captured_at_us` marks when the bundle was assembled — it does NOT guarantee
@@ -142,6 +156,10 @@ pub struct ControlTick {
     pub observations: ObservationBundle,
     pub robot: RobotState,
     pub expected: ExpectedState,
+    /// World TCP pose produced by the runtime's kinematic authority, when
+    /// available. Part of the tick's observable state — not computed by the UI.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tcp: Option<TcpPose>,
 }
 
 /// Decisión semántica derivada de la evaluación del programa en el tick k.
@@ -417,6 +435,8 @@ impl ExecutionSession {
             observations: context.observations.clone(),
             robot: context.robot.clone(),
             expected: context.expected.clone(),
+            // TCP is produced AFTER `act` (see `tick_with_runner`).
+            tcp: None,
         };
 
         // 1. Actualizar estado latched en la sesión
@@ -817,13 +837,14 @@ impl DomainExecutionCoordinator {
             // The action PRODUCES runtime state (Command → Runner → new state).
             // Refresh the tick snapshot and the session latch from the runner so
             // the emitted observation is the state the runtime actually produced,
-            // not the pre-action context (e.g. the simulation twin).
-            let (robot, expected) = runner.runtime_state();
-            result.tick.robot = robot.clone();
-            result.tick.expected = expected.clone();
+            // not the pre-action context (e.g. the simulation twin + FK-derived TCP).
+            let state = runner.runtime_state();
+            result.tick.robot = state.robot.clone();
+            result.tick.expected = state.expected.clone();
+            result.tick.tcp = state.tcp;
             let _ = self.registry.with_session_mut(id, |session| {
-                session.state.robot = robot;
-                session.state.expected = expected;
+                session.state.robot = state.robot;
+                session.state.expected = state.expected;
                 Ok(())
             });
         }

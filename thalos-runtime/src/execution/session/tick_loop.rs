@@ -1023,4 +1023,83 @@ mod tests {
             "the runtime state progresses with the plan's waypoints"
         );
     }
+
+    /// TCP is produced by the runner through the SHARED FK authority: the tick
+    /// carries `Option<TcpPose>` and the UI never computes kinematics.
+    #[tokio::test]
+    async fn simulation_runner_emits_fk_derived_tcp() {
+        use thalos_core::execution::plan::{ExecutionPlan, ExecutionSegment, ExecutionWaypoint, PlanInstruction};
+        use thalos_core::kinematics::forward::ForwardKinematics;
+        use thalos_core::models::planar_2r::Planar2RSpec;
+        use crate::execution::session::KinematicContext;
+
+        let chain = Planar2RSpec::ideal().build();
+        let expected_fk = ForwardKinematics::new(chain.clone());
+        let kinematics = Arc::new(KinematicContext::at_end_effector(chain));
+
+        let plan = ExecutionPlan {
+            waypoints: vec![
+                ExecutionWaypoint { joints: vec![0.0, 0.0], timestamp: 0.0 },
+                ExecutionWaypoint { joints: vec![0.5, 0.3], timestamp: 0.005 },
+            ],
+            segments: vec![ExecutionSegment {
+                index: 0,
+                planned_segment_index: 0,
+                instruction: PlanInstruction::MoveJ,
+                waypoint_range: 0..2,
+            }],
+            duration: 0.005,
+            repeat_count: 1,
+            program_id: Some("tcp".into()),
+            program_revision: Some(1),
+            source_fingerprint: Some("hash".into()),
+            robot_id: None,
+        };
+
+        let coordinator = Arc::new(DomainExecutionCoordinator::new());
+        let (collector, events_ref) = EventCollector::new();
+        coordinator.event_bus.subscribe(Arc::new(collector));
+
+        let session_id = coordinator.create_session("tcp", ExecutionConfiguration::default());
+        coordinator.initialize(&session_id).unwrap();
+        coordinator.start(&session_id).unwrap();
+
+        let runner = SimulationRunner::new(TickContext::default()).with_kinematics(kinematics);
+        let eval_fn = plan_driven_eval_fn(plan, Duration::from_millis(1));
+        run_execution_loop(
+            coordinator.clone(),
+            session_id.clone(),
+            runner,
+            eval_fn,
+            Duration::from_millis(1),
+        )
+        .await
+        .unwrap();
+
+        let events = events_ref.lock().unwrap();
+        let last_motion = events
+            .iter()
+            .filter_map(|e| match e {
+                ExecutionEvent::TickEvaluated { result, .. }
+                    if !matches!(result.decision, Decision::TerminateSession { .. }) =>
+                {
+                    Some(result.clone())
+                }
+                _ => None,
+            })
+            .last()
+            .expect("at least one motion tick");
+
+        let tcp = last_motion
+            .tick
+            .tcp
+            .expect("the tick must carry the FK-derived TCP");
+        let expected = expected_fk
+            .evaluate(&[0.5, 0.3])
+            .ee_position()
+            .expect("planar 2R has an end-effector pose");
+        assert!((tcp.position[0] - expected.x).abs() < 1e-9);
+        assert!((tcp.position[1] - expected.y).abs() < 1e-9);
+        assert!((tcp.position[2] - expected.z).abs() < 1e-9);
+    }
 }
