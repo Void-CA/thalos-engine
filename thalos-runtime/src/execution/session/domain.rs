@@ -722,6 +722,40 @@ impl DomainExecutionCoordinator {
         })
     }
 
+    /// Transition the session to `Failed` from any active state and publish the
+    /// terminal `LifecycleChanged` + the `SessionFaulted` reason.
+    pub fn fault(
+        &self,
+        id: &ExecutionSessionId,
+        reason: impl Into<String>,
+    ) -> Result<(), ExecutionDomainError> {
+        let reason = reason.into();
+        self.registry.with_session_mut(id, |session| {
+            let prev = session.lifecycle;
+            session.fault(reason.clone())?;
+            let curr = session.lifecycle;
+
+            let now_us = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_micros() as u64;
+
+            self.event_bus.publish(super::events::ExecutionEvent::LifecycleChanged {
+                session_id: id.clone(),
+                previous: prev,
+                current: curr,
+                timestamp_us: now_us,
+            });
+            self.event_bus.publish(super::events::ExecutionEvent::SessionFaulted {
+                session_id: id.clone(),
+                reason,
+                timestamp_us: now_us,
+            });
+
+            Ok(())
+        })
+    }
+
     /// Despacha un tick k sobre la sesión especificada.
     /// Valida explícitamente que la sesión esté en estado Running.
     pub fn tick(
@@ -1574,6 +1608,25 @@ mod tests {
                 ("paused".to_string(), "running".to_string()),
                 ("running".to_string(), "cancelled".to_string()),
             ]
+        );
+    }
+
+    #[test]
+    fn coordinator_fault_transitions_running_to_failed() {
+        let coord = DomainExecutionCoordinator::new();
+        let id = coord.create_session("p", ExecutionConfiguration::default());
+        coord.initialize(&id).unwrap();
+        coord.start(&id).unwrap();
+        assert_eq!(
+            coord.registry.get(&id).unwrap().lifecycle,
+            ExecutionSessionState::Running
+        );
+
+        coord.fault(&id, "boom").unwrap();
+
+        assert_eq!(
+            coord.registry.get(&id).unwrap().lifecycle,
+            ExecutionSessionState::Failed
         );
     }
 }
