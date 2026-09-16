@@ -324,6 +324,8 @@ enum SegmentKind {
     MoveL,
     MoveLPosition,
     MoveC,
+    Delay,
+    SetOutput,
 }
 
 impl SegmentKind {
@@ -335,6 +337,8 @@ impl SegmentKind {
                 SegmentKind::MoveLPosition
             }
             thalos_core::motion::segment::MotionSegment::MoveC { .. } => SegmentKind::MoveC,
+            thalos_core::motion::segment::MotionSegment::Delay { .. } => SegmentKind::Delay,
+            thalos_core::motion::segment::MotionSegment::SetOutput { .. } => SegmentKind::SetOutput,
         }
     }
 }

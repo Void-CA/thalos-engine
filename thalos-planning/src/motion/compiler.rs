@@ -178,6 +178,26 @@ impl MotionPlannerDispatcher for DefaultPlannerDispatcher {
                 });
                 planner.plan(ctx, via, &goal)
             }
+
+            // Temporal step: hold the current configuration for `seconds`. Two
+            // waypoints (identical joints, timestamps 0 and `seconds`) so the
+            // merged trajectory advances time without moving — the preview draws
+            // a stationary hold and the manifest emits a single large `dt_us`.
+            MotionSegment::Delay { seconds, .. } => {
+                let q = ctx.current_state.positions().ok_or_else(|| {
+                    PlanningError::InvalidContext("Current state missing joint positions".into())
+                })?;
+                let hold = seconds.max(0.0);
+                Ok(Trajectory::new(vec![
+                    TrajectoryPoint::new(q.clone(), 0.0),
+                    TrajectoryPoint::new(q, hold),
+                ]))
+            }
+
+            // Operational step: no geometry, no duration → empty trajectory. The
+            // instruction still survives on the plan (as its own segment), it just
+            // contributes no waypoints.
+            MotionSegment::SetOutput { .. } => Ok(Trajectory::new(Vec::new())),
         }
     }
 }

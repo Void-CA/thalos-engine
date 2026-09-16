@@ -672,6 +672,15 @@ impl SceneService {
                             MotionSegment::MoveL { .. } => PlanInstruction::MoveL,
                             MotionSegment::MoveLPosition { .. } => PlanInstruction::MoveL,
                             MotionSegment::MoveC { .. } => PlanInstruction::MoveC,
+                            MotionSegment::Delay { seconds, .. } => {
+                                PlanInstruction::Delay { seconds: *seconds }
+                            }
+                            MotionSegment::SetOutput { channel, value, .. } => {
+                                PlanInstruction::SetOutput {
+                                    channel: channel.clone(),
+                                    value: *value,
+                                }
+                            }
                         },
                         waypoint_range: seg.waypoint_range.clone(),
                     })

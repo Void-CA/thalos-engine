@@ -58,6 +58,23 @@ pub enum MotionSegment {
         target_position: [f64; 3],
         max_velocity: Option<f64>,
     },
+    /// Temporal step: hold the current configuration for `seconds`.
+    ///
+    /// Non-geometric but temporal — it MUST appear in the plan so the total
+    /// duration and the timeline represent the program faithfully.
+    Delay {
+        origin: OperationId,
+        seconds: f64,
+    },
+    /// Operational step: set an output channel to a value.
+    ///
+    /// Non-geometric and non-temporal (zero duration) — it produces no
+    /// waypoints but MUST appear in the plan so no instruction is dropped.
+    SetOutput {
+        origin: OperationId,
+        channel: String,
+        value: bool,
+    },
 }
 
 impl MotionSegment {
@@ -67,7 +84,9 @@ impl MotionSegment {
             MotionSegment::MoveJ { origin, .. }
             | MotionSegment::MoveL { origin, .. }
             | MotionSegment::MoveLPosition { origin, .. }
-            | MotionSegment::MoveC { origin, .. } => origin,
+            | MotionSegment::MoveC { origin, .. }
+            | MotionSegment::Delay { origin, .. }
+            | MotionSegment::SetOutput { origin, .. } => origin,
         }
     }
 }

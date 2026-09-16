@@ -63,10 +63,16 @@ impl ExecutionManifestBuilder {
         let mut segments = Vec::with_capacity(plan.segments.len());
         let mut partition_end = 0usize;
         for seg in &plan.segments {
-            let instruction = match seg.instruction {
+            let instruction = match &seg.instruction {
                 PlanInstruction::MoveJ => ManifestInstruction::MoveJ,
                 PlanInstruction::MoveL => ManifestInstruction::MoveL,
                 PlanInstruction::MoveC => ManifestInstruction::MoveC,
+                PlanInstruction::Delay { .. } => ManifestInstruction::Delay,
+                // Operational step with no samples: the instruction is retained on
+                // the ExecutionPlan, but there is nothing for the firmware to run
+                // yet (no output-actuation support), so it contributes no manifest
+                // segment.
+                PlanInstruction::SetOutput { .. } => continue,
             };
             let first = seg.waypoint_range.start.min(keep_map.len());
             let sample_start = partition_end.max(*keep_map.get(first).unwrap_or(&0));

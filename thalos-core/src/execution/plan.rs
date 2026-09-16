@@ -22,6 +22,10 @@ pub enum PlanInstruction {
     MoveL,
     /// Cartesian circular move through a via point.
     MoveC,
+    /// Temporal step: hold the current configuration for `seconds`.
+    Delay { seconds: f64 },
+    /// Operational step: set an output channel to a value (no geometry).
+    SetOutput { channel: String, value: bool },
 }
 
 /// One executed move, mapped 1:1 from a `PlannedSegment`.

@@ -224,6 +224,8 @@ pub fn plan_driven_eval_fn(
             Some(thalos_core::execution::plan::PlanInstruction::MoveJ) => "movej",
             Some(thalos_core::execution::plan::PlanInstruction::MoveL) => "movel",
             Some(thalos_core::execution::plan::PlanInstruction::MoveC) => "movec",
+            Some(thalos_core::execution::plan::PlanInstruction::Delay { .. }) => "delay",
+            Some(thalos_core::execution::plan::PlanInstruction::SetOutput { .. }) => "set_output",
             None => "movej",
         };
 
@@ -908,5 +910,93 @@ mod tests {
         coordinator.stop(&session_id).unwrap();
         let result = handle.await.unwrap();
         assert!(result.is_ok(), "loop must end cleanly after stop: {:?}", result.err());
+    }
+
+    /// F4 evidence: the plan-driven eval fn reports the plan segment's motion
+    /// type (Operation) and the waypoint label (Target) — the two Live fields
+    /// that are actually verifiable today.
+    #[test]
+    fn plan_driven_eval_fn_reports_motion_type_and_target() {
+        use thalos_core::execution::plan::{
+            ExecutionPlan, ExecutionSegment, ExecutionWaypoint, PlanInstruction,
+        };
+
+        let plan = ExecutionPlan {
+            waypoints: vec![
+                ExecutionWaypoint { joints: vec![0.0, 0.0], timestamp: 0.0 },
+                ExecutionWaypoint { joints: vec![0.5, 0.3], timestamp: 1.0 },
+            ],
+            segments: vec![ExecutionSegment {
+                index: 0,
+                planned_segment_index: 0,
+                instruction: PlanInstruction::MoveL,
+                waypoint_range: 0..2,
+            }],
+            duration: 1.0,
+            repeat_count: 1,
+            program_id: Some("f4".into()),
+            program_revision: Some(1),
+            source_fingerprint: Some("hash".into()),
+            robot_id: None,
+        };
+
+        let eval_fn = plan_driven_eval_fn(plan, Duration::from_millis(1));
+        let (decision, action) = eval_fn(&ObservationBundle::default(), &RobotState::default());
+
+        match decision {
+            Decision::MotionAction { motion_type, target_name } => {
+                assert_eq!(motion_type, "movel", "Operation must come from the plan segment");
+                assert_eq!(target_name, "waypoint_0", "Target must encode the plan waypoint");
+            }
+            other => panic!("expected MotionAction, got {other:?}"),
+        }
+        match action {
+            Action::DispatchMotion { kind, target } => {
+                assert_eq!(kind, "movel");
+                assert_eq!(target, "wp0");
+            }
+            other => panic!("expected DispatchMotion, got {other:?}"),
+        }
+    }
+
+    /// F4 evidence: `tick.robot.joints` is the runner's STATIC context, NOT
+    /// runtime state — hence Joints stays `—` in the Live UI.
+    #[tokio::test]
+    async fn simulation_runner_robot_joints_are_static_not_runtime() {
+        let coordinator = Arc::new(DomainExecutionCoordinator::new());
+        let (collector, events_ref) = EventCollector::new();
+        coordinator.event_bus.subscribe(Arc::new(collector));
+
+        let session_id = coordinator.create_session("f4_joints", ExecutionConfiguration::default());
+        coordinator.initialize(&session_id).unwrap();
+        coordinator.start(&session_id).unwrap();
+
+        // compile_and_run_thls uses exactly this: SimulationRunner::new(default).
+        let eval_fn = plan_driven_eval_fn(plan_with_timestamps(&[0.0, 0.005]), Duration::from_millis(1));
+        let runner = SimulationRunner::new(TickContext::default());
+
+        run_execution_loop(
+            coordinator.clone(),
+            session_id.clone(),
+            runner,
+            eval_fn,
+            Duration::from_millis(1),
+        )
+        .await
+        .unwrap();
+
+        let events = events_ref.lock().unwrap();
+        let first_tick = events
+            .iter()
+            .find_map(|e| match e {
+                ExecutionEvent::TickEvaluated { result, .. } => Some(result.clone()),
+                _ => None,
+            })
+            .expect("at least one tick");
+
+        assert!(
+            first_tick.tick.robot.joints.is_empty(),
+            "joints come from the static runner context, so the Live field must stay `—`"
+        );
     }
 }

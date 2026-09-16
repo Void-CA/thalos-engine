@@ -18,6 +18,8 @@ pub enum ManifestInstruction {
     MoveL,
     /// Cartesian-space circular movement through a via point (movec).
     MoveC,
+    /// Temporal hold (wait/delay) — carried by the gap between samples.
+    Delay,
 }
 
 /// A single timed waypoint in an execution manifest.

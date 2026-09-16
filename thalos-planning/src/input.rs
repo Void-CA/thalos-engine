@@ -9,9 +9,39 @@ pub struct PlanningMotion {
     pub provenance: Provenance,
 }
 
+/// One ordered step of the program fed to planning.
+///
+/// The plan MUST preserve the program's order and MUST NOT silently drop
+/// instructions that have no geometry (`Wait` / `SetOutput`). Motion keeps its
+/// kind/target; temporal/operational steps keep their provenance so they remain
+/// traceable through the plan.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PlanningStep {
+    Motion(PlanningMotion),
+    Wait {
+        seconds: f64,
+        provenance: Provenance,
+    },
+    SetOutput {
+        name: String,
+        value: bool,
+        provenance: Provenance,
+    },
+}
+
+impl PlanningStep {
+    pub fn provenance(&self) -> &Provenance {
+        match self {
+            PlanningStep::Motion(m) => &m.provenance,
+            PlanningStep::Wait { provenance, .. } => provenance,
+            PlanningStep::SetOutput { provenance, .. } => provenance,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlanningInput {
-    pub motions: Vec<PlanningMotion>,
+    pub steps: Vec<PlanningStep>,
 }
 
 use thalos_core::ids::OperationId;
@@ -21,51 +51,83 @@ use crate::motion::program::PlanningProgram;
 
 impl PlanningInput {
     pub fn from_resolved(program: &ResolvedProgram) -> Self {
-        let mut motions = Vec::new();
+        let mut steps = Vec::new();
         for stmt in &program.statements {
-            if let ResolvedStatement::Motion(m) = stmt {
-                motions.push(PlanningMotion {
+            match stmt {
+                ResolvedStatement::Motion(m) => steps.push(PlanningStep::Motion(PlanningMotion {
                     kind: m.kind.clone(),
                     target: m.target.clone(),
                     provenance: m.provenance.clone(),
-                });
+                })),
+                ResolvedStatement::Wait { seconds, provenance } => steps.push(PlanningStep::Wait {
+                    seconds: *seconds,
+                    provenance: provenance.clone(),
+                }),
+                ResolvedStatement::SetOutput {
+                    name,
+                    value,
+                    provenance,
+                } => steps.push(PlanningStep::SetOutput {
+                    name: name.clone(),
+                    value: *value,
+                    provenance: provenance.clone(),
+                }),
             }
         }
-        Self { motions }
+        Self { steps }
     }
 
     pub fn to_program(&self) -> PlanningProgram {
         let segments = self
-            .motions
+            .steps
             .iter()
-            .map(|m| {
-                let origin = OperationId(
-                    m.provenance
-                        .source_name
-                        .clone()
-                        .unwrap_or_else(|| "anonymous".to_string()),
-                );
-                // `movec` is a circular move: it needs cartesian via + target
-                // (validated upstream). For any non-cartesian shape, fall back
-                // to the target-derived segment so this stays total.
-                if let MotionKind::MoveC { via } = &m.kind {
-                    if let (Some(via_position), Some(target_position)) =
-                        (target_position(via), target_position(&m.target))
-                    {
-                        return MotionSegment::MoveC {
-                            origin,
-                            frame: FrameId::World,
-                            via_position,
-                            target_position,
-                            max_velocity: None,
-                        };
+            .map(|step| match step {
+                PlanningStep::Motion(m) => {
+                    let origin = plan_origin(&m.provenance);
+                    // `movec` is a circular move: it needs cartesian via + target
+                    // (validated upstream). For any non-cartesian shape, fall back
+                    // to the target-derived segment so this stays total.
+                    if let MotionKind::MoveC { via } = &m.kind {
+                        if let (Some(via_position), Some(target_position)) =
+                            (target_position(via), target_position(&m.target))
+                        {
+                            return MotionSegment::MoveC {
+                                origin,
+                                frame: FrameId::World,
+                                via_position,
+                                target_position,
+                                max_velocity: None,
+                            };
+                        }
                     }
+                    target_segment(origin, &m.target)
                 }
-                target_segment(origin, &m.target)
+                PlanningStep::Wait { seconds, provenance } => MotionSegment::Delay {
+                    origin: plan_origin(provenance),
+                    seconds: *seconds,
+                },
+                PlanningStep::SetOutput {
+                    name,
+                    value,
+                    provenance,
+                } => MotionSegment::SetOutput {
+                    origin: plan_origin(provenance),
+                    channel: name.clone(),
+                    value: *value,
+                },
             })
             .collect();
         PlanningProgram::new(segments)
     }
+}
+
+fn plan_origin(provenance: &Provenance) -> OperationId {
+    OperationId(
+        provenance
+            .source_name
+            .clone()
+            .unwrap_or_else(|| "anonymous".to_string()),
+    )
 }
 
 /// Cartesian position of a motion target, if it has one (joints do not).

@@ -6,6 +6,18 @@ use thalos_semantic::compiler::SemanticCompiler;
 use thalos_semantic::model::{MotionKind, MotionTarget};
 use thalos_semantic::resolver::SemanticResolver;
 
+/// Motion-only view of the ordered planning steps (Wait/SetOutput excluded).
+fn motions(input: &PlanningInput) -> Vec<&thalos_planning::input::PlanningMotion> {
+    input
+        .steps
+        .iter()
+        .filter_map(|s| match s {
+            thalos_planning::input::PlanningStep::Motion(m) => Some(m),
+            _ => None,
+        })
+        .collect()
+}
+
 #[test]
 fn test_e2e_thls_pipeline_from_fixture() {
     let fixture_path = concat!(
@@ -29,10 +41,11 @@ fn test_e2e_thls_pipeline_from_fixture() {
     let planning_input = PlanningInput::from_resolved(&resolved);
 
     // 5. Assert PlanningInput integrity and provenance
-    assert_eq!(planning_input.motions.len(), 3);
+    let ms = motions(&planning_input);
+    assert_eq!(ms.len(), 3);
 
     // Motion #1: movej(home) -> Joints([0, 0, 0])
-    let m1 = &planning_input.motions[0];
+    let m1 = ms[0];
     assert_eq!(m1.kind, MotionKind::MoveJ);
     if let MotionTarget::Joints(ref j) = m1.target {
         assert_eq!(j.values, vec![0.0, 0.0, 0.0]);
@@ -44,7 +57,7 @@ fn test_e2e_thls_pipeline_from_fixture() {
     assert_eq!(m1.provenance.call_stack[0].function, "main");
 
     // Motion #2: movej(pick) -> Position([0.420, 0.180, 0.080])
-    let m2 = &planning_input.motions[1];
+    let m2 = ms[1];
     assert_eq!(m2.kind, MotionKind::MoveJ);
     if let MotionTarget::Position(ref p) = m2.target {
         assert_eq!(p.point, Vector3::new(0.420, 0.180, 0.080));
@@ -56,7 +69,7 @@ fn test_e2e_thls_pipeline_from_fixture() {
     assert_eq!(m2.provenance.call_stack[0].function, "main");
 
     // Motion #3: movel(pick + [0mm, 0mm, 100mm]) -> Position([0.420, 0.180, 0.180])
-    let m3 = &planning_input.motions[2];
+    let m3 = ms[2];
     assert_eq!(m3.kind, MotionKind::MoveL);
     if let MotionTarget::Position(ref p) = m3.target {
         assert_eq!(p.point, Vector3::new(0.420, 0.180, 0.180));
@@ -192,7 +205,7 @@ fn test_e2e_canonical_program_pipeline() {
 
     let res = SemanticResolver::resolve(&sem).expect("3. Semantic resolver MUST resolve canonical script");
     let input = PlanningInput::from_resolved(&res);
-    assert_eq!(input.motions.len(), 4); // movej(home), movel(approach(pick)), movel(pick), movel(approach(pick))
+    assert_eq!(motions(&input).len(), 4); // movej(home), movel(approach(pick)), movel(pick), movel(approach(pick))
 
     let chain = RobotRegistry::create_default(RobotModel::Scara);
     let state = RobotState::zero(chain.dof_count());
@@ -209,7 +222,23 @@ fn test_e2e_canonical_program_pipeline() {
     let plan = compiler
         .compile(&input.to_program(), &ctx)
         .expect("5. PlanCompiler MUST compile canonical program into PlannedProgram");
-    assert_eq!(plan.segments.len(), 4);
+    // 4 moves + the `wait(150ms)` Delay — the wait MUST NOT be dropped.
+    assert_eq!(plan.segments.len(), 5);
+
+    use thalos_core::motion::segment::MotionSegment;
+    assert!(
+        plan.segments.iter().any(|s| matches!(
+            &s.source,
+            MotionSegment::Delay { seconds, .. } if (seconds - 0.15).abs() < 1e-9
+        )),
+        "wait(150ms) must survive as an explicit Delay segment"
+    );
+    let wps = plan.merged_trajectory.waypoints();
+    assert!(
+        wps.windows(2).any(|w| w[0].joints() == w[1].joints()
+            && (w[1].timestamp() - w[0].timestamp() - 0.15).abs() < 1e-6),
+        "the wait must advance the trajectory time while holding joints"
+    );
 }
 
 #[test]

@@ -17,7 +17,7 @@ use thalos_engine::core::{
 use thalos_engine::lang::parser::parse_source;
 use thalos_engine::math::{Quaternion, Transform3D, UnitQuaternion, Vector3};
 use thalos_engine::planning::error::CompileError;
-use thalos_engine::planning::input::PlanningInput;
+use thalos_engine::planning::input::{PlanningInput, PlanningStep};
 use thalos_engine::planning::motion::compiler::{DefaultPlannerDispatcher, PlanCompiler};
 use thalos_engine::planning::motion::planner::PlanningContext;
 use thalos_engine::planning::motion::program::PlanningProgram;
@@ -357,7 +357,10 @@ impl PlanningService {
 
         // 5. Build PlanningInput & check DOF / kinematic invariants
         let planning_input = PlanningInput::from_resolved(&resolved);
-        for motion in &planning_input.motions {
+        for step in &planning_input.steps {
+            let PlanningStep::Motion(motion) = step else {
+                continue;
+            };
             // `movec` is a cartesian circular move: it requires a cartesian via
             // and target. Joint targets cannot define an arc.
             if let MotionKind::MoveC { via } = &motion.kind {
@@ -428,9 +431,9 @@ impl PlanningService {
             Err(err_with_ctx) => {
                 let seg_idx = err_with_ctx.segment_index;
                 let span = planning_input
-                    .motions
+                    .steps
                     .get(seg_idx)
-                    .and_then(|m| m.provenance.span.as_ref())
+                    .and_then(|s| s.provenance().span.as_ref())
                     .map_or(SourceSpan::new(0, source.len() as u32), |s| {
                         SourceSpan::new(s.start as u32, s.end as u32)
                     });

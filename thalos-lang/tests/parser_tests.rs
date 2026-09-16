@@ -74,3 +74,30 @@ fn test_parse_movec_circular_move() {
         _ => panic!("expected FnDecl"),
     }
 }
+
+#[test]
+fn test_parse_wait_and_set_output() {
+    let source = r#"
+        fn main() {
+            wait(150ms)
+            set_output(GRIPPER, true)
+        }
+    "#;
+
+    let program = parse_source(source).expect("failed to parse wait/set_output program");
+
+    match &program.items[0] {
+        Item::Function(f) => {
+            assert_eq!(f.body.len(), 2);
+            assert!(matches!(f.body[0], Statement::Wait(_)));
+            assert_eq!(
+                f.body[1],
+                Statement::SetOutput {
+                    output: "GRIPPER".to_string(),
+                    value: Expr::Boolean(true),
+                }
+            );
+        }
+        _ => panic!("expected FnDecl"),
+    }
+}

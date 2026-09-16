@@ -170,6 +170,18 @@ pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
             .then_ignore(just(';').or_not())
             .map(Statement::Wait);
 
+        // set_output(CHANNEL, value): operational (non-geometric) instruction.
+        let set_output_stmt = just("set_output")
+            .ignore_then(
+                ident
+                    .padded()
+                    .then_ignore(just(',').padded())
+                    .then(expr.clone())
+                    .delimited_by(just('(').padded(), just(')').padded()),
+            )
+            .then_ignore(just(';').or_not())
+            .map(|(output, value)| Statement::SetOutput { output, value });
+
         let block = stmt
             .clone()
             .repeated()
@@ -197,6 +209,7 @@ pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
             movel_stmt,
             movec_stmt,
             wait_stmt,
+            set_output_stmt,
             expr.clone()
                 .then_ignore(just(';'))
                 .map(Statement::Expr),
