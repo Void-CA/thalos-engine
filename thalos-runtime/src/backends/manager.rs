@@ -1,6 +1,12 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use tokio::sync::RwLock;
+use thalos_ports::robot::RobotTransport;
+
+/// Re-exported so the application boundary can name the fact without depending
+/// on `thalos-ports` directly.
+pub use thalos_ports::robot::TransportState;
 
 use super::controller::RobotController;
 use crate::error::ControllerError;
@@ -26,6 +32,10 @@ pub struct BackendManager {
     active_id: RwLock<Option<String>>,
     /// All registered backends.
     registered: RwLock<Vec<BackendEntry>>,
+    /// Connected robot transports per backend id. They are the FACT SOURCE for
+    /// hardware readiness (`transport_state`) — persisted so the connection can
+    /// be observed after `connect_with_transport` returns (it used to be dropped).
+    transports: RwLock<HashMap<String, Box<dyn RobotTransport + Send + Sync>>>,
 }
 
 impl BackendManager {
@@ -34,6 +44,7 @@ impl BackendManager {
             active: RwLock::new(None),
             active_id: RwLock::new(None),
             registered: RwLock::new(Vec::new()),
+            transports: RwLock::new(HashMap::new()),
         }
     }
 
@@ -157,12 +168,43 @@ impl BackendManager {
                 entry.port = Some(port.to_string());
             }
         }
+
+        // Persist the connected transport so its state is observable afterwards
+        // (readiness fact source). Replacing an existing entry disconnects the
+        // previous handle by drop.
+        {
+            let mut transports = self.transports.write().await;
+            transports.insert(id.to_string(), Box::new(adapter));
+        }
         Ok(())
+    }
+
+    /// Current connection state of a backend's robot transport.
+    ///
+    /// `None` means no transport has been connected for `id` — the fact is
+    /// UNAVAILABLE, not `Disconnected`.
+    pub async fn transport_state(&self, id: &str) -> Option<TransportState> {
+        let transports = self.transports.read().await;
+        transports.get(id).map(|transport| transport.state())
+    }
+
+    /// State of the first connected transport across registered backends.
+    ///
+    /// `None` means NO transport has been connected — the fact is UNAVAILABLE.
+    /// This is a deliberate stopgap for the single-robot MVP until a
+    /// module→backend mapping exists; it never fabricates a state.
+    pub async fn first_transport_state(&self) -> Option<TransportState> {
+        let transports = self.transports.read().await;
+        transports.values().next().map(|transport| transport.state())
     }
 
     /// Disconnect a connected backend. `not_connected` when the backend
     /// has no connected controller.
     pub async fn disconnect_backend(&self, id: &str) -> Result<(), ControllerError> {
+        // Drop the transport first: its state must stop being readable even if
+        // there is no registered controller for this backend.
+        self.transports.write().await.remove(id);
+
         let mut entries = self.registered.write().await;
         let entry = entries
             .iter_mut()
@@ -286,6 +328,40 @@ mod tests {
         let backends = manager.list_backends().await;
         assert_eq!(backends.len(), 1);
         assert_eq!(backends[0].id, "simulation");
+    }
+
+    #[tokio::test]
+    async fn transport_state_is_persisted_and_cleared() {
+        let manager = BackendManager::new();
+        let ctrl = make_controller().await;
+        manager
+            .register(BackendEntry {
+                id: "esp32".into(),
+                name: "ESP32".into(),
+                controller: Some(ctrl),
+                port: None,
+            })
+            .await;
+
+        // No transport connected yet → the fact is UNAVAILABLE (`None`), not
+        // `Disconnected`.
+        assert_eq!(manager.transport_state("esp32").await, None);
+
+        let transport = thalos_transport::FakeTransport::new();
+        transport.inject_response(b"HELLO thalos\n".to_vec());
+        manager
+            .connect_with_transport("esp32", "/dev/ttyTEST", Box::new(transport))
+            .await
+            .unwrap();
+
+        // The connected transport is now observable (it used to be dropped).
+        assert_eq!(
+            manager.transport_state("esp32").await,
+            Some(TransportState::Connected)
+        );
+
+        manager.disconnect_backend("esp32").await.unwrap();
+        assert_eq!(manager.transport_state("esp32").await, None);
     }
 
     #[tokio::test]
