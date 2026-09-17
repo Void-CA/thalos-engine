@@ -1,6 +1,6 @@
 use std::f64::consts::PI;
 
-use thalos_engine::core::{kinematics::forward::ForwardKinematics, models::planar_2r::Planar2RSpec};
+use thalos_core::{kinematics::forward::ForwardKinematics, models::planar_2r::Planar2RSpec};
 use thalos_visual::{SceneBuilder, SceneDiff, VisualPrecision};
 
 #[test]
@@ -154,8 +154,8 @@ fn urdf_scara_reference_dimension_is_not_the_broken_floor() {
     use std::fs;
     use std::path::PathBuf;
 
-    use thalos_engine::core::kinematics::forward::ForwardKinematics;
-    use thalos_engine::core::robot::adapter;
+    use thalos_core::kinematics::forward::ForwardKinematics;
+    use thalos_core::robot::adapter;
     use thalos_importer::import_urdf;
 
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));

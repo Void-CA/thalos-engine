@@ -4,7 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-thalos-engine = { path = "../thalos-engine" }
+thalos-core = { path = "../thalos-core" }
+thalos-math = { path = "../thalos-math" }
+thalos-models = { path = "../thalos-models" }
 thalos-importer = { path = "../thalos-importer" }
 serde = { version = "1", features = ["derive"] }
 stl = "0.2"

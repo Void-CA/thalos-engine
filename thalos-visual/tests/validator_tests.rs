@@ -1,4 +1,4 @@
-use thalos_engine::core::{kinematics::forward::ForwardKinematics, models::planar_2r::Planar2RSpec};
+use thalos_core::{kinematics::forward::ForwardKinematics, models::planar_2r::Planar2RSpec};
 use thalos_visual::{SceneBuilder, SceneError, SceneValidator, VisualScene};
 
 #[test]

@@ -1,24 +1,24 @@
-use thalos_engine::core::robot::serial_chain::SerialChain;
-use thalos_engine::models::Robot;
+use thalos_core::robot::serial_chain::SerialChain;
+use thalos_models::Robot;
 
 use crate::scene::{PrimitiveGeometry, VisualElement};
 
 use crate::asset_resolver::AssetResolver;
 use crate::mesh_loader::{load_dae, load_stl};
 
-fn material_color(material: &thalos_engine::models::Material) -> Option<[f64; 4]> {
+fn material_color(material: &thalos_models::Material) -> Option<[f64; 4]> {
     material.color.map(|c| [c.r, c.g, c.b, c.a])
 }
 
 fn to_primitive_with_resolver(
-    geometry: &thalos_engine::models::geometry::Geometry,
+    geometry: &thalos_models::geometry::Geometry,
     resolver: Option<&AssetResolver>,
 ) -> Option<PrimitiveGeometry> {
     match geometry {
-        thalos_engine::models::geometry::Geometry::Sphere { radius } => {
+        thalos_models::geometry::Geometry::Sphere { radius } => {
             Some(PrimitiveGeometry::Sphere { radius: *radius })
         }
-        thalos_engine::models::geometry::Geometry::Box {
+        thalos_models::geometry::Geometry::Box {
             width,
             height,
             depth,
@@ -27,13 +27,13 @@ fn to_primitive_with_resolver(
             height: *height,
             depth: *depth,
         }),
-        thalos_engine::models::geometry::Geometry::Cylinder { radius, height } => {
+        thalos_models::geometry::Geometry::Cylinder { radius, height } => {
             Some(PrimitiveGeometry::Cylinder {
                 radius: *radius,
                 height: *height,
             })
         }
-        thalos_engine::models::geometry::Geometry::Mesh { filename, scale } => {
+        thalos_models::geometry::Geometry::Mesh { filename, scale } => {
             let mut vertices = Vec::new();
             let mut normals = Vec::new();
 
@@ -137,7 +137,7 @@ mod tests {
 
     #[test]
     fn sphere_conversion() {
-        let g = thalos_engine::models::geometry::Geometry::Sphere { radius: 0.5 };
+        let g = thalos_models::geometry::Geometry::Sphere { radius: 0.5 };
         assert_eq!(
             to_primitive_with_resolver(&g, None),
             Some(PrimitiveGeometry::Sphere { radius: 0.5 })
@@ -146,7 +146,7 @@ mod tests {
 
     #[test]
     fn box_conversion() {
-        let g = thalos_engine::models::geometry::Geometry::Box {
+        let g = thalos_models::geometry::Geometry::Box {
             width: 1.0,
             height: 2.0,
             depth: 3.0,
@@ -163,7 +163,7 @@ mod tests {
 
     #[test]
     fn cylinder_conversion() {
-        let g = thalos_engine::models::geometry::Geometry::Cylinder {
+        let g = thalos_models::geometry::Geometry::Cylinder {
             radius: 0.2,
             height: 1.0,
         };
@@ -178,7 +178,7 @@ mod tests {
 
     #[test]
     fn mesh_conversion_without_resolver() {
-        let g = thalos_engine::models::geometry::Geometry::Mesh {
+        let g = thalos_models::geometry::Geometry::Mesh {
             filename: "foo.stl".into(),
             scale: None,
         };
@@ -197,7 +197,7 @@ mod tests {
     fn map_scara_urdf() {
         let src = include_str!("../../thalos-models/tests/fixtures/scara.urdf");
         let robot = thalos_importer::import_urdf(src).unwrap();
-        let chain = thalos_engine::core::robot::adapter::auto(&robot).unwrap();
+        let chain = thalos_core::robot::adapter::auto(&robot).unwrap();
 
         let elements = map_visuals(&robot, &chain);
 
@@ -238,7 +238,7 @@ mod tests {
         f.flush().unwrap();
 
         let resolver = AssetResolver::new().with_base_dir(dir.path());
-        let g = thalos_engine::models::geometry::Geometry::Mesh {
+        let g = thalos_models::geometry::Geometry::Mesh {
             filename: "link.stl".into(),
             scale: None,
         };

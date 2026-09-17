@@ -1,9 +1,9 @@
-use thalos_engine::core::{
+use thalos_core::{
     kinematics::{forward::result::FKResult, jacobian::Jacobian},
     robot::serial_chain::SerialChain,
     spatial::frame::FrameId,
 };
-use thalos_engine::math::{Transform3D, UnitQuaternion, UnitVector3, Vector3};
+use thalos_math::{Transform3D, UnitQuaternion, UnitVector3, Vector3};
 
 use crate::scene::*;
 
@@ -131,7 +131,7 @@ impl SceneBuilder {
         //    joint origins (the URDF adapter stores lengths on origins, links
         //    are identity) — fixing the URDF path that degenerated to 0.01.
         //    The 0.01 floor stays as a visual guardrail for degenerate chains.
-        let ref_dim = thalos_engine::core::robot::scale::scene_reference_dimension(&self.chain).max(0.01);
+        let ref_dim = thalos_core::robot::scale::scene_reference_dimension(&self.chain).max(0.01);
 
         // 2. Determine frame style: explicit override or auto-scaled
         let style = self

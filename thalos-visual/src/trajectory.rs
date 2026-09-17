@@ -9,7 +9,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use thalos_engine::core::{
+use thalos_core::{
     kinematics::forward::ForwardKinematics, prelude::Trajectory, robot::serial_chain::SerialChain,
     spatial::frame::FrameId,
 };
@@ -146,7 +146,7 @@ fn normalize_quat(q: &mut [f64; 4]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use thalos_engine::core::{
+    use thalos_core::{
         models::{RobotModel, RobotRegistry},
         prelude::TrajectoryPoint,
     };

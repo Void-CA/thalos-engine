@@ -2,9 +2,9 @@ pub mod diff;
 pub mod precision;
 
 use serde::{Deserialize, Serialize};
-use thalos_engine::core::robot::joint::JointId;
-use thalos_engine::core::spatial::frame::FrameId;
-use thalos_engine::math::Transform3D;
+use thalos_core::robot::joint::JointId;
+use thalos_core::spatial::frame::FrameId;
+use thalos_math::Transform3D;
 
 pub use diff::{ChangedFrame, SceneDiff};
 pub use precision::VisualPrecision;

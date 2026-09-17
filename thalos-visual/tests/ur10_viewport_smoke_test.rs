@@ -1,8 +1,8 @@
 use std::f64::consts::PI;
 use std::path::PathBuf;
 
-use thalos_engine::core::kinematics::forward::ForwardKinematics;
-use thalos_engine::core::robot::adapter;
+use thalos_core::kinematics::forward::ForwardKinematics;
+use thalos_core::robot::adapter;
 use thalos_importer::import_urdf;
 use thalos_visual::{
     map_visuals_with_resolver, AssetResolver, PrimitiveGeometry, SceneBuilder,

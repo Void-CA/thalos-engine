@@ -1,4 +1,4 @@
-use thalos_engine::core::{kinematics::forward::result::FKResult, robot::serial_chain::SerialChain};
+use thalos_core::{kinematics::forward::result::FKResult, robot::serial_chain::SerialChain};
 
 use crate::builder::{SceneBuilder, cylinder_between};
 use crate::scene::VisualScene;
