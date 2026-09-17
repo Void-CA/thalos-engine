@@ -1,3 +1,34 @@
+//! # thalos-language-service
+//!
+//! Front-end del lenguaje Thalos (`.thls`): análisis de documento (diagnostics,
+//! symbols, provenance) y el pipeline semántico completo
+//! (`compiler` → `resolver` → `ir` → `validation` → `lowering`), junto con el
+//! modelo de dominio de operaciones/programas y `knowledge`.
+
+pub mod builtins;
+pub mod checker;
+pub mod compiler;
+pub mod evaluator;
+pub mod execution;
+pub mod ir;
+pub mod knowledge;
+pub mod lowering;
+pub mod model;
+pub mod operation;
+pub mod operators;
+pub mod profile;
+pub mod program;
+pub mod resource;
+pub mod resolver;
+pub mod scope;
+pub mod symbols;
+pub mod types;
+pub mod validation;
+
+/// Shared helpers for the canonical semantic scenario (feature `test-support`).
+#[cfg(feature = "test-support")]
+pub mod test_support;
+
 use serde::{Deserialize, Serialize};
 use thalos_lang::ast::{Item, Program, Statement};
 use thalos_lang::parser::parse_source;
