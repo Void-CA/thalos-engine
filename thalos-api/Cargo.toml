@@ -1,0 +1,18 @@
+[package]
+name = "thalos-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+thalos-core = { path = "../thalos-core" }
+thalos-math = { path = "../thalos-math" }
+thalos-models = { path = "../thalos-models" }
+thalos-planning = { path = "../thalos-planning" }
+thalos-lang = { path = "../thalos-lang" }
+thalos-language-service = { path = "../thalos-language-service" }
+thalos-importer = { path = "../thalos-importer" }
+thalos_ports = { path = "../thalos-ports" }
+thalos-document = { path = "../thalos-document" }
