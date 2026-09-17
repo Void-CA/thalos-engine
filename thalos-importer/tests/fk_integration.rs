@@ -1,6 +1,6 @@
 use thalos_importer::import_urdf;
-use thalos_engine::core::robot::adapter;
-use thalos_engine::core::kinematics::forward::ForwardKinematics;
+use thalos_core::robot::adapter;
+use thalos_core::kinematics::forward::ForwardKinematics;
 
 const PI: f64 = std::f64::consts::PI;
 

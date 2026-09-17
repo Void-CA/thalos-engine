@@ -1,6 +1,6 @@
 use thalos_importer::import_urdf;
-use thalos_engine::core::robot::adapter;
-use thalos_engine::core::kinematics::forward::ForwardKinematics;
+use thalos_core::robot::adapter;
+use thalos_core::kinematics::forward::ForwardKinematics;
 
 #[test]
 fn scara_imported_robot_fk_zero_pose_contract() {
