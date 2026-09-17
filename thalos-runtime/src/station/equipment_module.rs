@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use thalos_engine::prelude::StationId;
+use crate::engine::prelude::StationId;
 
 /// Strongly typed identity for an equipment module.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

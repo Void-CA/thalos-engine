@@ -3,9 +3,9 @@
 //! Covers the full THLS → parse → compile → resolve → plan path for circular
 //! moves, plus the rejection cases (collinear arc, non-cartesian via/target).
 
-use thalos_engine::core::kinematics::forward::ForwardKinematics;
-use thalos_engine::core::models::{factory::RobotRegistry, RobotModel};
-use thalos_engine::math::Vector3;
+use thalos_runtime::engine::core::kinematics::forward::ForwardKinematics;
+use thalos_runtime::engine::core::models::{factory::RobotRegistry, RobotModel};
+use thalos_runtime::engine::math::Vector3;
 use thalos_runtime::planning::service::{PlanResult, PlanningService, RobotPlanningContext};
 
 fn planar_ctx() -> RobotPlanningContext {
@@ -41,7 +41,7 @@ fn movec_plans_a_circular_arc() {
     assert_eq!(plan.segments.len(), 1);
     assert_eq!(
         plan.segments[0].instruction,
-        thalos_engine::core::execution::plan::PlanInstruction::MoveC,
+        thalos_runtime::engine::core::execution::plan::PlanInstruction::MoveC,
         "the single segment must be a MoveC"
     );
 

@@ -5,7 +5,7 @@ use thalos_runtime::backends::manager::BackendManager;
 use thalos_runtime::ports::RobotRepository;
 use thalos_runtime::robot::availability::{check_robot_availability, RobotAvailability};
 use thalos_runtime::{RobotService, SceneService, WorkspaceService};
-use thalos_engine::core::models::RobotModel;
+use thalos_runtime::engine::core::models::RobotModel;
 
 /// URDF with mesh references (visual + collision) — the ABB IRB 140 pattern.
 const URDF_WITH_MESHES: &str = r#"<?xml version="1.0"?>

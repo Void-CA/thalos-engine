@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
-use thalos_engine::prelude::ExecutionSessionId;
+use crate::engine::prelude::ExecutionSessionId;
 use crate::execution::coordinator::ExecutionError;
 use crate::execution::executor::{ExecutionExecutor, ExecutionSessionState};
 use crate::execution::observation::{

@@ -20,8 +20,29 @@ pub mod test_support;
 pub mod workspace;
 
 // ── Application Facade: re-exports of domain & integration crates ──
+//
+// Formerly provided by the deleted `thalos-engine` facade crate. Live domain
+// crates are re-exported under their canonical module names; the language
+// front-end (`thalos-language-service`) is exposed as `semantic`.
 pub mod engine {
-    pub use thalos_engine::*;
+    pub use thalos_core as core;
+    pub use thalos_importer as importer;
+    pub use thalos_lang as lang;
+    pub use thalos_language_service as semantic;
+    pub use thalos_math as math;
+    pub use thalos_models as models;
+    pub use thalos_planning as planning;
+
+    /// Curated re-exports mirroring the former `thalos-engine` prelude.
+    pub mod prelude {
+        pub use thalos_core::prelude::*;
+        pub use thalos_language_service::operation::SemanticOperation;
+        pub use thalos_language_service::program::SemanticProgram;
+        pub use thalos_math::constants::*;
+        pub use thalos_math::*;
+        pub use thalos_models::{Robot, RobotGraph};
+        pub use thalos_planning::motion::compiler::PlanCompiler;
+    }
 }
 
 pub mod document {
@@ -45,7 +66,7 @@ pub mod prelude {
     pub use crate::workspace::*;
     pub use crate::robot::*;
     pub use crate::scene::service::SceneService;
-    pub use crate::planning::{PlanningService, AnalysisService};
+    pub use crate::planning::PlanningService;
     pub use crate::semantic::service::SemanticService;
 }
 
@@ -68,10 +89,7 @@ pub use execution_boundary::{
 };
 pub use motion_trace::{MotionSample, MotionTrace};
 pub use plan::{ActiveMotionPlan, ExecutionSession, MotionType, PlanState, SessionStatus};
-pub use planning::{
-    AnalysisOutput, AnalysisService, MotionPlanRequest, PlanAnalysisResult, PlanAnalysisService,
-    PlanningService,
-};
+pub use planning::{MotionPlanRequest, PlanningService};
 pub use ports::{program_snapshot_is_stale, source_fingerprint, PersistenceError, ProgramRecord, ProgramRepository, RobotRecord, RobotRepository, RobotSource, WorkspaceRepository};
 pub use robot::service::RobotService;
 pub use robot::{RobotCatalog, RobotCatalogEntry, RobotCatalogError, RobotCatalogResolution};

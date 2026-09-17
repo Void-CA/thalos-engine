@@ -2,14 +2,14 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 
-use thalos_engine::core::{
+use crate::engine::core::{
     kinematics::{forward::result::FKResult, inverse::result::IKResult},
     models::RobotModel,
     robot::serial_chain::SerialChain,
     robot::tool_frame::ToolFrame,
     spatial::frame::FrameId,
 };
-use thalos_engine::models::Robot;
+use crate::engine::models::Robot;
 
 use crate::plan::{ActiveMotionPlan, ExecutionSession, SessionStatus};
 use crate::state::robot_state::{MotionMode, RobotState};

@@ -5,7 +5,7 @@
 //! refusing execution when the program revision or fingerprint has diverged.
 
 use sha2::{Digest, Sha256};
-use thalos_engine::core::execution::plan::ExecutionPlan;
+use thalos_runtime::engine::core::execution::plan::ExecutionPlan;
 use thalos_runtime::error::RuntimeError;
 
 fn compute_fingerprint(source: &str) -> String {

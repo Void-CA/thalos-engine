@@ -2,28 +2,28 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thalos_language_service::{Diagnostic, DiagnosticSeverity, SourceSpan};
 
-use thalos_engine::core::execution::plan::ExecutionPlan;
-use thalos_engine::core::execution::runtime::RuntimeProgram;
-use thalos_engine::core::kinematics::{forward::ForwardKinematics, inverse::DampedLeastSquaresSolver};
-use thalos_engine::core::motion::segment::MotionSegment;
-use thalos_engine::core::robot::serial_chain::SerialChain;
-use thalos_engine::core::robot::state::RobotState;
-use thalos_engine::core::robot::tool_frame::ToolFrame;
-use thalos_engine::core::{
+use crate::engine::core::execution::plan::ExecutionPlan;
+use crate::engine::core::execution::runtime::RuntimeProgram;
+use crate::engine::core::kinematics::{forward::ForwardKinematics, inverse::DampedLeastSquaresSolver};
+use crate::engine::core::motion::segment::MotionSegment;
+use crate::engine::core::robot::serial_chain::SerialChain;
+use crate::engine::core::robot::state::RobotState;
+use crate::engine::core::robot::tool_frame::ToolFrame;
+use crate::engine::core::{
     ids::OperationId,
     operation::{Operation, OperationConstraints},
     spatial::{frame::FrameId, pose::Pose},
 };
-use thalos_engine::lang::parser::parse_source;
-use thalos_engine::math::{Quaternion, Transform3D, UnitQuaternion, Vector3};
-use thalos_engine::planning::error::CompileError;
-use thalos_engine::planning::input::{PlanningInput, PlanningStep};
-use thalos_engine::planning::motion::compiler::{DefaultPlannerDispatcher, PlanCompiler};
-use thalos_engine::planning::motion::planner::PlanningContext;
-use thalos_engine::planning::motion::program::PlanningProgram;
-use thalos_engine::semantic::compiler::SemanticCompiler;
-use thalos_engine::semantic::model::{MotionKind, MotionTarget};
-use thalos_engine::semantic::resolver::SemanticResolver;
+use crate::engine::lang::parser::parse_source;
+use crate::engine::math::{Quaternion, Transform3D, UnitQuaternion, Vector3};
+use crate::engine::planning::error::CompileError;
+use crate::engine::planning::input::{PlanningInput, PlanningStep};
+use crate::engine::planning::motion::compiler::{DefaultPlannerDispatcher, PlanCompiler};
+use crate::engine::planning::motion::planner::PlanningContext;
+use crate::engine::planning::motion::program::PlanningProgram;
+use crate::engine::semantic::compiler::SemanticCompiler;
+use crate::engine::semantic::model::{MotionKind, MotionTarget};
+use crate::engine::semantic::resolver::SemanticResolver;
 
 use crate::error::RuntimeError;
 use crate::scene::RuntimeSnapshot;
@@ -270,7 +270,7 @@ use std::sync::Arc;
 
 // ── Planning Application Service ──
 
-use thalos_engine::planning::motion::program::CompiledPlan;
+use crate::engine::planning::motion::program::CompiledPlan;
 
 pub struct PlanningService {
     scene: Arc<SceneService>,
@@ -448,7 +448,7 @@ impl PlanningService {
         };
 
         // 8. Build ExecutionPlan and freeze provenance
-        let base_plan: ExecutionPlan = match thalos_engine::planning::execution_plan_builder::ExecutionPlanBuilder::build(&compiled) {
+        let base_plan: ExecutionPlan = match crate::engine::planning::execution_plan_builder::ExecutionPlanBuilder::build(&compiled) {
             Ok(p) => p,
             Err(e) => {
                 let diag = Diagnostic {

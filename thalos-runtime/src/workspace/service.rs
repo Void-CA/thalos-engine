@@ -118,7 +118,7 @@ impl WorkspaceService {
         if let Some(workspace) = workspaces.into_iter().next() {
             // Load a default robot into scene — actual robot loading happens
             // when a station's robotics module is selected by the user
-            let default_model = thalos_engine::core::models::RobotModel::Planar2R;
+            let default_model = crate::engine::core::models::RobotModel::Planar2R;
             let snapshot = self.scene_service.execute(crate::commands::Command::LoadRobot(default_model)).await?;
 
             let active_ws = ActiveWorkspace {
@@ -329,7 +329,7 @@ impl WorkspaceService {
         }
 
         // Return a default snapshot — actual scene state is built when a robot is loaded
-        let default_model = thalos_engine::core::models::RobotModel::Planar2R;
+        let default_model = crate::engine::core::models::RobotModel::Planar2R;
         let manager = std::sync::Arc::new(crate::backends::manager::BackendManager::new());
         let snapshot = self.scene_service.execute(crate::commands::Command::LoadRobot(default_model)).await?;
 

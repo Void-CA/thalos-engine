@@ -1,4 +1,4 @@
-use thalos_engine::core::{
+use crate::engine::core::{
     kinematics::inverse::IKResult,
     models::{RobotModel, RobotRegistry},
     prelude::ActiveRobot,
@@ -6,7 +6,7 @@ use thalos_engine::core::{
     robot::tool_frame::ToolFrame,
 };
 
-use thalos_engine::models::Robot;
+use crate::engine::models::Robot;
 
 use crate::{
     RuntimeError,
@@ -110,9 +110,9 @@ impl ExecutableCommand for Command {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use thalos_engine::core::trajectory::TrajectoryPoint;
-    use thalos_engine::planning::motion::program::CompiledPlan;
-    use thalos_engine::planning::program_edit::ProgramEdit;
+    use crate::engine::core::trajectory::TrajectoryPoint;
+    use crate::engine::planning::motion::program::CompiledPlan;
+    use crate::engine::planning::program_edit::ProgramEdit;
 
     use crate::services::command_history::CommandMetrics;
 
@@ -128,7 +128,7 @@ mod tests {
             TrajectoryPoint::new(vec![0.0, 0.0], 0.0),
             TrajectoryPoint::new(vec![t, t], 1.0),
         ];
-        CompiledPlan::new(thalos_engine::core::trajectory::Trajectory::new(points), vec![])
+        CompiledPlan::new(crate::engine::core::trajectory::Trajectory::new(points), vec![])
     }
 
     /// A MoveWaypoint edit — seeds the history with a stored inverse.

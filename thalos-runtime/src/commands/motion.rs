@@ -1,4 +1,4 @@
-use thalos_engine::core::{
+use crate::engine::core::{
     kinematics::{
         forward::ForwardKinematics,
         inverse::{DampedLeastSquaresSolver, IKGoal, IKResult, IKSolver},
@@ -9,7 +9,7 @@ use thalos_engine::core::{
     spatial::pose::Pose,
 };
 
-use thalos_engine::planning::{
+use crate::engine::planning::{
     goal::{
         GoalMetadata, GoalResolver, GoalResolverConfig, PlanningAssessment, PlanningPolicy,
         ValidatedGoal,
@@ -163,7 +163,7 @@ impl ExecutableCommand for MotionCommands {
                     time_step: 0.01,
                 });
                 let goal = ValidatedGoal {
-                    goal: thalos_engine::planning::goal::JointGoal(target.clone()),
+                    goal: crate::engine::planning::goal::JointGoal(target.clone()),
                     metadata: GoalMetadata::default(),
                     assessment: PlanningAssessment::accepted(),
                 };

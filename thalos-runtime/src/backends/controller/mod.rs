@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 
-use thalos_engine::core::execution::plan::ExecutionPlan;
-use thalos_engine::core::execution::runtime::RuntimeProgram;
+use crate::engine::core::execution::plan::ExecutionPlan;
+use crate::engine::core::execution::runtime::RuntimeProgram;
 
 use crate::error::ControllerError;
 use crate::execution_boundary::ExecutionSample;
@@ -187,7 +187,7 @@ pub mod tests {
     use super::*;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-    use thalos_engine::core::execution::plan::{ExecutionSegment, ExecutionWaypoint, PlanInstruction};
+    use crate::engine::core::execution::plan::{ExecutionSegment, ExecutionWaypoint, PlanInstruction};
 
     pub struct MockController {
         pub connected: AtomicBool,

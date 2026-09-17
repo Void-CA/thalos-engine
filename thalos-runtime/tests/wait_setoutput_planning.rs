@@ -5,8 +5,8 @@
 //! the trajectory time); `set_output` must appear as an explicit instruction
 //! without contributing geometry.
 
-use thalos_engine::core::execution::plan::PlanInstruction;
-use thalos_engine::core::models::{factory::RobotRegistry, RobotModel};
+use thalos_runtime::engine::core::execution::plan::PlanInstruction;
+use thalos_runtime::engine::core::models::{factory::RobotRegistry, RobotModel};
 use thalos_runtime::planning::service::{PlanResult, PlanningService, RobotPlanningContext};
 
 fn planar_ctx() -> RobotPlanningContext {

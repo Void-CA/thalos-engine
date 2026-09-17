@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 
-use thalos_engine::core::prelude::Trajectory;
-use thalos_engine::planning::motion::program::{CompiledPlan, PlannedSegment, SemanticTarget};
+use crate::engine::core::prelude::Trajectory;
+use crate::engine::planning::motion::program::{CompiledPlan, PlannedSegment, SemanticTarget};
 
 use super::motion_type::MotionType;
 use super::state::PlanState;

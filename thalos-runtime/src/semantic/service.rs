@@ -3,9 +3,9 @@ use serde::{Deserialize, Serialize};
 
 use thalos_document::program_document::ProgramDocument;
 
-use thalos_engine::core::analysis::location::Location;
-use thalos_engine::core::analysis::observation::{Observation, Severity};
-use thalos_engine::core::{
+use crate::engine::core::analysis::location::Location;
+use crate::engine::core::analysis::observation::{Observation, Severity};
+use crate::engine::core::{
     execution::{program::ExecutionProgram, runtime::RuntimeProgram},
     kinematics::{
         forward::ForwardKinematics, inverse::DampedLeastSquaresSolver, inverse::IKConfig,
@@ -14,8 +14,7 @@ use thalos_engine::core::{
     robot::state::RobotState,
     spatial::frame::FrameRegistry,
 };
-use thalos_engine::intelligence::semantic::SemanticExpert;
-use thalos_engine::planning::{
+use crate::engine::planning::{
     motion::{
         compiler::{DefaultPlannerDispatcher, PlanCompiler},
         planner::SegmentPlanningContext,
@@ -23,7 +22,7 @@ use thalos_engine::planning::{
     resolver::{MotionResolver, ResolutionError},
     timeline::TimelineScheduler,
 };
-use thalos_engine::semantic::{
+use crate::engine::semantic::{
     lowering::{SemanticLowering, context::LoweringContext},
     validation::validate,
 };
@@ -107,10 +106,8 @@ impl SemanticService {
             });
         }
 
-        let expert = SemanticExpert::analyze(&task.program);
         let warnings: Vec<String> = observations
             .iter()
-            .chain(expert.iter())
             .filter(|o| o.severity != Severity::Error)
             .map(validation_message)
             .collect();
@@ -120,7 +117,7 @@ impl SemanticService {
             .with_default_profile(JOINT_PROFILE)
             .with_default_cartesian_profile(Some(CARTESIAN_PROFILE));
 
-        let ir = thalos_engine::semantic::ir::SemanticIr::from(&task.program);
+        let ir = crate::engine::semantic::ir::SemanticIr::from(&task.program);
         let mp = SemanticLowering::lower(&ir, &ctx)
             .map_err(|e| RuntimeError::LoweringError { message: format!("{e}") })?;
 
@@ -163,10 +160,8 @@ impl SemanticService {
                 });
             }
 
-            let expert = SemanticExpert::analyze(&task.program);
             let warnings: Vec<String> = observations
                 .iter()
-                .chain(expert.iter())
                 .filter(|o| o.severity != Severity::Error)
                 .map(validation_message)
                 .collect();
@@ -176,7 +171,7 @@ impl SemanticService {
                 .with_default_profile(JOINT_PROFILE)
                 .with_default_cartesian_profile(Some(CARTESIAN_PROFILE));
 
-            let ir = thalos_engine::semantic::ir::SemanticIr::from(&task.program);
+            let ir = crate::engine::semantic::ir::SemanticIr::from(&task.program);
             let mp = SemanticLowering::lower(&ir, &ctx)
                 .map_err(|e| RuntimeError::LoweringError { message: format!("{e}") })?;
 
@@ -235,22 +230,22 @@ impl SemanticService {
         let chain = snapshot.chain.clone();
         let initial_joints = snapshot.joints.clone();
 
-        let ast = thalos_engine::lang::parse_source(source)
+        let ast = crate::engine::lang::parse_source(source)
             .map_err(|errs| RuntimeError::SemanticValidationError {
                 message: errs.into_iter().map(|e| format!("{}", e)).collect::<Vec<_>>().join("; "),
             })?;
 
-        let sem_program = thalos_engine::semantic::compiler::SemanticCompiler::compile(&ast)
+        let sem_program = crate::engine::semantic::compiler::SemanticCompiler::compile(&ast)
             .map_err(|errs| RuntimeError::SemanticValidationError {
                 message: errs.join("; "),
             })?;
 
-        let resolved = thalos_engine::semantic::resolver::SemanticResolver::resolve(&sem_program)
+        let resolved = crate::engine::semantic::resolver::SemanticResolver::resolve(&sem_program)
             .map_err(|errs| RuntimeError::SemanticValidationError {
                 message: errs.join("; "),
             })?;
 
-        let planning_input = thalos_engine::planning::input::PlanningInput::from_resolved(&resolved);
+        let planning_input = crate::engine::planning::input::PlanningInput::from_resolved(&resolved);
 
         let fk = ForwardKinematics::new(chain.clone());
         let ik_solver = DampedLeastSquaresSolver::from_config(fk, *chain.end_effector(), IK_CONFIG);
@@ -296,15 +291,15 @@ fn validation_message(o: &Observation) -> String {
 fn map_resolver_error(e: ResolutionError) -> RuntimeError {
     match e {
         ResolutionError::DofMismatch { .. } => RuntimeError::DofMismatch { message: format!("{e}") },
-        _ => RuntimeError::Planning(thalos_engine::planning::error::PlanningError::InvalidContext(format!("{e}"))),
+        _ => RuntimeError::Planning(crate::engine::planning::error::PlanningError::InvalidContext(format!("{e}"))),
     }
 }
 
 pub fn build_seg_ctx<'a>(
     snapshot: &'a crate::RuntimeSnapshot,
-    chain: &'a thalos_engine::core::robot::serial_chain::SerialChain,
+    chain: &'a crate::engine::core::robot::serial_chain::SerialChain,
     current_state: &'a RobotState,
-    ik_solver: &'a dyn thalos_engine::core::kinematics::inverse::IKSolver,
+    ik_solver: &'a dyn crate::engine::core::kinematics::inverse::IKSolver,
 ) -> SegmentPlanningContext<'a> {
     SegmentPlanningContext {
         robot: chain,
@@ -317,7 +312,7 @@ pub fn build_seg_ctx<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use thalos_engine::core::{
+    use crate::engine::core::{
         kinematics::{
             forward::ForwardKinematics,
             inverse::{IKGoal, IKResult, IKSolver, IkError},

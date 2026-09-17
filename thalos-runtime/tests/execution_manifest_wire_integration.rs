@@ -23,14 +23,14 @@
 //! no `FakeTransport`), the internal builders' unit behaviors (covered by their
 //! own test modules), and hardware (none).
 
-use thalos_engine::core::ids::OperationId;
-use thalos_engine::core::motion::segment::MotionSegment;
-use thalos_engine::core::prelude::{Trajectory, TrajectoryPoint};
-use thalos_engine::core::spatial::frame::FrameId;
-use thalos_engine::core::spatial::pose::Pose;
-use thalos_engine::math::Transform3D;
-use thalos_engine::planning::execution_plan_builder::ExecutionPlanBuilder;
-use thalos_engine::planning::motion::program::{CompiledPlan, PlannedSegment};
+use thalos_runtime::engine::core::ids::OperationId;
+use thalos_runtime::engine::core::motion::segment::MotionSegment;
+use thalos_runtime::engine::core::prelude::{Trajectory, TrajectoryPoint};
+use thalos_runtime::engine::core::spatial::frame::FrameId;
+use thalos_runtime::engine::core::spatial::pose::Pose;
+use thalos_runtime::engine::math::Transform3D;
+use thalos_runtime::engine::planning::execution_plan_builder::ExecutionPlanBuilder;
+use thalos_runtime::engine::planning::motion::program::{CompiledPlan, PlannedSegment};
 use thalos_runtime::execution_boundary::manifest_builder::ExecutionManifestBuilder;
 use thalos_transport::esp32::codec::Esp32Codec;
 

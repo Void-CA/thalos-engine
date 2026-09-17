@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use serde::{Deserialize, Serialize};
-use thalos_engine::prelude::StationId;
+use crate::engine::prelude::StationId;
 
 use crate::execution::session::{
     CommandProvider, DomainExecutionCoordinator, ExecutionConfiguration,

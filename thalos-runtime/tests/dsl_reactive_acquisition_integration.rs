@@ -9,8 +9,8 @@
 use std::collections::HashMap;
 use thalos_lang::parser::parse_source;
 use thalos_ports::device::{ChannelObservation, ChannelValue, SignalQuality};
-use thalos_semantic::compiler::SemanticCompiler;
-use thalos_semantic::model::{
+use thalos_language_service::compiler::SemanticCompiler;
+use thalos_language_service::model::{
     MotionKind, SemanticExpr, SemanticMotion, SemanticStatement,
 };
 
@@ -104,8 +104,8 @@ impl ChannelRegistry {
 fn eval_semantic_expr(expr: &SemanticExpr, registry: &ChannelRegistry) -> Result<f64, String> {
     match expr {
         SemanticExpr::Constant(val) => match val {
-            thalos_semantic::evaluator::CompileTimeValue::Float(f) => Ok(*f),
-            thalos_semantic::evaluator::CompileTimeValue::Int(i) => Ok(*i as f64),
+            thalos_language_service::evaluator::CompileTimeValue::Float(f) => Ok(*f),
+            thalos_language_service::evaluator::CompileTimeValue::Int(i) => Ok(*i as f64),
             _ => Err("Non-numeric constant".to_string()),
         },
         SemanticExpr::ChannelAccess { module, channel } => {

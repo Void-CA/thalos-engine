@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use thalos_engine::prelude::*;
+use crate::engine::prelude::*;
 
 /// ReservationError (ADR-014)
 #[derive(Debug, Error, PartialEq, Eq)]

@@ -1,7 +1,7 @@
 //! E2E #2 — execution: compiled artifact → simulated runtime behavior.
 //!
 //! Builds the compiled artifact from real semantic intent (the same full
-//! pipeline as E2E #1, via `thalos_engine::semantic::test_support`), schedules it into
+//! pipeline as E2E #1, via `thalos_runtime::engine::semantic::test_support`), schedules it into
 //! a simulated scene, and advances the tick loop to completion. Protects the
 //! RUNTIME contract:
 //!
@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use tokio::sync::RwLock;
 
-use thalos_engine::core::{
+use thalos_runtime::engine::core::{
     command::{CommandSemantics, TriggerValue},
     execution::runtime::{RuntimeAction, RuntimeProgram},
     ids::OperationId,
@@ -25,7 +25,7 @@ use thalos_engine::core::{
     robot::state::RobotState,
     spatial::frame::FrameRegistry,
 };
-use thalos_engine::planning::{
+use thalos_runtime::engine::planning::{
     motion::{
         compiler::{DefaultPlannerDispatcher, PlanCompiler},
         planner::SegmentPlanningContext,
@@ -40,7 +40,7 @@ use thalos_runtime::{
     backends::BackendManager,
     plan::SessionStatus,
 };
-use thalos_engine::semantic::{
+use thalos_runtime::engine::semantic::{
     lowering::SemanticLowering,
     test_support::{self, pick_wait_place_home_ir},
 };
@@ -153,7 +153,7 @@ async fn compiled_plan_executes_with_frozen_delay_and_ordered_output_dispatch() 
         .iter()
         .find_map(|e| {
             if let RuntimeAction::ExecuteCommand(cmd) = &e.action {
-                if let thalos_engine::core::command::Command::Trigger(t) = cmd {
+                if let thalos_runtime::engine::core::command::Command::Trigger(t) = cmd {
                     if t.value == TriggerValue::Bool(true) {
                         return Some(e.at_time);
                     }
@@ -167,7 +167,7 @@ async fn compiled_plan_executes_with_frozen_delay_and_ordered_output_dispatch() 
         .iter()
         .find_map(|e| {
             if let RuntimeAction::ExecuteCommand(cmd) = &e.action {
-                if let thalos_engine::core::command::Command::Trigger(t) = cmd {
+                if let thalos_runtime::engine::core::command::Command::Trigger(t) = cmd {
                     if t.value == TriggerValue::Bool(false) {
                         return Some(e.at_time);
                     }

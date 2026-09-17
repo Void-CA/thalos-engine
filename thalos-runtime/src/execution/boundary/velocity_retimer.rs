@@ -12,7 +12,7 @@
 //! offending joint(s) while leaving adjacent valid gaps untouched. The spatial
 //! joint trajectory is preserved exactly — only `dt` is stretched.
 
-use thalos_engine::core::execution::plan::{ExecutionPlan, ExecutionWaypoint};
+use crate::engine::core::execution::plan::{ExecutionPlan, ExecutionWaypoint};
 
 use super::safety_envelope::SafetyEnvelope;
 
@@ -112,7 +112,7 @@ impl VelocityRetimer {
 mod tests {
     use super::*;
     use crate::execution_boundary::manifest_builder::ExecutionManifestBuilder;
-    use thalos_engine::core::execution::plan::{
+    use crate::engine::core::execution::plan::{
         ExecutionSegment, PlanInstruction,
     };
 

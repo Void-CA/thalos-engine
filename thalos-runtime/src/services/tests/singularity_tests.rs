@@ -1,6 +1,6 @@
-use thalos_engine::core::analysis::singularity::SingularityConfig;
-use thalos_engine::core::analysis::workspace::WorkspaceConfig;
-use thalos_engine::core::models::RobotModel;
+use crate::engine::core::analysis::singularity::SingularityConfig;
+use crate::engine::core::analysis::workspace::WorkspaceConfig;
+use crate::engine::core::models::RobotModel;
 
 use crate::services::singularity::SingularityService;
 

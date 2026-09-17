@@ -1,5 +1,5 @@
 use thiserror::Error;
-use thalos_engine::prelude::*;
+use crate::engine::prelude::*;
 use crate::resources::{
     ReservationError, ResourceRegistry, ResourceReservation, ResourceReservationManager,
     ResourceResolutionError, ResourceResolver,

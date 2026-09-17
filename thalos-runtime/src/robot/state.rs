@@ -1,20 +1,20 @@
-use thalos_engine::core::robot::tool_frame::ToolFrame;
-use thalos_engine::core::spatial::frame::FrameId;
-use thalos_engine::core::{
+use crate::engine::core::robot::tool_frame::ToolFrame;
+use crate::engine::core::spatial::frame::FrameId;
+use crate::engine::core::{
     kinematics::{
         forward::ForwardKinematics,
         inverse::{DampedLeastSquaresSolver, IKGoal, IKResult, IKSolver},
     },
     prelude::Trajectory,
 };
-use thalos_engine::models::Robot;
-use thalos_engine::planning::motion::program::{CompiledPlan, PlanningProgram};
-use thalos_engine::planning::program_edit::ProgramEdit;
+use crate::engine::models::Robot;
+use crate::engine::planning::motion::program::{CompiledPlan, PlanningProgram};
+use crate::engine::planning::program_edit::ProgramEdit;
 
 use crate::error::RuntimeError;
 use crate::services::command_history::{AppliedCommand, CommandHistory, CommandMetrics};
 use crate::scene::JointMeta;
-pub use thalos_engine::core::prelude::ActiveRobot;
+pub use crate::engine::core::prelude::ActiveRobot;
 
 use crate::plan::{ActiveMotionPlan, MotionType};
 
@@ -338,7 +338,7 @@ impl SceneRuntime {
         command: ProgramEdit,
         inverse: ProgramEdit,
         metrics: CommandMetrics,
-        applied_program: Vec<thalos_engine::core::motion::segment::MotionSegment>,
+        applied_program: Vec<crate::engine::core::motion::segment::MotionSegment>,
     ) {
         self.command_history.push(AppliedCommand {
             command,
@@ -463,9 +463,9 @@ impl SceneRuntime {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use thalos_engine::core::ids::OperationId;
-    use thalos_engine::core::models::{RobotModel, RobotRegistry};
-    use thalos_engine::core::trajectory::TrajectoryPoint;
+    use crate::engine::core::ids::OperationId;
+    use crate::engine::core::models::{RobotModel, RobotRegistry};
+    use crate::engine::core::trajectory::TrajectoryPoint;
 
     fn test_runtime() -> SceneRuntime {
         let chain = RobotRegistry::create_default(RobotModel::Planar2R);
@@ -811,7 +811,7 @@ mod tests {
         runtime.schedule_plan(compiled_plan(1.0));
         let (cmd, inverse) = recorded_edit();
         // The apply wrote a program carrying one MoveJ segment.
-        let applied_program = vec![thalos_engine::core::motion::segment::MotionSegment::MoveJ {
+        let applied_program = vec![crate::engine::core::motion::segment::MotionSegment::MoveJ {
             origin: OperationId("op-0".to_string()),
             target: vec![0.0, 0.0],
             max_velocity: Some(500.0),

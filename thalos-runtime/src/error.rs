@@ -1,10 +1,10 @@
 use thiserror::Error;
 
-use thalos_engine::core::analysis::workspace::WorkspaceError;
-use thalos_engine::core::kinematics::inverse::IkError;
-use thalos_engine::core::models::RobotModelError;
+use crate::engine::core::analysis::workspace::WorkspaceError;
+use crate::engine::core::kinematics::inverse::IkError;
+use crate::engine::core::models::RobotModelError;
 
-use thalos_engine::planning::error::PlanningError;
+use crate::engine::planning::error::PlanningError;
 
 /// Errors specific to the RobotController trait.
 #[derive(Error, Debug, PartialEq, Clone)]

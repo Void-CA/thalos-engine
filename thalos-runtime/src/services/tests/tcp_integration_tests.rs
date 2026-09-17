@@ -4,13 +4,13 @@
 //! (workspace, singularity, manipulability, IK) must reference the
 //! same active TCP when set.
 
-use thalos_engine::math::{Transform3D, Vector3};
+use crate::engine::math::{Transform3D, Vector3};
 
 use std::sync::Arc;
 
 use tokio::sync::RwLock;
 
-use thalos_engine::core::{
+use crate::engine::core::{
     analysis::workspace::WorkspaceConfig,
     kinematics::{
         forward::ForwardKinematics,
@@ -125,7 +125,7 @@ fn fk_tcp_pose_returns_composed_transformation() {
         thalos_importer::import_urdf(ICEBOT_URDF).expect("icebot URDF should parse");
 
     // Use from_tip to explicitly select the end_effector (not tool0)
-    let chain = thalos_engine::core::robot::adapter::from_tip(&robot, "end_effector")
+    let chain = crate::engine::core::robot::adapter::from_tip(&robot, "end_effector")
         .expect("icebot should produce a valid chain to end_effector");
 
     // Debug: print chain info
@@ -284,7 +284,7 @@ async fn ik_converges_and_tcp_maintains_offset() {
 
     // IK should converge
     assert!(
-        ik_result.status == thalos_engine::core::kinematics::inverse::IKStatus::Converged,
+        ik_result.status == crate::engine::core::kinematics::inverse::IKStatus::Converged,
         "IK should converge to flange target"
     );
 

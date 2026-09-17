@@ -18,7 +18,7 @@
 //! | Station is an operational isolation boundary   | S13  |
 //! | Hardware swap preserves session semantics      | S14  |
 
-use thalos_engine::prelude::*;
+use thalos_runtime::engine::prelude::*;
 use thalos_ports::device::{
     ChannelSubscription, DeviceTransport,
 };

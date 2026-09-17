@@ -8,7 +8,7 @@
 //! (`planned_segment_index`), never by re-inferring structure. Validation
 //! mirrors `firmware/esp32/src/validator.cpp` and runs inside [`build`].
 
-use thalos_engine::core::execution::plan::{BuilderError, ExecutionPlan, PlanInstruction};
+use crate::engine::core::execution::plan::{BuilderError, ExecutionPlan, PlanInstruction};
 
 use crate::execution_boundary::safety_envelope::SafetyEnvelope;
 use crate::execution_boundary::{
@@ -206,7 +206,7 @@ impl ExecutionManifestBuilder {
 mod tests {
     use std::ops::Range;
 
-    use thalos_engine::core::execution::plan::{ExecutionSegment, ExecutionWaypoint, PlanInstruction};
+    use crate::engine::core::execution::plan::{ExecutionSegment, ExecutionWaypoint, PlanInstruction};
 
     use crate::execution_boundary::safety_envelope::SafetyEnvelope;
 

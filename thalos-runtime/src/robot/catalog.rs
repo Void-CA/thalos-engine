@@ -2,9 +2,9 @@ use std::path::PathBuf;
 
 use thiserror::Error;
 
-use thalos_engine::core::robot::adapter;
-use thalos_engine::core::robot::serial_chain::SerialChain;
-use thalos_engine::models::Robot;
+use crate::engine::core::robot::adapter;
+use crate::engine::core::robot::serial_chain::SerialChain;
+use crate::engine::models::Robot;
 use thalos_importer::import_urdf;
 
 /// Definición de un robot del catálogo: identidad técnica + referencia a assets.

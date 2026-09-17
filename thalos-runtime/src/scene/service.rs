@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use tokio::sync::RwLock;
 
-use thalos_engine::core::{
+use crate::engine::core::{
     execution::{
         plan::{ExecutionPlan, ExecutionSegment, ExecutionWaypoint, PlanInstruction},
         runtime::RuntimeProgram,
@@ -16,12 +16,12 @@ use thalos_engine::core::{
     robot::serial_chain::SerialChain,
     spatial::frame::FrameId,
 };
-use thalos_engine::planning::execution_plan_builder::ExecutionPlanBuilder;
-use thalos_engine::planning::motion::program::{CompiledPlan, PlanningProgram};
-use thalos_engine::planning::program_edit::ProgramEdit;
+use crate::engine::planning::execution_plan_builder::ExecutionPlanBuilder;
+use crate::engine::planning::motion::program::{CompiledPlan, PlanningProgram};
+use crate::engine::planning::program_edit::ProgramEdit;
 
-use thalos_engine::core::robot::adapter;
-use thalos_engine::models::Robot;
+use crate::engine::core::robot::adapter;
+use crate::engine::models::Robot;
 use thalos_importer::import_urdf;
 
 use crate::backends::controller::RobotController;
@@ -461,14 +461,14 @@ impl SceneService {
         &self,
         position: [f64; 3],
     ) -> Result<IkSolution, RuntimeError> {
-        use thalos_engine::math::Vector3;
+        use crate::engine::math::Vector3;
 
         let goal = IKGoal::Position(Vector3::new(position[0], position[1], position[2]));
         let (joints, result) = self.solve_ik(FrameId::World, goal).await?;
 
         Ok(IkSolution {
             joints,
-            converged: matches!(result.status, thalos_engine::core::kinematics::inverse::IKStatus::Converged),
+            converged: matches!(result.status, crate::engine::core::kinematics::inverse::IKStatus::Converged),
             iterations: result.iterations,
             final_error: result.final_error,
         })
@@ -567,7 +567,7 @@ impl SceneService {
         command: ProgramEdit,
         inverse: ProgramEdit,
         metrics: CommandMetrics,
-        applied_program: Vec<thalos_engine::core::motion::segment::MotionSegment>,
+        applied_program: Vec<crate::engine::core::motion::segment::MotionSegment>,
     ) -> Result<RuntimeSnapshot, RuntimeError> {
         let mut runtime = self.runtime.write().await;
         runtime.replace_active_plan(compiled)?;
@@ -1562,15 +1562,15 @@ impl SceneService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use thalos_engine::planning::motion::program::CompiledPlan;
+    use crate::engine::planning::motion::program::CompiledPlan;
 
     /// A VALID compiled plan: two waypoints, non-zero duration, target `[t, t]`.
     fn compiled_plan(t: f64) -> CompiledPlan {
         let points = vec![
-            thalos_engine::core::trajectory::TrajectoryPoint::new(vec![0.0, 0.0], 0.0),
-            thalos_engine::core::trajectory::TrajectoryPoint::new(vec![t, t], 1.0),
+            crate::engine::core::trajectory::TrajectoryPoint::new(vec![0.0, 0.0], 0.0),
+            crate::engine::core::trajectory::TrajectoryPoint::new(vec![t, t], 1.0),
         ];
-        CompiledPlan::new(thalos_engine::core::trajectory::Trajectory::new(points), vec![])
+        CompiledPlan::new(crate::engine::core::trajectory::Trajectory::new(points), vec![])
     }
 
     /// A MoveWaypoint edit — the shape the apply pipeline records.

@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use thalos_engine::prelude::*;
+use crate::engine::prelude::*;
 
 /// ResourceRegistry (ADR-014)
 /// In-memory inventory repository holding all registered system resources.

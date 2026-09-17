@@ -1,6 +1,6 @@
-use thalos_engine::core::kinematics::inverse::{IKGoal, IKResult};
-use thalos_engine::core::prelude::{FrameId, Pose};
-use thalos_engine::math::Vector3;
+use crate::engine::core::kinematics::inverse::{IKGoal, IKResult};
+use crate::engine::core::prelude::{FrameId, Pose};
+use crate::engine::math::Vector3;
 
 use crate::{RuntimeError, commands::handler::ExecutableCommand, robot::SceneRuntime};
 

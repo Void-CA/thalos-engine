@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use thalos_engine::prelude::*;
+use crate::engine::prelude::*;
 
 /// StationRuntimeState (ADR-014)
 /// Explicit lifecycle states for the Station Runtime supervisor.

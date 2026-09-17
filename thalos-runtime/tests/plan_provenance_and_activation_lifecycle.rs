@@ -10,12 +10,12 @@ use std::sync::Arc;
 use sha2::{Digest, Sha256};
 use tokio::sync::RwLock;
 
-use thalos_engine::core::{
+use thalos_runtime::engine::core::{
     models::RobotModel,
     prelude::Trajectory,
     trajectory::TrajectoryPoint,
 };
-use thalos_engine::planning::motion::program::CompiledPlan;
+use thalos_runtime::engine::planning::motion::program::CompiledPlan;
 
 use thalos_runtime::{
     backends::{

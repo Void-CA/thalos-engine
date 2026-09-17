@@ -3,13 +3,13 @@ use std::sync::Arc;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
-use thalos_engine::core::analysis::workspace::{
+use crate::engine::core::analysis::workspace::{
     Workspace, WorkspaceConfig, WorkspaceError, sampler::WorkspaceSampler,
 };
-use thalos_engine::core::models::{RobotModel, RobotRegistry};
-use thalos_engine::core::robot::serial_chain::SerialChain;
-use thalos_engine::core::robot::tool_frame::ToolFrame;
-use thalos_engine::math::Vector3;
+use crate::engine::core::models::{RobotModel, RobotRegistry};
+use crate::engine::core::robot::serial_chain::SerialChain;
+use crate::engine::core::robot::tool_frame::ToolFrame;
+use crate::engine::math::Vector3;
 
 use crate::error::RuntimeError;
 
@@ -70,7 +70,7 @@ impl WorkspaceService {
         workspace: &Workspace,
         point: &Vector3,
         tolerance: f64,
-    ) -> Result<thalos_engine::core::analysis::workspace::Reachability, WorkspaceError> {
+    ) -> Result<crate::engine::core::analysis::workspace::Reachability, WorkspaceError> {
         workspace.is_reachable(point, tolerance)
     }
 }

@@ -1,17 +1,17 @@
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
-use thalos_engine::core::analysis::singularity::{
+use crate::engine::core::analysis::singularity::{
     SingularityAnalysis, SingularityAnalyzer, SingularityConfig,
 };
-use thalos_engine::core::analysis::workspace::{
+use crate::engine::core::analysis::workspace::{
     WorkspaceConfig, WorkspaceError, sampler::WorkspaceSampler,
 };
-use thalos_engine::core::kinematics::forward::ForwardKinematics;
-use thalos_engine::core::kinematics::jacobian::GeometricJacobian;
-use thalos_engine::core::models::{RobotModel, RobotRegistry};
-use thalos_engine::core::robot::serial_chain::SerialChain;
-use thalos_engine::core::robot::tool_frame::ToolFrame;
+use crate::engine::core::kinematics::forward::ForwardKinematics;
+use crate::engine::core::kinematics::jacobian::GeometricJacobian;
+use crate::engine::core::models::{RobotModel, RobotRegistry};
+use crate::engine::core::robot::serial_chain::SerialChain;
+use crate::engine::core::robot::tool_frame::ToolFrame;
 
 use crate::error::RuntimeError;
 

@@ -6,8 +6,8 @@ use arc_swap::ArcSwap;
 use async_trait::async_trait;
 use tokio::sync::RwLock;
 
-use thalos_engine::core::execution::plan::ExecutionPlan;
-use thalos_engine::core::execution::runtime::{RuntimeAction, RuntimeEvent, RuntimeProgram};
+use crate::engine::core::execution::plan::ExecutionPlan;
+use crate::engine::core::execution::runtime::{RuntimeAction, RuntimeEvent, RuntimeProgram};
 
 use crate::backends::controller::{BackendCapabilities, RobotController};
 use crate::error::ControllerError;
@@ -389,7 +389,7 @@ impl RobotController for SimulationController {
 mod tests {
     use super::*;
     use std::time::Duration;
-    use thalos_engine::core::{
+    use crate::engine::core::{
         execution::{
             plan::{ExecutionSegment, ExecutionWaypoint, PlanInstruction},
             runtime::{RuntimeAction, RuntimeEvent, RuntimeProgram},

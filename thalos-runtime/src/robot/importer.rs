@@ -8,8 +8,8 @@ use thalos_importer::assets::resolver::{Resolution, UriResolver};
 use thalos_importer::import_urdf_resolved;
 use thalos_models::robot::Robot;
 use thalos_models::robot_asset::RobotAsset;
-use thalos_engine::core::robot::adapter;
-use thalos_engine::core::robot::serial_chain::SerialChain;
+use crate::engine::core::robot::adapter;
+use crate::engine::core::robot::serial_chain::SerialChain;
 
 use crate::ports::robot_repository::{RobotRecord, RobotSource};
 

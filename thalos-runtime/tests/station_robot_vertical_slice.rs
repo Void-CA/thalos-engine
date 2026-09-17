@@ -154,7 +154,7 @@ async fn multiple_stations_different_robots() {
     assert_eq!(check_robot_availability(&rb.id, &ctx.workspace, ctx.robot_service.repo().unwrap()).await, RobotAvailability::Materialized);
 }
 
-use thalos_engine::prelude::StationId;
+use thalos_runtime::engine::prelude::StationId;
 
 // ─── Invariant Tests ─────────────────────────────────────────────────
 

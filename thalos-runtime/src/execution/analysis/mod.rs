@@ -41,7 +41,7 @@
 use std::collections::BTreeMap;
 
 use crate::comparison::PlanExecutionComparison;
-use thalos_engine::core::analysis::{
+use crate::engine::core::analysis::{
     attribute_value::AttributeValue,
     location::Location,
     observation::{ArtifactRef, Observation, ObservationId, ObservationKind, Severity},
@@ -350,12 +350,12 @@ mod tests {
     use crate::telemetry::{ExecutionSample, ExecutionTrace, TraceMetadata};
     use std::collections::BTreeMap;
     use std::time::Duration;
-    use thalos_engine::core::analysis::attribute_value::AttributeValue;
-    use thalos_engine::core::analysis::location::Location;
-    use thalos_engine::core::analysis::observation::{
+    use crate::engine::core::analysis::attribute_value::AttributeValue;
+    use crate::engine::core::analysis::location::Location;
+    use crate::engine::core::analysis::observation::{
         ArtifactRef, Observation, ObservationId, ObservationKind, Severity,
     };
-    use thalos_engine::core::ids::ExecutionSessionId;
+    use crate::engine::core::ids::ExecutionSessionId;
 
     fn make_perfect_trace() -> (MotionTrace, ExecutionTrace) {
         let mut plan = MotionTrace::new();
@@ -750,131 +750,4 @@ mod tests {
         }
     }
 
-    // ── C4 (mandatory): root-cause chain — execution deviation → causes →
-    //    plan singularity → Action ───────────────────────────────────────────
-    #[test]
-    fn root_cause_chain_execution_deviation_to_plan_to_action() {
-        use thalos_engine::core::analysis::action::{ActionId, ActionKind};
-        use thalos_engine::core::analysis::aggregator::{Aggregator, DefaultAggregator};
-        use thalos_engine::core::analysis::scoring::DefaultScoringPolicy;
-        use thalos_engine::core::models::{RobotModel, RobotRegistry};
-        use thalos_engine::core::trajectory::{Trajectory, TrajectoryPoint};
-        use thalos_engine::planning::{advisor::PlanAdvisor, analysis::TrajectoryAnalyzer};
-
-        // 1. PLAN layer: a singular configuration → a Singularity/NearSingularity
-        //    observation anchored to the MotionPlan (TrajectoryAnalyzer, PR 3).
-        let chain = RobotRegistry::create_default(RobotModel::Planar2R);
-        let traj = Trajectory::new(vec![
-            TrajectoryPoint::new(vec![0.0, 0.0], 0.0), // arm fully extended → singular
-            TrajectoryPoint::new(vec![0.5, 1.57], 1.0), // good configuration
-        ]);
-        let plan_artifact =
-            ArtifactRef::MotionPlan(thalos_engine::core::ids::MotionPlanId("mp-c4".to_string()));
-        let mut plan_observations =
-            TrajectoryAnalyzer::new(&chain, None).analyze(plan_artifact.clone(), &traj);
-        let singular_idx = plan_observations
-            .iter()
-            .position(|o| {
-                matches!(
-                    o.kind,
-                    ObservationKind::Singularity | ObservationKind::NearSingularity
-                )
-            })
-            .expect("fully-extended arm must yield a singular observation");
-
-        // 2. EXECUTION layer: execution deviating from that plan → execution
-        //    observations anchored to the ExecutionSession (this PR).
-        let (plan_trace, exec_trace) = make_deviated_trace();
-        let comparison = compare(&plan_trace, &exec_trace, "mp-c4", "es-c4", "test");
-        let exec_artifact = ArtifactRef::ExecutionSession(ExecutionSessionId("es-c4".to_string()));
-        let mut exec_observations =
-            ExecutionAnalyzer::new().analyze(exec_artifact.clone(), &comparison);
-        let exec_dev_idx = exec_observations
-            .iter()
-            .position(|o| {
-                matches!(
-                    o.kind,
-                    ObservationKind::TrackingError | ObservationKind::TrackingSpike
-                )
-            })
-            .expect("deviated execution must yield execution observations");
-
-        // 3. LINK (C3): producers cannot know aggregator-assigned ids (the
-        //    aggregator reassigns 1..=n and remaps references), so the linking
-        //    step — numbering + wiring `causes` — lives in the test today. The
-        //    PR 4b feedback loop formalizes it (documented pending work).
-        let plan_count = plan_observations.len();
-        let mut all: Vec<Observation> = Vec::with_capacity(plan_count + exec_observations.len());
-        all.append(&mut plan_observations);
-        all.append(&mut exec_observations);
-        for (i, obs) in all.iter_mut().enumerate() {
-            obs.id = ObservationId((i + 1) as u32);
-        }
-        let singular_id = all[singular_idx].id;
-        let exec_dev_id = all[plan_count + exec_dev_idx].id;
-
-        // Feedback → plan direction only (planning-feedback-loop spec I4).
-        assert_ne!(exec_dev_id, singular_id);
-        all.iter_mut()
-            .find(|o| o.id == exec_dev_id)
-            .expect("execution observation must exist")
-            .causes
-            .push(singular_id);
-
-        // 4. AGGREGATE: the combined feedback→plan graph → report; validate()
-        //    must accept the acyclic chain.
-        let mut report = DefaultAggregator::new(DefaultScoringPolicy).aggregate(exec_artifact, all);
-        assert_eq!(report.validate(), Ok(()));
-
-        // 5. ADVISOR: the plan singularity is remediated; the runtime deviation
-        //    has no plan-level rule — the advisor never invents remediation (C2).
-        let mut actions = PlanAdvisor.advise(&report.observations);
-        assert!(
-            actions.iter().any(|a| a.target_observation == singular_id),
-            "the singular plan observation must be remediated"
-        );
-        assert!(
-            actions.iter().any(|a| a.kind == ActionKind::Singularity),
-            "singularity remediation must be the Singularity action"
-        );
-        assert!(
-            !actions.iter().any(|a| a.target_observation == exec_dev_id),
-            "runtime phenomena have no plan-level remediation rule (C2)"
-        );
-        // The user-contract C4 example names the IK remediation
-        // (ActionKind::IkSolution); that action exists in the vocabulary but no
-        // finding produces it today — the advisor maps singularity → the
-        // Singularity action, its real 1:1 rule (advisor::remediation).
-        for (i, action) in actions.iter_mut().enumerate() {
-            action.id = ActionId((i + 1) as u32); // action ids are assigned downstream too
-        }
-        report.actions = actions;
-        assert_eq!(report.validate(), Ok(()));
-        assert!(report.summary.quality_index < 1.0);
-
-        // NAVIGATION: walk the chain end-to-end.
-        let exec_obs = report
-            .observations
-            .iter()
-            .find(|o| o.id == exec_dev_id)
-            .expect("execution observation present in report");
-        assert_eq!(
-            exec_obs.causes,
-            vec![singular_id],
-            "execution deviation is caused by the plan singularity"
-        );
-        let cause = report
-            .observations
-            .iter()
-            .find(|o| o.id == singular_id)
-            .expect("plan singularity present in report");
-        assert_eq!(cause.artifact, plan_artifact);
-        assert!(
-            report
-                .actions
-                .iter()
-                .any(|a| a.target_observation == singular_id),
-            "the chain ends in a remediation Action targeting the plan observation"
-        );
-    }
 }

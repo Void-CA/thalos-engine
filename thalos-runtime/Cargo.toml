@@ -4,13 +4,15 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-thalos-engine = { path = "../thalos-engine" }
 thalos-language-service = { path = "../thalos-language-service" }
 thalos-importer = { path = "../thalos-importer" }
 thalos-document = { path = "../thalos-document" }
 thalos_ports = { path = "../thalos-ports", features = ["test-support"] }
 thalos-core = { path = "../thalos-core" }
 thalos-models = { path = "../thalos-models" }
+thalos-math = { path = "../thalos-math" }
+thalos-planning = { path = "../thalos-planning" }
+thalos-lang = { path = "../thalos-lang" }
 thalos_visual = { path = "../thalos-visual" }
 thiserror = "2"
 chrono = { version = "0.4", features = ["serde"] }
@@ -30,10 +32,8 @@ test-support = []
 physical-e2e = ["thalos_transport/physical-e2e"]
 
 [dev-dependencies]
-thalos-engine = { path = "../thalos-engine", features = ["test-support"] }
+thalos-language-service = { path = "../thalos-language-service", features = ["test-support"] }
 thalos-persistence = { path = "../../thalos-industrial/backend/crates/thalos-persistence" }
-thalos-lang = { path = "../thalos-lang" }
-thalos-semantic = { path = "../thalos-semantic" }
 
 tempfile = "3"
 

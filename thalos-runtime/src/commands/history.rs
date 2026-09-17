@@ -5,11 +5,11 @@
 //! applied plan so the undo endpoint reports the restored health without
 //! re-running the analysis pipeline.
 
-use thalos_engine::planning::{
+use crate::engine::planning::{
     motion::program::PlanningProgram,
     program_edit::{EditError, ProgramEdit},
 };
-use thalos_engine::core::motion::segment::MotionSegment;
+use crate::engine::core::motion::segment::MotionSegment;
 
 /// Health metrics captured at apply time (D6) — the undo endpoint reports the
 /// restored health from these without re-running the analysis pipeline.
@@ -205,8 +205,8 @@ impl CommandHistory {
 mod tests {
     use super::*;
     use std::time::{Duration, Instant};
-    use thalos_engine::core::ids::OperationId;
-    use thalos_engine::core::motion::segment::MotionSegment;
+    use crate::engine::core::ids::OperationId;
+    use crate::engine::core::motion::segment::MotionSegment;
 
     /// A single-MoveJ program whose target moves under each edit.
     fn sample_program() -> PlanningProgram {

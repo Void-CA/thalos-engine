@@ -5,7 +5,7 @@ pub mod manager;
 pub use internal::InternalBackend;
 pub use manager::{BackendEntry, BackendManager};
 
-use thalos_engine::core::models::RobotModel;
+use crate::engine::core::models::RobotModel;
 
 use crate::error::RuntimeError;
 

@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use tokio::sync::RwLock;
 
-use thalos_engine::core::analysis::workspace::{Workspace, WorkspaceConfig, WorkspaceError};
-use thalos_engine::core::models::RobotModel;
-use thalos_engine::math::Vector3;
+use crate::engine::core::analysis::workspace::{Workspace, WorkspaceConfig, WorkspaceError};
+use crate::engine::core::models::RobotModel;
+use crate::engine::math::Vector3;
 
 use crate::backends::{
     controller::simulation::SimulationController, manager::BackendManager,
@@ -59,7 +59,7 @@ fn query_returns_reachable_for_center() {
     let result = WorkspaceService::query(&ws, &Vector3::new(0.7, 0.5, 0.25), 0.5).unwrap();
     assert!(matches!(
         result,
-        thalos_engine::core::analysis::workspace::Reachability::Reachable
+        crate::engine::core::analysis::workspace::Reachability::Reachable
     ));
 }
 
@@ -78,7 +78,7 @@ fn query_returns_out_of_workspace_for_distant_point() {
     let result = WorkspaceService::query(&ws, &Vector3::new(100.0, 0.0, 0.0), 0.1).unwrap();
     assert!(matches!(
         result,
-        thalos_engine::core::analysis::workspace::Reachability::OutOfWorkspace { .. }
+        crate::engine::core::analysis::workspace::Reachability::OutOfWorkspace { .. }
     ));
 }
 
@@ -176,9 +176,9 @@ fn sample_rejects_zero_samples() {
 
 #[test]
 fn sample_with_tcp_uses_tcp_position() {
-    use thalos_engine::core::models::RobotRegistry;
-    use thalos_engine::core::robot::tool_frame::ToolFrame;
-    use thalos_engine::math::Transform3D;
+    use crate::engine::core::models::RobotRegistry;
+    use crate::engine::core::robot::tool_frame::ToolFrame;
+    use crate::engine::math::Transform3D;
 
     let chain = RobotRegistry::create_default(RobotModel::Scara);
     let config = WorkspaceConfig {

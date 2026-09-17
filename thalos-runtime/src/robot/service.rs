@@ -1,8 +1,8 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use thalos_engine::core::models::{RobotMetadata, RobotModel, RobotSpec};
-use thalos_engine::core::robot::adapter;
+use crate::engine::core::models::{RobotMetadata, RobotModel, RobotSpec};
+use crate::engine::core::robot::adapter;
 use thalos_importer::import_urdf;
 use thalos_importer::import_urdf_resolved;
 use thalos_importer::assets::resolver::Resolution;

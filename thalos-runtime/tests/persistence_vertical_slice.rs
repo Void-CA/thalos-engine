@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use thalos_engine::core::kinematics::inverse::IKGoal;
-use thalos_engine::core::models::RobotModel;
-use thalos_engine::math::Vector3;
+use thalos_runtime::engine::core::kinematics::inverse::IKGoal;
+use thalos_runtime::engine::core::models::RobotModel;
+use thalos_runtime::engine::math::Vector3;
 
 use thalos_persistence::SqliteRobotRepository;
 use thalos_runtime::backends::manager::BackendManager;

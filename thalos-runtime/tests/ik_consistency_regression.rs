@@ -24,7 +24,7 @@
 //!   a pose the SCARA cannot fully reach — the exact divergence this mechanism
 //!   prevents when one shared config is passed to all sites.
 
-use thalos_engine::core::{
+use thalos_runtime::engine::core::{
     kinematics::{
         forward::ForwardKinematics,
         inverse::{DampedLeastSquaresSolver, IKConfig, IKGoal, IKSolver, IKStatus},
@@ -32,7 +32,7 @@ use thalos_engine::core::{
     robot::{adapter, serial_chain::SerialChain},
     spatial::pose::Pose,
 };
-use thalos_engine::math::{UnitQuaternion, UnitVector3, Vector3};
+use thalos_runtime::engine::math::{UnitQuaternion, UnitVector3, Vector3};
 
 /// The icebot (SCARA: 3 z-axis revolutes + 1 z prismatic) loaded ONCE and
 /// shared by all three paths.

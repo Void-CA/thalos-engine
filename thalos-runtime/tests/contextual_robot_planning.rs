@@ -1,11 +1,11 @@
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use thalos_engine::core::{
+use thalos_runtime::engine::core::{
     models::{factory::RobotRegistry, RobotModel},
     robot::tool_frame::ToolFrame,
 };
-use thalos_engine::math::Vector3;
+use thalos_runtime::engine::math::Vector3;
 use thalos_runtime::{
     backends::{controller::simulation::SimulationController, manager::BackendManager},
     planning::service::{PlanResult, PlanningService, RobotPlanningContext},
@@ -153,8 +153,8 @@ async fn test_f2_05_recontextualization_multi_robot() {
         tcp: None,
     };
 
-    let transform = thalos_engine::math::Transform3D::from_translation(Vector3::new(0.0, 0.0, 0.05));
-    let tcp2 = ToolFrame::with_offset(thalos_engine::core::spatial::frame::FrameId::World, transform);
+    let transform = thalos_runtime::engine::math::Transform3D::from_translation(Vector3::new(0.0, 0.0, 0.05));
+    let tcp2 = ToolFrame::with_offset(thalos_runtime::engine::core::spatial::frame::FrameId::World, transform);
     let ctx_r2 = RobotPlanningContext {
         robot_id: "cell_robot_2".into(),
         chain: chain_r1,

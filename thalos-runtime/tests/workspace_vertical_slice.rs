@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use tempfile::NamedTempFile;
 
-use thalos_engine::core::models::RobotModel;
+use thalos_runtime::engine::core::models::RobotModel;
 use thalos_persistence::{SqliteRobotRepository, SqliteWorkspaceRepository};
 use thalos_runtime::backends::manager::BackendManager;
 use thalos_runtime::{

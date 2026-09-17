@@ -20,24 +20,24 @@ use crate::{
     commands::kinematics::KinematicsCommand,
     commands::motion::MotionCommands,
 };
-use thalos_engine::core::{
+use crate::engine::core::{
     execution::plan::ExecutionPlan,
     models::RobotModel,
     prelude::IKGoal,
     spatial::{frame::FrameId, pose::Pose},
 };
-use thalos_engine::math::{Transform3D, UnitQuaternion, Vector3};
+use crate::engine::math::{Transform3D, UnitQuaternion, Vector3};
 
 // ─── Helpers ───────────────────────────────────────────────────────
 
 /// A VALID compiled plan: two waypoints, non-zero duration, target `[t, t]`.
-fn compiled_plan(t: f64) -> thalos_engine::planning::motion::program::CompiledPlan {
+fn compiled_plan(t: f64) -> crate::engine::planning::motion::program::CompiledPlan {
     let points = vec![
-        thalos_engine::core::trajectory::TrajectoryPoint::new(vec![0.0, 0.0], 0.0),
-        thalos_engine::core::trajectory::TrajectoryPoint::new(vec![t, t], 1.0),
+        crate::engine::core::trajectory::TrajectoryPoint::new(vec![0.0, 0.0], 0.0),
+        crate::engine::core::trajectory::TrajectoryPoint::new(vec![t, t], 1.0),
     ];
-    thalos_engine::planning::motion::program::CompiledPlan::new(
-        thalos_engine::core::trajectory::Trajectory::new(points),
+    crate::engine::planning::motion::program::CompiledPlan::new(
+        crate::engine::core::trajectory::Trajectory::new(points),
         vec![],
     )
 }
@@ -666,7 +666,7 @@ async fn snapshot_includes_trajectory_after_plan_command() {
 
 #[tokio::test]
 async fn select_tool_frame_sets_active_tcp_in_snapshot() {
-    use thalos_engine::core::robot::tool_frame::ToolFrame;
+    use crate::engine::core::robot::tool_frame::ToolFrame;
 
     let (svc, _mgr) = make_service(RobotModel::Scara).await;
 
@@ -709,7 +709,7 @@ async fn select_tool_frame_sets_active_tcp_in_snapshot() {
 
 #[tokio::test]
 async fn select_tool_frame_with_offset_propagates_to_tick_delta() {
-    use thalos_engine::core::robot::tool_frame::ToolFrame;
+    use crate::engine::core::robot::tool_frame::ToolFrame;
 
     let (svc, _mgr) = make_service(RobotModel::Scara).await;
 
@@ -735,7 +735,7 @@ async fn select_tool_frame_with_offset_propagates_to_tick_delta() {
 
 #[tokio::test]
 async fn select_tool_frame_persists_across_multiple_commands() {
-    use thalos_engine::core::robot::tool_frame::ToolFrame;
+    use crate::engine::core::robot::tool_frame::ToolFrame;
 
     let (svc, _mgr) = make_service(RobotModel::Scara).await;
 
@@ -758,7 +758,7 @@ async fn select_tool_frame_persists_across_multiple_commands() {
 
 #[tokio::test]
 async fn select_tool_frame_clears_on_robot_change() {
-    use thalos_engine::core::robot::tool_frame::ToolFrame;
+    use crate::engine::core::robot::tool_frame::ToolFrame;
 
     let (svc, _mgr) = make_service(RobotModel::Scara).await;
 
@@ -806,7 +806,7 @@ async fn select_tool_frame_clears_on_robot_change() {
     svc.execute(Command::LoadUrdfRobot {
         name: "urdf_scara".to_string(),
         joints_meta,
-        chain: thalos_engine::core::robot::adapter::from_urdf(urdf).unwrap(),
+        chain: crate::engine::core::robot::adapter::from_urdf(urdf).unwrap(),
         robot,
         robot_id: "urdf:abcdef123456".to_string(),
     })
@@ -859,7 +859,7 @@ async fn load_urdf_keeps_real_chain_in_snapshot() {
         .execute(Command::LoadUrdfRobot {
             name: "urdf_scara".to_string(),
             joints_meta: joints_meta.clone(),
-            chain: thalos_engine::core::robot::adapter::from_urdf(urdf).unwrap(),
+            chain: crate::engine::core::robot::adapter::from_urdf(urdf).unwrap(),
             robot,
             robot_id: "urdf:abcdef123456".to_string(),
         })
@@ -889,8 +889,8 @@ async fn load_urdf_keeps_real_chain_in_snapshot() {
 
 #[tokio::test]
 async fn select_tool_frame_rejects_invalid_frame() {
-    use thalos_engine::core::robot::tool_frame::ToolFrame;
-    use thalos_engine::core::spatial::frame::FrameId;
+    use crate::engine::core::robot::tool_frame::ToolFrame;
+    use crate::engine::core::spatial::frame::FrameId;
 
     let (svc, _mgr) = make_service(RobotModel::Scara).await;
 
@@ -927,13 +927,13 @@ async fn select_tool_frame_rejects_invalid_frame() {
 // ═════════════════════════════════════════════════════════════════════
 
 use std::time::Duration;
-use thalos_engine::core::{
+use crate::engine::core::{
     execution::runtime::{RuntimeAction, RuntimeEvent, RuntimeProgram},
     ids::OperationId,
     motion::target::{OutputChannel, OutputValue},
     trajectory::TrajectoryPoint,
 };
-use thalos_engine::planning::motion::program::CompiledPlan;
+use crate::engine::planning::motion::program::CompiledPlan;
 
 /// Schedule a program with a SetOutput at t=1.0s, start execution, and
 /// verify the tick loop dispatches it at exactly clock 1.0s (rt).
@@ -953,7 +953,7 @@ async fn scheduled_runtime_events_dispatch_via_tick() {
 
     // A trivial 2-waypoint 4-DOF plan over 2.0s.
     let plan = CompiledPlan::new(
-        thalos_engine::core::trajectory::Trajectory::new(vec![
+        crate::engine::core::trajectory::Trajectory::new(vec![
             TrajectoryPoint::new(vec![0.0, 0.0, 0.0, 0.0], 0.0),
             TrajectoryPoint::new(vec![0.5, -0.3, 0.1, 0.0], 2.0),
         ]),
@@ -1008,7 +1008,7 @@ async fn scheduled_delay_freezes_execution_through_tick() {
     );
 
     let plan = CompiledPlan::new(
-        thalos_engine::core::trajectory::Trajectory::new(vec![
+        crate::engine::core::trajectory::Trajectory::new(vec![
             TrajectoryPoint::new(vec![0.0, 0.0, 0.0, 0.0], 0.0),
             TrajectoryPoint::new(vec![1.0, 0.0, 0.0, 0.0], 2.0),
         ]),
@@ -1088,7 +1088,7 @@ async fn start_execution_preserves_scheduled_plan_timestamps() {
     // NON-UNIFORM timestamps: 0.0 → 0.5 → 2.0. Even-spacing would yield
     // 0.0 → 1.0 → 2.0 (2.0s / 2 gaps) — the false-positive bug source.
     let plan = CompiledPlan::new(
-        thalos_engine::core::trajectory::Trajectory::new(vec![
+        crate::engine::core::trajectory::Trajectory::new(vec![
             TrajectoryPoint::new(vec![0.0, 0.0, 0.0, 0.0], 0.0),
             TrajectoryPoint::new(vec![0.5, -0.3, 0.1, 0.0], 0.5),
             TrajectoryPoint::new(vec![1.0, -0.6, 0.2, 0.0], 2.0),
@@ -1171,7 +1171,7 @@ async fn start_execution_maps_active_plan_inline_with_segments() {
     assert_eq!(received.segments.len(), 1, "fallback single segment");
     assert_eq!(
         received.segments[0].instruction,
-        thalos_engine::core::execution::plan::PlanInstruction::MoveJ
+        crate::engine::core::execution::plan::PlanInstruction::MoveJ
     );
     assert_eq!(received.segments[0].waypoint_range, 0..n);
     assert_eq!(received.duration, traj.duration());
@@ -1190,7 +1190,7 @@ async fn start_execution_skips_execute_for_empty_plan_but_registers_session() {
     let svc = SceneService::new(manager.clone(), RobotModel::Scara);
 
     // Zero waypoints, zero duration — the has_wps guard must skip execute.
-    let plan = CompiledPlan::new(thalos_engine::core::trajectory::Trajectory::new(vec![]), vec![]);
+    let plan = CompiledPlan::new(crate::engine::core::trajectory::Trajectory::new(vec![]), vec![]);
     svc.schedule_program(plan, Default::default()).await.unwrap();
 
     let snap = svc.start_execution().await.unwrap();
@@ -1477,7 +1477,7 @@ async fn hardware_running_seconds_progress_below_plan_duration_does_not_finalize
 
     // 2.0s plan → plan_duration = 2.0; hardware progress is seconds.
     let plan = CompiledPlan::new(
-        thalos_engine::core::trajectory::Trajectory::new(vec![
+        crate::engine::core::trajectory::Trajectory::new(vec![
             TrajectoryPoint::new(vec![0.0, 0.0, 0.0, 0.0], 0.0),
             TrajectoryPoint::new(vec![0.5, -0.3, 0.1, 0.0], 2.0),
         ]),
@@ -1549,7 +1549,7 @@ async fn estop_state_finalizes_session_as_failed() {
     );
 
     let plan = CompiledPlan::new(
-        thalos_engine::core::trajectory::Trajectory::new(vec![
+        crate::engine::core::trajectory::Trajectory::new(vec![
             TrajectoryPoint::new(vec![0.0, 0.0, 0.0, 0.0], 0.0),
             TrajectoryPoint::new(vec![0.5, -0.3, 0.1, 0.0], 2.0),
         ]),
@@ -1590,9 +1590,9 @@ fn repeat_running_state() -> RobotState {
 }
 
 /// A 2.0s Scara plan — the standard fixture for the repeat tests.
-fn repeat_plan() -> thalos_engine::planning::motion::program::CompiledPlan {
+fn repeat_plan() -> crate::engine::planning::motion::program::CompiledPlan {
     CompiledPlan::new(
-        thalos_engine::core::trajectory::Trajectory::new(vec![
+        crate::engine::core::trajectory::Trajectory::new(vec![
             TrajectoryPoint::new(vec![0.0, 0.0, 0.0, 0.0], 0.0),
             TrajectoryPoint::new(vec![0.5, -0.3, 0.1, 0.0], 2.0),
         ]),

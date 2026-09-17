@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use thalos_engine::prelude::*;
+use crate::engine::prelude::*;
 use super::registry::ResourceRegistry;
 use super::reservation::ResourceReservationManager;
 
