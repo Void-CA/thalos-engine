@@ -56,6 +56,16 @@ id_newtype!(SemanticProgramId);
 id_newtype!(MotionPlanId);
 id_newtype!(ExecutionSessionId);
 
+impl ExecutionSessionId {
+    /// Construct a session id from its external representation.
+    ///
+    /// Generation (minting a fresh UUID) is an application concern: this
+    /// value object only guarantees identity, not how an id is produced.
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Robot Program & Skill domain identifiers (ADR-001)
 // ---------------------------------------------------------------------------
