@@ -16,9 +16,9 @@ use super::{KnowledgeProvider, LoweringError};
 /// # Example
 ///
 /// ```rust
-/// use thalos_semantic::knowledge::mock::MockKnowledgeProvider;
-/// use thalos_semantic::knowledge::LoweringError;
-/// use thalos_semantic::resource::ObjectId;
+/// use thalos_language_service::knowledge::mock::MockKnowledgeProvider;
+/// use thalos_language_service::knowledge::LoweringError;
+/// use thalos_language_service::resource::ObjectId;
 ///
 /// let provider = MockKnowledgeProvider::new()
 ///     .with_grasp_error(ObjectId("unknown".into()), LoweringError::KnowledgeProvider("not found".into()));

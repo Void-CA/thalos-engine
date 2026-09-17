@@ -26,6 +26,3 @@ jobs:
 
       - name: Test
         run: cargo test --workspace
-
-      - name: Publish dry-run (facade gate)
-        run: cargo publish --dry-run -p thalos-engine

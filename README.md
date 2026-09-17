@@ -1,5 +1,9 @@
 # Thalos Engine
 
-Reusable robotics platform — facade crate and domain kernel extracted from Thalos Industrial.
+Reusable robotics platform — domain kernel and runtime extracted from Thalos Industrial.
 
-**WIP: extraction in progress.** Internal crates move here in PR2+; the facade is a skeleton for now.# thalos-engine
+The former `thalos-engine` facade crate was removed. Domain crates are consumed
+directly; applications that need the old facade path use `thalos_runtime::engine`
+(`core`, `math`, `models`, `importer`, `lang`, `planning`) with the language
+front-end exposed as `thalos_runtime::engine::semantic`
+(`thalos-language-service`).
