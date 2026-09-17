@@ -2,9 +2,9 @@ use std::fs;
 use thalos_lang::parse_source;
 use thalos_math::Vector3;
 use thalos_planning::input::PlanningInput;
-use thalos_semantic::compiler::SemanticCompiler;
-use thalos_semantic::model::{MotionKind, MotionTarget};
-use thalos_semantic::resolver::SemanticResolver;
+use thalos_language_service::compiler::SemanticCompiler;
+use thalos_language_service::model::{MotionKind, MotionTarget};
+use thalos_language_service::resolver::SemanticResolver;
 
 /// Motion-only view of the ordered planning steps (Wait/SetOutput excluded).
 fn motions(input: &PlanningInput) -> Vec<&thalos_planning::input::PlanningMotion> {

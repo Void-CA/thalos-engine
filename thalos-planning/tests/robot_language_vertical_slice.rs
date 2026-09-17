@@ -22,8 +22,8 @@ use thalos_planning::input::PlanningInput;
 use thalos_planning::motion::compiler::{DefaultPlannerDispatcher, PlanCompiler};
 use thalos_planning::motion::planner::SegmentPlanningContext;
 use thalos_planning::motion::program::CompiledPlan;
-use thalos_semantic::compiler::SemanticCompiler;
-use thalos_semantic::resolver::SemanticResolver;
+use thalos_language_service::compiler::SemanticCompiler;
+use thalos_language_service::resolver::SemanticResolver;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiagnosticSeverity {

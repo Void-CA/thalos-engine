@@ -1,4 +1,4 @@
-use thalos_semantic::model::{
+use thalos_language_service::model::{
     MotionKind, MotionTarget, Provenance, ResolvedProgram, ResolvedStatement,
 };
 

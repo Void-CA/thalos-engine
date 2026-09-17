@@ -20,7 +20,7 @@ use thalos_planning::{
     resolver::MotionResolver,
     timeline::TimelineScheduler,
 };
-use thalos_semantic::{
+use thalos_language_service::{
     lowering::SemanticLowering,
     test_support::{self, pick_wait_place_home_ir},
 };
