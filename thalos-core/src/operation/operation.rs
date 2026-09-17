@@ -18,6 +18,7 @@ pub enum OperationType {
 /// All fields are optional — `None` means "unconstrained".
 /// Default implementation sets all fields to `None`.
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct OperationConstraints {
     /// Maximum allowed position error (meters).
     pub position_tolerance: Option<f64>,
@@ -33,18 +34,6 @@ pub struct OperationConstraints {
     pub retreat_direction: Option<UnitVector3>,
 }
 
-impl Default for OperationConstraints {
-    fn default() -> Self {
-        Self {
-            position_tolerance: None,
-            orientation_tolerance: None,
-            joint_deviation_limit: None,
-            velocity_limit: None,
-            approach_direction: None,
-            retreat_direction: None,
-        }
-    }
-}
 
 /// A semantic work unit in the Operation IR (ADR-002).
 ///

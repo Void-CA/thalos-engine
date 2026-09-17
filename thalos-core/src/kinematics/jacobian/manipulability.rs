@@ -298,7 +298,7 @@ mod tests {
         ));
         builder.add_segment(Segment::new(
             FrameId::World,
-            f1.clone(),
+            f1,
             r1,
             Link::new(
                 0,
@@ -314,7 +314,7 @@ mod tests {
         ));
         builder.add_segment(Segment::new(
             f1,
-            f2.clone(),
+            f2,
             r2,
             Link::new(
                 1,
@@ -330,7 +330,7 @@ mod tests {
         ));
         builder.add_segment(Segment::new(
             f2,
-            ee.clone(),
+            ee,
             p1,
             Link::new(2, Transform3D::identity()),
         ));
@@ -354,7 +354,7 @@ mod tests {
         ));
         builder.add_segment(Segment::new(
             FrameId::World,
-            shoulder.clone(),
+            shoulder,
             j1,
             Link::new(
                 0,
@@ -370,7 +370,7 @@ mod tests {
         ));
         builder.add_segment(Segment::new(
             shoulder,
-            ee.clone(),
+            ee,
             j2,
             Link::new(
                 1,
@@ -384,7 +384,7 @@ mod tests {
 
     fn evaluate_report(chain: &SerialChain, q: &[f64]) -> ManipulabilityReport {
         let fk = ForwardKinematics::new(chain.clone());
-        let jac = GeometricJacobian::new(fk, chain.end_effector.clone());
+        let jac = GeometricJacobian::new(fk, chain.end_effector);
         let jacobian = jac.evaluate(q);
         let singularity = SingularityReport::analyze(&jacobian);
         ManipulabilityReport::compute_with_normalization(&singularity, &jacobian, chain)
@@ -401,7 +401,7 @@ mod tests {
         assert!((l_ref - 2.0).abs() < 1e-12, "L_ref = 1.0 + 1.0 = 2.0");
 
         let fk = ForwardKinematics::new(chain.clone());
-        let jac = GeometricJacobian::new(fk, chain.end_effector.clone());
+        let jac = GeometricJacobian::new(fk, chain.end_effector);
         let jacobian = jac.evaluate(&[0.6, -0.4, 0.2]);
 
         let scaled = scale_jacobian_columns(&jacobian.linear, &chain, l_ref);
@@ -466,7 +466,7 @@ mod tests {
         // by an absolute epsilon.
         let chain = build_planar_2r_scaled(1.0);
         let fk = ForwardKinematics::new(chain.clone());
-        let jac = GeometricJacobian::new(fk, chain.end_effector.clone());
+        let jac = GeometricJacobian::new(fk, chain.end_effector);
 
         let jacobian = jac.evaluate(&[0.0, 0.0]);
         let singularity = SingularityReport::analyze(&jacobian);
@@ -541,7 +541,7 @@ mod tests {
         // Jacobian, spec "det_jtj Exclusion from Grade").
         let chain = build_2r1p();
         let fk = ForwardKinematics::new(chain.clone());
-        let jac = GeometricJacobian::new(fk, chain.end_effector.clone());
+        let jac = GeometricJacobian::new(fk, chain.end_effector);
 
         for q in [
             vec![0.0, 0.0, 0.0],
@@ -591,7 +591,7 @@ mod tests {
         let ee = builder.create_frame("ee");
         builder.add_segment(Segment::new(
             FrameId::World,
-            f1.clone(),
+            f1,
             JointType::Revolute(RevoluteJoint::new(
                 0,
                 UnitVector3::z_axis(),
@@ -602,7 +602,7 @@ mod tests {
         ));
         builder.add_segment(Segment::new(
             f1,
-            ee.clone(),
+            ee,
             JointType::Revolute(RevoluteJoint::new(
                 1,
                 UnitVector3::z_axis(),
@@ -615,7 +615,7 @@ mod tests {
         let chain = builder.build().expect("degenerate 2R");
 
         let fk = ForwardKinematics::new(chain.clone());
-        let jac = GeometricJacobian::new(fk, chain.end_effector.clone());
+        let jac = GeometricJacobian::new(fk, chain.end_effector);
         let jacobian = jac.evaluate(&[0.4, 0.2]);
         let singularity = SingularityReport::analyze(&jacobian);
         let report =
@@ -654,7 +654,7 @@ mod tests {
         ));
         builder.add_segment(Segment::new(
             FrameId::World,
-            f1.clone(),
+            f1,
             r1,
             Link::new(
                 0,
@@ -670,7 +670,7 @@ mod tests {
         ));
         builder.add_segment(Segment::new(
             f1,
-            f2.clone(),
+            f2,
             r2,
             Link::new(
                 1,
@@ -683,7 +683,7 @@ mod tests {
         )));
         builder.add_segment(Segment::new(
             f2,
-            tcp.clone(),
+            tcp,
             tcp_fixed,
             Link::new(2, Transform3D::identity()),
         ));
@@ -765,9 +765,9 @@ mod tests {
                 Transform3D::identity(),
             ));
             let (parent, child) = match i {
-                0 => (FrameId::World, f1.clone()),
-                1 => (f1.clone(), f2.clone()),
-                _ => (f2.clone(), f3.clone()),
+                0 => (FrameId::World, f1),
+                1 => (f1, f2),
+                _ => (f2, f3),
             };
             builder.add_segment(Segment::new(
                 parent,
@@ -832,13 +832,13 @@ mod tests {
         let ee = builder.create_frame("ee");
         builder.add_segment(Segment::new(
             FrameId::World,
-            f1.clone(),
+            f1,
             JointType::Fixed(FixedJoint::new(Transform3D::identity())),
             Link::new(0, Transform3D::identity()),
         ));
         builder.add_segment(Segment::new(
             f1,
-            ee.clone(),
+            ee,
             JointType::Fixed(FixedJoint::new(Transform3D::identity())),
             Link::new(1, Transform3D::identity()),
         ));

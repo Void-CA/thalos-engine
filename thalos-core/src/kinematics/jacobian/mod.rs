@@ -1,4 +1,5 @@
 pub mod geom;
+#[allow(clippy::module_inception)]
 pub mod jacobian;
 pub mod manipulability;
 pub mod numerical;

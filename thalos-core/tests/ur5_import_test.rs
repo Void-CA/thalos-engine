@@ -132,7 +132,7 @@ fn fk_shoulder_pan_moves_ee() {
     let chain = adapter::from_tip(&robot, "tool0").unwrap();
     let fk = ForwardKinematics::new(chain);
 
-    let q = [1.57079632679, 0.0, 0.0, 0.0, 0.0, 0.0];
+    let q = [std::f64::consts::FRAC_PI_2, 0.0, 0.0, 0.0, 0.0, 0.0];
     let result = fk.evaluate(&q);
     let ee_pose = result.ee_pose().unwrap();
 

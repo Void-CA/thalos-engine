@@ -152,7 +152,7 @@ impl RobotRegistry {
             (RobotModel::CylindricalRPP, RobotSpec::CylindricalRPP(s)) => Ok(s.build()),
             (RobotModel::SphericalPolarRRP, RobotSpec::SphericalPolarRRP(s)) => Ok(s.build()),
             // 6DOF factory todavía no implementado: caemos al mismatch.
-            _ => Err(RobotModelError::ModelSpecMismatch { model, spec }),
+            _ => Err(RobotModelError::ModelSpecMismatch { model, spec: Box::new(spec) }),
         }
     }
 

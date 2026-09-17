@@ -3,7 +3,6 @@
 //! Covers R1 (determinism), R2 (`position == FK(chain, q).ee_position()`),
 //! R7 (works for all `RobotModel`), and D1/D4/D6 constraints.
 
-use crate::analysis::workspace::{Reachability, Workspace, WorkspaceSample};
 use crate::kinematics::forward::ForwardKinematics;
 use crate::models::{RobotModel, RobotRegistry};
 use crate::prelude::{WorkspaceConfig, WorkspaceSampler};

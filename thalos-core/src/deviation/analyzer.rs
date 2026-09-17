@@ -53,16 +53,14 @@ impl DeviationAnalyzer {
             }
         }
 
-        if envelope == EnvelopeStatus::WithinTolerance {
-            if let (Some(cart_err), Some(cart_tol)) = (
+        if envelope == EnvelopeStatus::WithinTolerance
+            && let (Some(cart_err), Some(cart_tol)) = (
                 error.cartesian_position_error,
                 tolerance_policy.cartesian_position_tolerance(),
-            ) {
-                if cart_err.abs() > cart_tol {
+            )
+                && cart_err.abs() > cart_tol {
                     envelope = EnvelopeStatus::Violated;
                 }
-            }
-        }
 
         Ok(KinematicDeviation {
             robot_id: observed.robot_id.clone(),

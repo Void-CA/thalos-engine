@@ -40,6 +40,7 @@ pub trait MotionPlannerDispatcher {
 /// Uses `GoalResolver` for validation and delegates to `MoveJPlanner` /
 /// `MoveLPlanner`. New segment types require a new `match` arm here —
 /// the compiler stays untouched.
+#[derive(Default)]
 pub struct DefaultPlannerDispatcher {
     pub goal_resolver_config: GoalResolverConfig,
 }
@@ -52,13 +53,6 @@ impl DefaultPlannerDispatcher {
     }
 }
 
-impl Default for DefaultPlannerDispatcher {
-    fn default() -> Self {
-        Self {
-            goal_resolver_config: GoalResolverConfig::default(),
-        }
-    }
-}
 
 impl MotionPlannerDispatcher for DefaultPlannerDispatcher {
     fn plan_segment(
@@ -751,8 +745,7 @@ mod tests {
     // ── 3.6 Integration: Operation → expand → compile → constraint query ──
     use thalos_core::{
         operation::{
-            ConstraintQuery, Operation as CoreOperation, OperationConstraints, OperationType,
-            PrecisionLevel,
+            ConstraintQuery, Operation as CoreOperation, OperationConstraints,
         },
         spatial::frame::FrameId,
         spatial::pose::Pose,

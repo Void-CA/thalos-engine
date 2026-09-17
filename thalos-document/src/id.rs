@@ -90,32 +90,32 @@ mod tests {
         // thalos_document::id::ObjectId re-exports thalos_core::ids::ObjectId,
         // so assignment between them requires no conversion.
         let _: thalos_core::ids::ObjectId = {
-            let id = ObjectId("test".to_string());
-            id
+            
+            ObjectId("test".to_string())
         };
     }
 
     #[test]
     fn location_id_is_same_across_crates() {
         let _: thalos_core::ids::LocationId = {
-            let id = LocationId("test".to_string());
-            id
+            
+            LocationId("test".to_string())
         };
     }
 
     #[test]
     fn tool_id_is_same_across_crates() {
         let _: thalos_core::ids::ToolId = {
-            let id = ToolId("test".to_string());
-            id
+            
+            ToolId("test".to_string())
         };
     }
 
     #[test]
     fn program_document_id_is_same_across_crates() {
         let _: ProgramDocumentId = {
-            let id = TaskDocumentId("test".to_string());
-            id
+            
+            TaskDocumentId("test".to_string())
         };
     }
 }

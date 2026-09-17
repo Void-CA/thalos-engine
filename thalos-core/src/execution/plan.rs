@@ -98,16 +98,14 @@ impl ExecutionPlan {
 
     /// Checks if the plan is stale with respect to a current program revision and source fingerprint.
     pub fn is_stale_for(&self, current_revision: u64, current_fingerprint: &str) -> bool {
-        if let Some(rev) = self.program_revision {
-            if rev != current_revision {
+        if let Some(rev) = self.program_revision
+            && rev != current_revision {
                 return true;
             }
-        }
-        if let Some(ref fp) = self.source_fingerprint {
-            if fp != current_fingerprint {
+        if let Some(ref fp) = self.source_fingerprint
+            && fp != current_fingerprint {
                 return true;
             }
-        }
         false
     }
 }

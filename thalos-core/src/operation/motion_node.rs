@@ -20,6 +20,7 @@ pub struct MotionNode {
 /// These are abstract categories that span all operation types:
 /// - Pick's Interaction → CloseGripper
 /// - Weld's Interaction → ArcStart/ArcEnd
+///
 /// Same role, different concrete actions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum MotionRole {
@@ -40,9 +41,6 @@ pub enum MotionRole {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::spatial::frame::FrameId;
-    use crate::spatial::pose::Pose;
-    use thalos_math::Transform3D;
 
     fn sample_segment() -> MotionSegment {
         MotionSegment::MoveJ {
@@ -51,10 +49,6 @@ mod tests {
             max_velocity: None,
             max_acceleration: None,
         }
-    }
-
-    fn sample_pose() -> Pose {
-        Pose::new(FrameId::World, FrameId::Id(1), Transform3D::identity())
     }
 
     // ── MotionNode construction ───────────────────────────

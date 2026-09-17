@@ -89,7 +89,7 @@ mod tests {
         let mut poses = HashMap::new();
         let frame = FrameId::new(frame_id);
         let transform = Transform3D::from_translation(translation);
-        poses.insert(frame.clone(), Pose::new(FrameId::World, frame, transform));
+        poses.insert(frame, Pose::new(FrameId::World, frame, transform));
         FKResult::new(poses, FrameId::new(frame_id))
     }
 

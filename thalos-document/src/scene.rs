@@ -332,7 +332,7 @@ mod tests {
 
     #[test]
     fn program_document_serde_round_trip() {
-        use crate::id::{ProgramDocumentId, TaskDocumentId};
+        use crate::id::TaskDocumentId;
         use crate::program_document::{Metadata as DocumentMetadata, ProgramDocument};
 
         let doc = ProgramDocument {

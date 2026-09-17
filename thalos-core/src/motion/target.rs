@@ -289,8 +289,8 @@ mod tests {
 
     #[test]
     fn output_value_float() {
-        let v = OutputValue::Float(3.14);
-        assert_eq!(v, OutputValue::Float(3.14));
+        let v = OutputValue::Float(1.25);
+        assert_eq!(v, OutputValue::Float(1.25));
         assert_ne!(v, OutputValue::Float(0.0));
     }
 

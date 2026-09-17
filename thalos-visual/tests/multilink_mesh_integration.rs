@@ -23,9 +23,9 @@ fn create_binary_stl(triangles: &[[ [f32; 3]; 4 ]]) -> Vec<u8> {
             buf.extend_from_slice(&n.to_le_bytes());
         }
         // v1, v2, v3 (3 x 3 x f32)
-        for i in 1..=3 {
-            for v in tri[i] {
-                buf.extend_from_slice(&v.to_le_bytes());
+        for v in &tri[1..=3] {
+            for x in v {
+                buf.extend_from_slice(&x.to_le_bytes());
             }
         }
         // attribute byte count (u16 LE)

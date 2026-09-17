@@ -91,11 +91,10 @@ impl SceneValidator {
     fn check_parents_exist(&self, scene: &VisualScene) -> Result<(), SceneError> {
         let ids: HashSet<&str> = scene.frames.iter().map(|f| f.id.as_str()).collect();
         for frame in &scene.frames {
-            if let Some(ref parent) = frame.parent {
-                if !ids.contains(parent.as_str()) {
+            if let Some(ref parent) = frame.parent
+                && !ids.contains(parent.as_str()) {
                     return Err(SceneError::MissingFrame(parent.clone()));
                 }
-            }
         }
         Ok(())
     }
@@ -207,11 +206,10 @@ impl SceneValidator {
 
         let mut expected: Vec<([f64; 3], [f64; 3])> = Vec::new();
         for frame in &scene.frames {
-            if let Some(ref parent) = frame.parent {
-                if let Some(pf) = by_id.get(parent.as_str()) {
+            if let Some(ref parent) = frame.parent
+                && let Some(pf) = by_id.get(parent.as_str()) {
                     expected.push((pf.translation, frame.translation));
                 }
-            }
         }
 
         for (i, link) in scene.links.iter().enumerate() {

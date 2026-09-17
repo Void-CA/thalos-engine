@@ -54,7 +54,7 @@ impl ManipulabilityService {
         let jac = if let Some(tcp) = tcp {
             GeometricJacobian::with_tcp(fk, tcp.clone())
         } else {
-            GeometricJacobian::new(fk, chain.end_effector.clone())
+            GeometricJacobian::new(fk, chain.end_effector)
         };
 
         let analysis = ManipulabilityAnalyzer::analyze(&ws, &jac, chain);

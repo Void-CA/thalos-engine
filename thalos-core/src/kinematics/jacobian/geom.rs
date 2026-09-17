@@ -41,7 +41,7 @@ impl GeometricJacobian {
     pub fn new(fk: ForwardKinematics, end_effector: FrameId) -> Self {
         Self::build(
             fk,
-            end_effector.clone(),
+            end_effector,
             Some(ToolFrame::identity(end_effector)),
         )
     }
@@ -51,7 +51,7 @@ impl GeometricJacobian {
     /// The TCP can have an offset from its base frame. The Jacobian will compute
     /// the linear and angular velocity of the TCP point, not the base frame.
     pub fn with_tcp(fk: ForwardKinematics, tcp: ToolFrame) -> Self {
-        Self::build(fk, tcp.base_frame.clone(), Some(tcp))
+        Self::build(fk, tcp.base_frame, Some(tcp))
     }
 }
 

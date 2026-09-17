@@ -109,29 +109,23 @@ impl ObservationResponsePolicy {
 
         // Observation is Valid. Now evaluate deviation against thresholds (Valid != Correct)
         if let Some(dev) = deviation {
-            if let Some(max_pos_err) = self.deviation_thresholds.max_position_error {
-                if let Some(actual_pos_err) = dev.max_position_error() {
-                    if actual_pos_err > max_pos_err {
+            if let Some(max_pos_err) = self.deviation_thresholds.max_position_error
+                && let Some(actual_pos_err) = dev.max_position_error()
+                    && actual_pos_err > max_pos_err {
                         return PolicyDecision::Pause;
                     }
-                }
-            }
 
-            if let Some(max_vel_err) = self.deviation_thresholds.max_velocity_error {
-                if let Some(actual_vel_err) = dev.max_velocity_error() {
-                    if actual_vel_err > max_vel_err {
+            if let Some(max_vel_err) = self.deviation_thresholds.max_velocity_error
+                && let Some(actual_vel_err) = dev.max_velocity_error()
+                    && actual_vel_err > max_vel_err {
                         return PolicyDecision::Hold;
                     }
-                }
-            }
 
-            if let Some(max_eff_err) = self.deviation_thresholds.max_effort_error {
-                if let Some(actual_eff_err) = dev.max_effort_error() {
-                    if actual_eff_err > max_eff_err {
+            if let Some(max_eff_err) = self.deviation_thresholds.max_effort_error
+                && let Some(actual_eff_err) = dev.max_effort_error()
+                    && actual_eff_err > max_eff_err {
                         return PolicyDecision::Hold;
                     }
-                }
-            }
         }
 
         PolicyDecision::Continue

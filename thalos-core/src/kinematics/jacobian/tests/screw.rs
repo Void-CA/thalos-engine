@@ -2,7 +2,6 @@ use crate::kinematics::jacobian::screw::ScrewJacobian;
 use crate::models::planar_3r::Planar3RSpec;
 use crate::models::scara::ScaraSpec;
 use crate::prelude::*;
-use thalos_math::*;
 
 #[test]
 fn scara_dimensions() {
@@ -96,11 +95,11 @@ fn scara_screw_vs_numerical() {
 
     for q in configs {
         let robot = ScaraSpec::ideal().build();
-        let ee = robot.segments.last().unwrap().child.clone();
+        let ee = robot.segments.last().unwrap().child;
         let fk_num = ForwardKinematics::new(robot.clone());
         let fk_screw = ForwardKinematics::new(robot);
 
-        let num = NumericalJacobian::new(fk_num, ee.clone());
+        let num = NumericalJacobian::new(fk_num, ee);
         let screw = ScrewJacobian::new(fk_screw, ee);
 
         let jn = num.evaluate(&q);
@@ -137,11 +136,11 @@ fn planar3r_screw_vs_numerical() {
 
     for q in configs {
         let robot = Planar3RSpec::ideal().build();
-        let ee = robot.segments.last().unwrap().child.clone();
+        let ee = robot.segments.last().unwrap().child;
         let fk_num = ForwardKinematics::new(robot.clone());
         let fk_screw = ForwardKinematics::new(robot);
 
-        let num = NumericalJacobian::new(fk_num, ee.clone());
+        let num = NumericalJacobian::new(fk_num, ee);
         let screw = ScrewJacobian::new(fk_screw, ee);
 
         let jn = num.evaluate(&q);
@@ -179,11 +178,11 @@ fn scara_screw_vs_geometric() {
 
     for q in configs {
         let robot = ScaraSpec::ideal().build();
-        let ee = robot.segments.last().unwrap().child.clone();
+        let ee = robot.segments.last().unwrap().child;
         let fk_geom = ForwardKinematics::new(robot.clone());
         let fk_screw = ForwardKinematics::new(robot);
 
-        let geom = GeometricJacobian::new(fk_geom, ee.clone());
+        let geom = GeometricJacobian::new(fk_geom, ee);
         let screw = ScrewJacobian::new(fk_screw, ee);
 
         let jg = geom.evaluate(&q);

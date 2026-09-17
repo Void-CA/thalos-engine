@@ -86,7 +86,7 @@ mod tests {
         );
         builder.add_segment(Segment::new(
             FrameId::World,
-            shoulder.clone(),
+            shoulder,
             joint1,
             link1,
         ));
@@ -101,9 +101,9 @@ mod tests {
             1,
             Transform3D::from_translation(Vector3::new(1.0, 0.0, 0.0)),
         );
-        builder.add_segment(Segment::new(shoulder, ee.clone(), joint2, link2));
+        builder.add_segment(Segment::new(shoulder, ee, joint2, link2));
 
-        builder.set_end_effector(ee.clone());
+        builder.set_end_effector(ee);
         let chain = builder.build().expect("planar 2R");
         let fk = ForwardKinematics::new(chain.clone());
         let jac = GeometricJacobian::new(fk, ee);
@@ -185,7 +185,7 @@ mod tests {
         use crate::models::scara::ScaraSpec;
 
         let chain = ScaraSpec::canonical().build();
-        let ee = chain.end_effector.clone();
+        let ee = chain.end_effector;
         let fk = ForwardKinematics::new(chain.clone());
         let jac = GeometricJacobian::new(fk, ee);
 

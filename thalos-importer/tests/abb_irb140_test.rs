@@ -30,7 +30,7 @@ fn abb_irb140_joint_chain() {
     ];
 
     for (name, parent, child) in &expected_chain {
-        let joint = robot.joints.get(*name).expect(&format!("missing joint {}", name));
+        let joint = robot.joints.get(*name).unwrap_or_else(|| panic!("missing joint {}", name));
         assert_eq!(joint.parent, *parent, "{} parent", name);
         assert_eq!(joint.child, *child, "{} child", name);
     }
@@ -43,8 +43,8 @@ fn abb_irb140_joint_limits() {
     // All 6 revolute joints should have limits
     for i in 1..=6 {
         let name = format!("joint_{}", i);
-        let joint = robot.joints.get(&name).expect(&format!("missing {}", name));
-        let limits = joint.limits.as_ref().expect(&format!("{} should have limits", name));
+        let joint = robot.joints.get(&name).unwrap_or_else(|| panic!("missing {}", name));
+        let limits = joint.limits.as_ref().unwrap_or_else(|| panic!("{} should have limits", name));
         assert!(limits.min < limits.max, "{} limits should be min < max", name);
     }
 }

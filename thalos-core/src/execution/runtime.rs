@@ -62,6 +62,7 @@ pub struct RuntimeEvent {
 /// (`t=0` = plan start) but remain separate artifacts (I5) — linkage is by
 /// temporal query, never stored references.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct RuntimeProgram {
     pub events: Vec<RuntimeEvent>,
 }
@@ -76,11 +77,6 @@ impl RuntimeProgram {
     }
 }
 
-impl Default for RuntimeProgram {
-    fn default() -> Self {
-        Self { events: Vec::new() }
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -479,7 +475,7 @@ mod tests {
     #[test]
     fn runtime_program_empty_iterable() {
         let program = RuntimeProgram { events: vec![] };
-        assert_eq!(program.events.iter().count(), 0);
+        assert_eq!(program.events.len(), 0);
     }
 
     #[test]

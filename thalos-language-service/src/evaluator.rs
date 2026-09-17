@@ -123,11 +123,10 @@ impl<'a> Evaluator<'a> {
                 EvalResult::Value(CompileTimeValue::Vector3(Vector3::new(x, y, z)))
             }
             Expr::Identifier(id) => {
-                if let Some(values) = self.target_values {
-                    if let Some(val) = values.get(id) {
+                if let Some(values) = self.target_values
+                    && let Some(val) = values.get(id) {
                         return EvalResult::Value(val.clone());
                     }
-                }
                 if let Some(_symbols) = self.symbol_table.lookup(id) {
                     EvalResult::NotConstant
                 } else {

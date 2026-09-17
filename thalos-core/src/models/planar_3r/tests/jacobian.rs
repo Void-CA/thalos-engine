@@ -10,9 +10,9 @@ fn setup_robot() -> (
     crate::spatial::frame::FrameId,
 ) {
     let robot = Planar3RSpec::ideal().build();
-    let end_effector = robot.end_effector().clone();
+    let end_effector = *robot.end_effector();
     let fk = ForwardKinematics::new(robot);
-    let jacobian = NumericalJacobian::new(fk.clone(), end_effector.clone());
+    let jacobian = NumericalJacobian::new(fk.clone(), end_effector);
     (jacobian, fk, end_effector)
 }
 
@@ -41,7 +41,7 @@ fn predicts_small_motion() {
 
         let p2 = fk2.pose(&end_effector).unwrap().transform().translation;
 
-        let dx_real = vec![p2.x - p1.x, p2.y - p1.y, p2.z - p1.z];
+        let dx_real = [p2.x - p1.x, p2.y - p1.y, p2.z - p1.z];
 
         assert!(
             (dx_pred[0] - dx_real[0]).abs() < 1e-5,

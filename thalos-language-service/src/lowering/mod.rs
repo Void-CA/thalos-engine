@@ -47,11 +47,10 @@ impl SemanticLowering {
                 SemanticOperation::Skill(skill_op) => {
                     let skill_id = &skill_op.skill_call.skill;
 
-                    if let Some(robot) = ctx.robot {
-                        if !robot.supports_skill(skill_id) {
+                    if let Some(robot) = ctx.robot
+                        && !robot.supports_skill(skill_id) {
                             return Err(LoweringError::UnsupportedSkill(skill_id.clone()));
                         }
-                    }
 
                     let robot_id = ctx.robot.map(|r| &r.id).unwrap_or(&ir.robot);
                     let skill_resolved = if let Some(registry) = ctx.skills {

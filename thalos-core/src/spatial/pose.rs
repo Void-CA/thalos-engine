@@ -20,11 +20,11 @@ impl Pose {
     }
 
     pub fn reference_id(&self) -> FrameId {
-        self.reference.clone()
+        self.reference
     }
 
     pub fn target_id(&self) -> FrameId {
-        self.target.clone()
+        self.target
     }
 
     pub fn transform(&self) -> &Transform3D {

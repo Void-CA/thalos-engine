@@ -78,7 +78,7 @@ fn faster_than_jt_from_singular() {
     let target = Vector3::new(1.2, 0.5, 0.0);
 
     // DLS
-    let dls = DampedLeastSquaresSolver::new(fk.clone(), ee.clone(), 500, 1e-6, 0.1);
+    let dls = DampedLeastSquaresSolver::new(fk.clone(), ee, 500, 1e-6, 0.1);
     let r_dls = dls
         .solve(&[0.0, 0.0], IKGoal::Position(target))
         .expect("DLS solve should succeed");

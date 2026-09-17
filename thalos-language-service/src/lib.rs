@@ -143,9 +143,9 @@ pub fn char_range_to_byte_span(source: &str, char_range: std::ops::Range<usize>)
     let mut byte_end = source.len();
 
     let mut current_char_idx = 0;
-    let mut char_indices = source.char_indices().peekable();
+    let char_indices = source.char_indices().peekable();
 
-    while let Some((byte_idx, _)) = char_indices.next() {
+    for (byte_idx, _) in char_indices {
         if current_char_idx == char_range.start {
             byte_start = byte_idx;
         }

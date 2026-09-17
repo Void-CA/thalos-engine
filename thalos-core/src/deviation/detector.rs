@@ -79,14 +79,13 @@ impl KinematicDeviationDetector {
     ) -> Result<DetectorOutput, DetectorError> {
         let ts = deviation.sampled_at_ns;
 
-        if let Some(last) = self.last_seen_ns {
-            if ts <= last {
+        if let Some(last) = self.last_seen_ns
+            && ts <= last {
                 return Err(DetectorError::OutOfOrderTimestamp {
                     timestamp_ns: ts,
                     last_seen_ns: last,
                 });
             }
-        }
         self.last_seen_ns = Some(ts);
 
         match self.status {

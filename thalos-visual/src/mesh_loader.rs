@@ -306,8 +306,8 @@ pub fn parse_dae_xml(xml: &str) -> Result<MeshGeometryData, MeshLoaderError> {
                         }
                     }
 
-                    if has_norms {
-                        if let (Some(n_arr), Some(n_off)) = (norm_array, prim.norm_offset) {
+                    if has_norms
+                        && let (Some(n_arr), Some(n_off)) = (norm_array, prim.norm_offset) {
                             let norm_p_idx = vert_p_idx + n_off;
                             if norm_p_idx < p.len() {
                                 let norm_idx = p[norm_p_idx];
@@ -324,7 +324,6 @@ pub fn parse_dae_xml(xml: &str) -> Result<MeshGeometryData, MeshLoaderError> {
                                 has_norms = false;
                             }
                         }
-                    }
                 }
 
                 if !has_norms {

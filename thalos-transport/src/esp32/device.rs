@@ -55,8 +55,8 @@ impl<T: DeviceTransport> Esp32DeviceAdapter<T> {
             let received_at_ns = timestamp_us * 1_000;
 
             for sub in &self.active_subscriptions {
-                if let Some(binding) = self.bindings.get(&sub.channel_id) {
-                    if let Some(&raw_value) = values.get(binding.channel_index) {
+                if let Some(binding) = self.bindings.get(&sub.channel_id)
+                    && let Some(&raw_value) = values.get(binding.channel_index) {
                         let obs = ChannelObservation {
                             channel_id: binding.channel_id.clone(),
                             sampled_at_ns: timestamp_us * 1_000,
@@ -68,7 +68,6 @@ impl<T: DeviceTransport> Esp32DeviceAdapter<T> {
                         self.observation_queue.push_back(obs);
                         count += 1;
                     }
-                }
             }
         }
 

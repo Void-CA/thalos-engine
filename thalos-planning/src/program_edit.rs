@@ -79,7 +79,7 @@ pub enum ProgramEdit {
     MergeMoves {
         first: usize,
         second: usize,
-        originals: Option<(MotionSegment, MotionSegment)>,
+        originals: Option<Box<(MotionSegment, MotionSegment)>>,
     },
     /// Move the MoveJ target of `segment_index` to `new_target`. `old_target`
     /// captures the previous target for the roundtrip inverse.
@@ -258,9 +258,9 @@ impl ProgramEdit {
             ProgramEdit::MergeMoves {
                 first, originals, ..
             } => match originals {
-                Some((head, tail)) => ProgramEdit::ReplaceSegment {
+                Some(boxed) => ProgramEdit::ReplaceSegment {
                     index: *first,
-                    replacement: vec![head.clone(), tail.clone()],
+                    replacement: vec![boxed.0.clone(), boxed.1.clone()],
                     original: None,
                 },
                 None => ProgramEdit::SplitMove {
@@ -643,7 +643,7 @@ mod tests {
         let edit = ProgramEdit::MergeMoves {
             first: 0,
             second: 1,
-            originals: Some((p.segments[0].clone(), p.segments[1].clone())),
+            originals: Some(Box::new((p.segments[0].clone(), p.segments[1].clone()))),
         };
 
         let result = edit.apply(&p).expect("merge must succeed");
@@ -859,7 +859,7 @@ mod tests {
         let edit = ProgramEdit::MergeMoves {
             first: 0,
             second: 1,
-            originals: Some((p.segments[0].clone(), p.segments[1].clone())),
+            originals: Some(Box::new((p.segments[0].clone(), p.segments[1].clone()))),
         };
 
         let p_prime = edit.apply(&p).expect("apply");
@@ -1033,7 +1033,7 @@ mod property_tests {
         ) {
             let first = first % (p.segments.len() - 1);
             let originals = (p.segments[first].clone(), p.segments[first + 1].clone());
-            let edit = ProgramEdit::MergeMoves { first, second: first + 1, originals: Some(originals) };
+            let edit = ProgramEdit::MergeMoves { first, second: first + 1, originals: Some(Box::new(originals)) };
             let p_prime = edit.apply(&p).expect("merge must succeed");
             let restored = edit.inverse().apply(&p_prime).expect("inverse must succeed");
             prop_assert_eq!(restored, p);

@@ -452,9 +452,11 @@ mod tests {
     #[test]
     fn ignore_singletons_drops_lone_observation() {
         let observations = vec![singular(1, 5, Severity::Error)];
-        let mut config = RegionGrouperConfig::default();
-        config.ignore_singletons = true;
-        config.minimum_region_size = 2;
+        let config = RegionGrouperConfig {
+            ignore_singletons: true,
+            minimum_region_size: 2,
+            ..Default::default()
+        };
         let grouper = RegionGrouper::new(config);
         assert!(grouper.group(&observations).is_empty());
     }

@@ -97,7 +97,7 @@ mod tests {
         );
         builder.add_segment(Segment::new(
             FrameId::World,
-            shoulder.clone(),
+            shoulder,
             joint1,
             link1,
         ));
@@ -113,9 +113,9 @@ mod tests {
             1,
             Transform3D::from_translation(Vector3::new(1.0, 0.0, 0.0)),
         );
-        builder.add_segment(Segment::new(shoulder, ee.clone(), joint2, link2));
+        builder.add_segment(Segment::new(shoulder, ee, joint2, link2));
 
-        builder.set_end_effector(ee.clone());
+        builder.set_end_effector(ee);
 
         let chain = builder.build().expect("planar 2R: builder failed");
         let fk = ForwardKinematics::new(chain.clone());
@@ -253,7 +253,7 @@ mod tests {
         // Singularity analysis
         let jac = GeometricJacobian::new(
             ForwardKinematics::new(chain.clone()),
-            chain.end_effector.clone(),
+            chain.end_effector,
         );
         let singularity_config = SingularityConfig::default();
         let analysis = SingularityAnalyzer::analyze(&ws, &jac, &singularity_config);

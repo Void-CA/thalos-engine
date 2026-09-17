@@ -34,7 +34,7 @@ pub fn create_scara_robot(
 
     builder.add_segment(Segment {
         parent: FrameId::World,
-        child: base_frame.clone(),
+        child: base_frame,
         joint: base_joint,
         link: base_link,
     });
@@ -55,7 +55,7 @@ pub fn create_scara_robot(
 
     builder.add_segment(Segment {
         parent: base_frame,
-        child: link_1_frame.clone(),
+        child: link_1_frame,
         joint: joint1,
         link: link1,
     });
@@ -76,7 +76,7 @@ pub fn create_scara_robot(
 
     builder.add_segment(Segment {
         parent: link_1_frame,
-        child: link_2_frame.clone(),
+        child: link_2_frame,
         joint: joint2,
         link: link2,
     });
@@ -97,7 +97,7 @@ pub fn create_scara_robot(
 
     builder.add_segment(Segment {
         parent: link_2_frame,
-        child: prismatic_frame.clone(),
+        child: prismatic_frame,
         joint: joint3,
         link: link3,
     });
@@ -118,7 +118,7 @@ pub fn create_scara_robot(
 
     builder.add_segment(Segment {
         parent: prismatic_frame,
-        child: wrist_frame.clone(),
+        child: wrist_frame,
         joint: joint4,
         link: link4,
     });

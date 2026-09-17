@@ -28,6 +28,7 @@ fn planar_2r_bent_config() {
 }
 
 #[test]
+#[allow(clippy::approx_constant)]
 fn precision_canonicalizes_noise() {
     let precision = VisualPrecision {
         epsilon_zero: 1e-10,

@@ -1,7 +1,6 @@
 use crate::models::planar_2r::Planar2RSpec;
 use crate::prelude::*;
 use thalos_math::constants::*;
-use thalos_math::*;
 
 #[test]
 fn geometric_matches_numerical() {
@@ -176,9 +175,9 @@ fn linear_velocity_consistency() {
     let robot = Planar2RSpec::ideal().build();
     let end_effector = robot.segments.last().unwrap().child;
     let fk = ForwardKinematics::new(robot.clone());
-    let jacobian = GeometricJacobian::new(fk, end_effector.clone());
+    let jacobian = GeometricJacobian::new(fk, end_effector);
     let numerical =
-        NumericalJacobian::new(ForwardKinematics::new(robot.clone()), end_effector.clone());
+        NumericalJacobian::new(ForwardKinematics::new(robot.clone()), end_effector);
 
     // Probar múltiples configuraciones aleatorias
     let test_configs = [
@@ -225,7 +224,7 @@ fn propagates_velocities() {
 
     let j = jacobian.evaluate(&q);
 
-    // v = J qdot
+    // v = j qdot
 
     let v_x = j.linear[(0, 0)] * q_dot[0] + j.linear[(0, 1)] * q_dot[1];
 
@@ -273,17 +272,17 @@ fn singularity_detection() {
 
     // Configuración singular: brazos completamente extendidos
     let q_singular = [0.0, 0.0];
-    let J_singular = jacobian.evaluate(&q_singular);
+    let j_singular = jacobian.evaluate(&q_singular);
 
     // Calcular determinante de la submatriz lineal 2x2
-    let det_singular = J_singular.linear[(0, 0)] * J_singular.linear[(1, 1)]
-        - J_singular.linear[(0, 1)] * J_singular.linear[(1, 0)];
+    let det_singular = j_singular.linear[(0, 0)] * j_singular.linear[(1, 1)]
+        - j_singular.linear[(0, 1)] * j_singular.linear[(1, 0)];
 
     // Configuración no singular
     let q_normal = [PI / 3.0, PI / 4.0];
-    let J_normal = jacobian.evaluate(&q_normal);
-    let det_normal = J_normal.linear[(0, 0)] * J_normal.linear[(1, 1)]
-        - J_normal.linear[(0, 1)] * J_normal.linear[(1, 0)];
+    let j_normal = jacobian.evaluate(&q_normal);
+    let det_normal = j_normal.linear[(0, 0)] * j_normal.linear[(1, 1)]
+        - j_normal.linear[(0, 1)] * j_normal.linear[(1, 0)];
 
     assert!(
         det_singular.abs() < det_normal.abs() * 0.1,
@@ -294,9 +293,9 @@ fn singularity_detection() {
 
     // Otra singularidad: brazos plegados
     let q_folded = [0.0, PI];
-    let J_folded = jacobian.evaluate(&q_folded);
-    let det_folded = J_folded.linear[(0, 0)] * J_folded.linear[(1, 1)]
-        - J_folded.linear[(0, 1)] * J_folded.linear[(1, 0)];
+    let j_folded = jacobian.evaluate(&q_folded);
+    let det_folded = j_folded.linear[(0, 0)] * j_folded.linear[(1, 1)]
+        - j_folded.linear[(0, 1)] * j_folded.linear[(1, 0)];
 
     assert!(
         det_folded.abs() < 1e-4,
@@ -313,32 +312,32 @@ fn linearity() {
     let jacobian = GeometricJacobian::new(fk, end_effector);
 
     let q = [PI / 4.0, PI / 6.0];
-    let J = jacobian.evaluate(&q);
+    let j = jacobian.evaluate(&q);
 
-    // Probar que J(q) es lineal en q_dot
+    // Probar que j(q) es lineal en q_dot
     let q_dot1 = [0.2, 0.1];
     let q_dot2 = [0.05, 0.15];
     let a = 2.0;
     let b = 3.0;
 
-    // Calcular J*(a*v1 + b*v2)
+    // Calcular j*(a*v1 + b*v2)
     let combined_linear = {
         let v_combined = [a * q_dot1[0] + b * q_dot2[0], a * q_dot1[1] + b * q_dot2[1]];
-        let vx = J.linear[(0, 0)] * v_combined[0] + J.linear[(0, 1)] * v_combined[1];
-        let vy = J.linear[(1, 0)] * v_combined[0] + J.linear[(1, 1)] * v_combined[1];
+        let vx = j.linear[(0, 0)] * v_combined[0] + j.linear[(0, 1)] * v_combined[1];
+        let vy = j.linear[(1, 0)] * v_combined[0] + j.linear[(1, 1)] * v_combined[1];
         (vx, vy)
     };
 
-    // Calcular a*J*v1 + b*J*v2
+    // Calcular a*j*v1 + b*j*v2
     let linear_v1 = {
-        let vx = J.linear[(0, 0)] * q_dot1[0] + J.linear[(0, 1)] * q_dot1[1];
-        let vy = J.linear[(1, 0)] * q_dot1[0] + J.linear[(1, 1)] * q_dot1[1];
+        let vx = j.linear[(0, 0)] * q_dot1[0] + j.linear[(0, 1)] * q_dot1[1];
+        let vy = j.linear[(1, 0)] * q_dot1[0] + j.linear[(1, 1)] * q_dot1[1];
         (vx, vy)
     };
 
     let linear_v2 = {
-        let vx = J.linear[(0, 0)] * q_dot2[0] + J.linear[(0, 1)] * q_dot2[1];
-        let vy = J.linear[(1, 0)] * q_dot2[0] + J.linear[(1, 1)] * q_dot2[1];
+        let vx = j.linear[(0, 0)] * q_dot2[0] + j.linear[(0, 1)] * q_dot2[1];
+        let vy = j.linear[(1, 0)] * q_dot2[0] + j.linear[(1, 1)] * q_dot2[1];
         (vx, vy)
     };
 
@@ -407,12 +406,12 @@ fn joint_contributions() {
     ];
 
     for (q, name) in test_configs {
-        let J = jacobian.evaluate(&q);
+        let j = jacobian.evaluate(&q);
 
         // Verificar que la columna de cada junta tiene sentido físico
         for joint_idx in 0..2 {
-            let vx = J.linear[(0, joint_idx)];
-            let vy = J.linear[(1, joint_idx)];
+            let vx = j.linear[(0, joint_idx)];
+            let vy = j.linear[(1, joint_idx)];
             let magnitude = (vx * vx + vy * vy).sqrt();
 
             // La magnitud no debería exceder la longitud total de los brazos
@@ -427,12 +426,12 @@ fn joint_contributions() {
 
         // Verificar que la velocidad angular es 1 para cada junta
         assert!(
-            (J.angular[(2, 0)] - 1.0).abs() < 1e-10,
+            (j.angular[(2, 0)] - 1.0).abs() < 1e-10,
             "Angular contribution of joint 1 should be 1.0 at config {}",
             name
         );
         assert!(
-            (J.angular[(2, 1)] - 1.0).abs() < 1e-10,
+            (j.angular[(2, 1)] - 1.0).abs() < 1e-10,
             "Angular contribution of joint 2 should be 1.0 at config {}",
             name
         );

@@ -1,7 +1,6 @@
 use crate::models::planar_3r::Planar3RSpec;
 use crate::prelude::*;
 use thalos_math::constants::*;
-use thalos_math::*;
 
 #[test]
 fn geometric_matches_numerical() {
@@ -189,9 +188,9 @@ fn linear_velocity_consistency() {
     let robot = Planar3RSpec::ideal().build();
     let end_effector = robot.segments.last().unwrap().child;
     let fk = ForwardKinematics::new(robot.clone());
-    let jacobian = GeometricJacobian::new(fk, end_effector.clone());
+    let jacobian = GeometricJacobian::new(fk, end_effector);
     let numerical =
-        NumericalJacobian::new(ForwardKinematics::new(robot.clone()), end_effector.clone());
+        NumericalJacobian::new(ForwardKinematics::new(robot.clone()), end_effector);
 
     let test_configs = [
         [0.2, 0.3, 0.1],

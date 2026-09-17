@@ -30,7 +30,7 @@ pub fn create_manipulator_3dof(
     };
     builder.add_segment(Segment {
         parent: FrameId::World,
-        child: link_1_frame.clone(),
+        child: link_1_frame,
         joint: joint1,
         link: link1,
     });
@@ -49,7 +49,7 @@ pub fn create_manipulator_3dof(
     };
     builder.add_segment(Segment {
         parent: link_1_frame,
-        child: link_2_frame.clone(),
+        child: link_2_frame,
         joint: joint2,
         link: link2,
     });
@@ -68,7 +68,7 @@ pub fn create_manipulator_3dof(
     };
     builder.add_segment(Segment {
         parent: link_2_frame,
-        child: link_3_frame.clone(),
+        child: link_3_frame,
         joint: joint3,
         link: link3,
     });

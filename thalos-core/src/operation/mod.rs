@@ -1,5 +1,6 @@
 pub mod constraint_query;
 pub mod motion_node;
+#[allow(clippy::module_inception)]
 pub mod operation;
 pub mod precision;
 pub mod provenance;

@@ -99,6 +99,7 @@ fn ur5_elbow_joint_origin() {
 }
 
 #[test]
+#[allow(clippy::approx_constant)]
 fn ur5_shoulder_lift_rotation() {
     use thalos_math::UnitQuaternion;
 

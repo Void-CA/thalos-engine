@@ -78,14 +78,13 @@ pub fn validate_scene_file(file: &SceneFile) -> Result<(), Vec<SceneFileError>> 
         if !pose_is_finite(&obj.pose) {
             errors.push(SceneFileError::InvalidPose(obj.id.clone()));
         }
-        if let Some(reference) = &obj.location_ref {
-            if !file.locations.iter().any(|l| &l.id == reference) {
+        if let Some(reference) = &obj.location_ref
+            && !file.locations.iter().any(|l| &l.id == reference) {
                 errors.push(SceneFileError::UnknownReference {
                     object: obj.id.clone(),
                     reference: reference.clone(),
                 });
             }
-        }
         if let Some(geom) = &obj.geometry {
             validate_geometry(&obj.id, geom, &mut errors);
         }

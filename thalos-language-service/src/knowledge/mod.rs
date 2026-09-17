@@ -67,7 +67,10 @@ pub trait KnowledgeProvider {
     fn home_pose(&self) -> Result<MotionPose, LoweringError>;
 }
 
+// The functions below are compile-time contract checks: their value is that
+// they type-check, not that they run. They are intentionally never called.
 #[cfg(test)]
+#[allow(dead_code)]
 mod tests {
     use super::*;
 
@@ -157,12 +160,9 @@ mod tests {
 
         // Also verify the return types don't reference ProgramInstruction
         fn provider_returns_no_instructions(provider: &dyn KnowledgeProvider, object: &ObjectId) {
-            match provider.grasp_plan(object) {
-                Ok(plan) => {
-                    // plan is GraspPlan — not ProgramInstruction, not ExecutionProgram
-                    let _: &GraspPlan = &plan;
-                }
-                Err(_) => {}
+            if let Ok(plan) = provider.grasp_plan(object) {
+                // plan is GraspPlan — not ProgramInstruction, not ExecutionProgram
+                let _: &GraspPlan = &plan;
             }
         }
     }

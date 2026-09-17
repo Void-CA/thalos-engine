@@ -10,6 +10,7 @@ pub mod error;
 pub mod reachability;
 pub mod sampler;
 pub mod types;
+#[allow(clippy::module_inception)]
 pub mod workspace;
 
 #[cfg(test)]

@@ -5,10 +5,10 @@ use thalos_math::*;
 
 fn fresh_pair() -> (GeometricJacobian, NumericalJacobian) {
     let robot = Manipulator3DOFSpec::ideal().build();
-    let ee = robot.end_effector().clone();
+    let ee = *robot.end_effector();
     let fk1 = ForwardKinematics::new(robot.clone());
     let fk2 = ForwardKinematics::new(robot);
-    let geo = GeometricJacobian::new(fk1, ee.clone());
+    let geo = GeometricJacobian::new(fk1, ee);
     let num = NumericalJacobian::new(fk2, ee);
     (geo, num)
 }
@@ -224,7 +224,7 @@ fn propagates_velocities_via_geometric_jacobian() {
     // v_ee = J · q̇ debe coincidir con finite difference de la FK.
     let (geo, fk) = {
         let robot = Manipulator3DOFSpec::ideal().build();
-        let ee = robot.end_effector().clone();
+        let ee = *robot.end_effector();
         let fk = ForwardKinematics::new(robot);
         let geo = GeometricJacobian::new(fk.clone(), ee);
         (geo, fk)
@@ -243,7 +243,7 @@ fn propagates_velocities_via_geometric_jacobian() {
         q[2] + q_dot[2] * dt,
     ];
 
-    let ee = fk.robot().end_effector().clone();
+    let ee = *fk.robot().end_effector();
     let p_curr = fk.evaluate(&q).pose(&ee).unwrap().transform().translation;
     let p_next = fk
         .evaluate(&q_next)

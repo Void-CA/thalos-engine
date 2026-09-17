@@ -210,7 +210,7 @@ pub fn auto(robot: &ModelRobot) -> Result<SerialChain, AdapterError> {
         let named = leaves.iter().find(|&&leaf| {
             graph
                 .link_name(leaf)
-                .map_or(false, |name| name == "tool0" || name == "tcp")
+                .is_some_and(|name| name == "tool0" || name == "tcp")
         });
         match named {
             Some(&id) => id,

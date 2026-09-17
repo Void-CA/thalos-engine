@@ -141,7 +141,7 @@ fn fk_j1_rotation_moves_ee_in_xy() {
     let fk = ForwardKinematics::new(chain);
 
     // Rotate only joint_1 by 90°
-    let q = [1.5708, 0.0, 0.0, 0.0];
+    let q = [std::f64::consts::FRAC_PI_2, 0.0, 0.0, 0.0];
     let result = fk.evaluate(&q);
     let ee_pose = result.ee_pose().unwrap();
 

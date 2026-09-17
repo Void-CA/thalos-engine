@@ -5,9 +5,9 @@ use thalos_math::*;
 
 fn setup() -> (NumericalJacobian, ForwardKinematics, FrameId) {
     let robot = Manipulator3DOFSpec::ideal().build();
-    let ee = robot.end_effector().clone();
+    let ee = *robot.end_effector();
     let fk = ForwardKinematics::new(robot);
-    let jacobian = NumericalJacobian::new(fk.clone(), ee.clone());
+    let jacobian = NumericalJacobian::new(fk.clone(), ee);
     (jacobian, fk, ee)
 }
 

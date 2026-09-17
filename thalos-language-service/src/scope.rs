@@ -3,8 +3,10 @@ use serde::{Deserialize, Serialize};
 use crate::symbols::Symbol;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum ScopeKind {
     Builtin,
+    #[default]
     Global,
     Function,
     Block,
@@ -39,11 +41,6 @@ impl Scope {
     }
 }
 
-impl Default for ScopeKind {
-    fn default() -> Self {
-        ScopeKind::Global
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct SymbolTable {

@@ -43,12 +43,11 @@ fn resolve_candidate_rewrites_mesh_filenames() {
     let mut found = false;
     for body in &mut candidate.raw_bodies {
         for visual in &mut body.visual {
-            if let thalos_models::geometry::Geometry::Mesh { filename, .. } = &mut visual.geometry {
-                if filename.contains("base_link") && filename.contains("/visual/") {
+            if let thalos_models::geometry::Geometry::Mesh { filename, .. } = &mut visual.geometry
+                && filename.contains("base_link") && filename.contains("/visual/") {
                     assert_eq!(filename, "/data/robots/abb/meshes/visual/base_link.stl");
                     found = true;
                 }
-            }
         }
     }
     assert!(found, "base_link visual mesh should have been rewritten");
@@ -56,11 +55,10 @@ fn resolve_candidate_rewrites_mesh_filenames() {
     // Other meshes should remain as original URIs
     for body in &candidate.raw_bodies {
         for visual in &body.visual {
-            if let thalos_models::geometry::Geometry::Mesh { filename, .. } = &visual.geometry {
-                if !filename.contains("base_link") || !filename.contains("/visual/") {
+            if let thalos_models::geometry::Geometry::Mesh { filename, .. } = &visual.geometry
+                && (!filename.contains("base_link") || !filename.contains("/visual/")) {
                     assert!(filename.starts_with("package://"), "unresolved mesh should keep original URI: {filename}");
                 }
-            }
         }
     }
 }
@@ -121,12 +119,11 @@ fn import_urdf_resolved_produces_robot_with_resolved_paths() {
     let mut has_resolved = false;
     for link in result.robot.links.values() {
         for visual in &link.visual {
-            if let thalos_models::geometry::Geometry::Mesh { filename, .. } = &visual.geometry {
-                if filename.starts_with("/data/") {
+            if let thalos_models::geometry::Geometry::Mesh { filename, .. } = &visual.geometry
+                && filename.starts_with("/data/") {
                     has_resolved = true;
                     break;
                 }
-            }
         }
     }
     assert!(has_resolved, "at least one mesh should have a resolved absolute path");

@@ -121,6 +121,8 @@ pub trait ConstraintEvaluator {
 pub struct DefaultConstraintEvaluator;
 
 impl ConstraintEvaluator for DefaultConstraintEvaluator {
+    // `tcp` is reserved for TCP-aware constraints; currently only threaded through recursion.
+    #[allow(clippy::only_used_in_recursion)]
     fn evaluate_trajectory(
         &self,
         constraints: &[Constraint],

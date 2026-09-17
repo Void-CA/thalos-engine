@@ -5,7 +5,7 @@ fn test_transpose_vs_dls_reachable() {
     let (fk, ee) = build_2dof_planar_arm();
     let target = Vector3::new(1.0, 1.0, 0.0);
 
-    let jt = JacobianTransposeSolver::new(fk.clone(), ee.clone(), 500, 1e-6, 0.5);
+    let jt = JacobianTransposeSolver::new(fk.clone(), ee, 500, 1e-6, 0.5);
     let dls = DampedLeastSquaresSolver::new(fk, ee, 500, 1e-6, 0.1);
 
     let r_jt = jt
@@ -51,7 +51,7 @@ fn test_transpose_vs_dls_singular() {
     let (fk, ee) = build_2dof_planar_arm();
     let target = Vector3::new(1.2, 0.5, 0.0);
 
-    let jt = JacobianTransposeSolver::new(fk.clone(), ee.clone(), 500, 1e-6, 0.5);
+    let jt = JacobianTransposeSolver::new(fk.clone(), ee, 500, 1e-6, 0.5);
     let dls = DampedLeastSquaresSolver::new(fk, ee, 500, 1e-6, 0.1);
 
     let r_jt = jt
@@ -96,7 +96,7 @@ fn test_transpose_vs_dls_singular() {
 fn test_transpose_vs_dls_unreachable() {
     let (fk, ee) = build_2dof_planar_arm();
 
-    let jt = JacobianTransposeSolver::new(fk.clone(), ee.clone(), 200, 1e-6, 0.5);
+    let jt = JacobianTransposeSolver::new(fk.clone(), ee, 200, 1e-6, 0.5);
     let dls = DampedLeastSquaresSolver::new(fk, ee, 200, 1e-6, 0.1);
 
     let targets = [Vector3::new(3.0, 0.0, 0.0), Vector3::new(0.0, 3.0, 0.0)];

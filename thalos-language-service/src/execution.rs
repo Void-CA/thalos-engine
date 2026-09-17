@@ -79,12 +79,12 @@ impl SkillExecutionEngine {
         evaluator: &impl ConditionEvaluator,
         pre_state: &RobotState,
         ctx: &LoweringContext,
-    ) -> Result<SkillExecutionPrepared, SkillExecutionRecord> {
+    ) -> Result<SkillExecutionPrepared, Box<SkillExecutionRecord>> {
         let skill_id = &skill_op.skill_call.skill;
         let skill = match registry.get_for_robot(robot, skill_id) {
             Some(s) => s,
             None => {
-                return Err(SkillExecutionRecord {
+                return Err(Box::new(SkillExecutionRecord {
                     skill: skill_id.clone(),
                     origin: skill_op.origin.clone(),
                     precondition_result: SkillEvaluationResult::UnknownState(
@@ -95,7 +95,7 @@ impl SkillExecutionEngine {
                     ),
                     execution_outcome: None,
                     postcondition_result: None,
-                });
+                }));
             }
         };
 
@@ -104,13 +104,13 @@ impl SkillExecutionEngine {
         // 1. Check Preconditions against pre_state
         let precondition_result = contract.evaluate_preconditions(evaluator, pre_state);
         if precondition_result != SkillEvaluationResult::Success {
-            return Err(SkillExecutionRecord {
+            return Err(Box::new(SkillExecutionRecord {
                 skill: skill_id.clone(),
                 origin: skill_op.origin.clone(),
                 precondition_result,
                 execution_outcome: None,
                 postcondition_result: None,
-            });
+            }));
         }
 
         // 2. Lower Implementation into ExecutionProgram
@@ -128,13 +128,13 @@ impl SkillExecutionEngine {
                 contract,
                 lowered_program,
             }),
-            Err(err) => Err(SkillExecutionRecord {
+            Err(err) => Err(Box::new(SkillExecutionRecord {
                 skill: skill_id.clone(),
                 origin: skill_op.origin.clone(),
                 precondition_result: SkillEvaluationResult::Success,
                 execution_outcome: Some(ExecutionOutcome::Failure(err)),
                 postcondition_result: None,
-            }),
+            })),
         }
     }
 
@@ -169,7 +169,7 @@ impl SkillExecutionEngine {
     ) -> SkillExecutionRecord {
         match Self::prepare_skill_op(skill_op, robot, registry, evaluator, pre_state, ctx) {
             Ok(prepared) => Self::evaluate_postconditions(prepared, evaluator, post_state),
-            Err(early_record) => early_record,
+            Err(early_record) => *early_record,
         }
     }
 

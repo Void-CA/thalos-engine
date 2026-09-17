@@ -42,8 +42,8 @@ impl ForwardKinematics {
 
         // World pose explícita
         poses.insert(
-            world.clone(),
-            Pose::new(world.clone(), world.clone(), Transform3D::identity()),
+            world,
+            Pose::new(world, world, Transform3D::identity()),
         );
 
         let mut q_idx = 0;
@@ -65,8 +65,8 @@ impl ForwardKinematics {
 
             // store global pose of child frame
             poses.insert(
-                segment.child.clone(),
-                Pose::new(world.clone(), segment.child.clone(), t.clone()),
+                segment.child,
+                Pose::new(world, segment.child, t.clone()),
             );
         }
 

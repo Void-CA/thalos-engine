@@ -1,7 +1,6 @@
 use crate::models::scara::ScaraSpec;
 use crate::prelude::*;
 use thalos_math::constants::*;
-use thalos_math::*;
 
 // ─── ADR-0001 Z-up regression tests ──────────────────────────
 
@@ -160,7 +159,7 @@ fn returns_six_poses() {
 fn zero_configuration_places_end_effector_at_2_0_0() {
     let robot = ScaraSpec::ideal().build();
 
-    let end_effector = robot.segments.last().unwrap().child.clone();
+    let end_effector = robot.segments.last().unwrap().child;
 
     let fk = ForwardKinematics::new(robot);
 
@@ -184,7 +183,7 @@ fn zero_configuration_places_end_effector_at_2_0_0() {
 fn position_independent_of_wrist_rotation() {
     let robot = ScaraSpec::ideal().build();
 
-    let end_effector = robot.segments.last().unwrap().child.clone();
+    let end_effector = robot.segments.last().unwrap().child;
 
     let fk = ForwardKinematics::new(robot);
 

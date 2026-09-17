@@ -61,7 +61,7 @@ impl SemanticResolver {
     ) {
         call_stack.push(CallSite {
             function: func.name.clone(),
-            span: func.provenance.span.clone(),
+            span: func.provenance.span,
         });
 
         let mut local_env = env.clone();

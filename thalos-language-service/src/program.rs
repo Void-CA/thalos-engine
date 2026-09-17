@@ -177,14 +177,14 @@ mod tests {
     #[test]
     fn program_iterable_empty() {
         let program = SemanticProgram::new(vec![]);
-        let count = program.operations.iter().count();
+        let count = program.operations.len();
         assert_eq!(count, 0, "Empty program should yield zero items");
     }
 
     #[test]
     fn program_iterable_with_ops() {
         let program = SemanticProgram::new(mixed_operations());
-        let count = program.operations.iter().count();
+        let count = program.operations.len();
         assert_eq!(count, 5);
     }
 }

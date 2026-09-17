@@ -9,6 +9,12 @@ pub struct SerialChainBuilder {
     end_effector: Option<FrameId>,
 }
 
+impl Default for SerialChainBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SerialChainBuilder {
     pub fn new() -> Self {
         Self {
@@ -42,11 +48,10 @@ impl SerialChainBuilder {
     pub fn build(self) -> Result<SerialChain, RobotBuilderError> {
         // Validar que todos los frames existan
         for segment in &self.segments {
-            if segment.parent != FrameId::World {
-                if !self.frames.contains(&segment.parent) {
+            if segment.parent != FrameId::World
+                && !self.frames.contains(&segment.parent) {
                     return Err(RobotBuilderError::FrameNotFound(segment.parent));
                 }
-            }
 
             if !self.frames.contains(&segment.child) {
                 return Err(RobotBuilderError::FrameNotFound(segment.child));
@@ -55,7 +60,7 @@ impl SerialChainBuilder {
 
         let end_effector = self
             .end_effector
-            .ok_or_else(|| RobotBuilderError::EndEffectorNotDefined)?;
+            .ok_or(RobotBuilderError::EndEffectorNotDefined)?;
 
         if !self.frames.contains(&end_effector) {
             return Err(RobotBuilderError::FrameNotFound(end_effector));

@@ -7,6 +7,12 @@ pub struct FrameRegistry {
     next_id: u64,
 }
 
+impl Default for FrameRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FrameRegistry {
     pub fn new() -> Self {
         Self {
@@ -19,9 +25,9 @@ impl FrameRegistry {
         let id = FrameId::new(self.next_id);
         self.next_id += 1;
 
-        let frame = Frame::new(id.clone(), name.to_string());
+        let frame = Frame::new(id, name.to_string());
 
-        self.frames.insert(id.clone(), frame);
+        self.frames.insert(id, frame);
 
         id
     }
@@ -35,8 +41,8 @@ impl FrameRegistry {
     }
 
     pub fn register(&mut self, frame: Frame) -> FrameId {
-        let id = frame.id().clone();
-        self.frames.insert(id.clone(), frame);
+        let id = *frame.id();
+        self.frames.insert(id, frame);
         id
     }
 

@@ -158,7 +158,7 @@ mod tests {
                 source_project: "test".into(),
             },
         };
-        let count = program.instructions.iter().count();
+        let count = program.instructions.len();
         assert_eq!(count, 0, "Empty program should yield zero items");
     }
 

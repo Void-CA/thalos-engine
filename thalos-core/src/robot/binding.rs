@@ -204,24 +204,8 @@ mod tests {
     use std::time::Duration;
     use crate::robot::capability::{JointObservationRequirement, ObservationConstraint, ObservationRequirement};
     use crate::robot::observation::ObservationAssessment;
-    use crate::robot::policy::{DeviationThresholds, ObservationResponsePolicy, PolicyDecision};
+    use crate::robot::policy::{ObservationResponsePolicy, PolicyDecision};
     use crate::robot::state::StateDeviation;
-
-    struct MockEncoderHardware {
-        ticks: f64,
-    }
-
-    impl StateSource for MockEncoderHardware {
-        fn read_sample(&mut self) -> Option<ObservationSample> {
-            Some(ObservationSample {
-                source_id: "encoder_j0".into(),
-                timestamp: 0.1,
-                raw_value: self.ticks,
-                physical_value: self.ticks * 0.001, // e.g. 1000 ticks/rad
-                quality: ObservationQuality::Valid,
-            })
-        }
-    }
 
     #[test]
     fn end_to_end_hardware_binding_to_policy_decision() {

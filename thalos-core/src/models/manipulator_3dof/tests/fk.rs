@@ -9,12 +9,11 @@ fn ee_translation(fk: &ForwardKinematics, q: &[f64], ee: &FrameId) -> Vector3 {
         .unwrap()
         .transform()
         .translation
-        .clone()
 }
 
 fn build() -> (ForwardKinematics, FrameId) {
     let robot = Manipulator3DOFSpec::ideal().build();
-    let ee = robot.end_effector().clone();
+    let ee = *robot.end_effector();
     let fk = ForwardKinematics::new(robot);
     (fk, ee)
 }

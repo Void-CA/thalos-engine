@@ -133,7 +133,7 @@ pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
     let stmt_parser = recursive(|stmt| {
         let let_stmt = just("let")
             .ignore_then(ident.padded())
-            .then(type_ann.clone().or_not())
+            .then(type_ann.or_not())
             .then_ignore(just('=').padded())
             .then(expr.clone())
             .then_ignore(just(';').or_not())
@@ -227,7 +227,7 @@ pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
         .then(
             ident
                 .padded()
-                .then(type_ann.clone().or_not())
+                .then(type_ann.or_not())
                 .map(|(name, type_ann)| Param { name, type_ann })
                 .separated_by(just(',').padded())
                 .allow_trailing()
@@ -247,7 +247,7 @@ pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
 
     let const_decl = just("const")
         .ignore_then(ident.padded())
-        .then(type_ann.clone().or_not())
+        .then(type_ann.or_not())
         .then_ignore(just('=').padded())
         .then(expr.clone().padded())
         .then_ignore(just(';').or_not())

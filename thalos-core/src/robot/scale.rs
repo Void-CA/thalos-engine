@@ -81,13 +81,13 @@ mod tests {
         let ee = builder.create_frame("ee");
         builder.add_segment(Segment::new(
             FrameId::World,
-            base.clone(),
+            base,
             JointType::Fixed(FixedJoint::new(Transform3D::identity())),
             Link::new(0, Transform3D::identity()),
         ));
         builder.add_segment(Segment::new(
             base,
-            ee.clone(),
+            ee,
             JointType::Fixed(FixedJoint::new(Transform3D::identity())),
             Link::new(1, Transform3D::identity()),
         ));
@@ -145,7 +145,7 @@ mod tests {
         let ee = builder.create_frame("ee");
         builder.add_segment(Segment::new(
             FrameId::World,
-            base.clone(),
+            base,
             JointType::Fixed(FixedJoint::new(Transform3D::from_translation(
                 Vector3::new(0.0, 0.0, 0.5),
             ))),
@@ -153,7 +153,7 @@ mod tests {
         ));
         builder.add_segment(Segment::new(
             base,
-            ee.clone(),
+            ee,
             JointType::Revolute(RevoluteJoint::new(
                 0,
                 UnitVector3::z_axis(),

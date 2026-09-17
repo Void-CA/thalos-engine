@@ -37,8 +37,8 @@ impl<'a> TypeChecker<'a> {
     }
 
     fn check_purity_for_statement(&mut self, stmt_kind: &str) {
-        if let Some(ref ret_ty) = self.current_fn_return_type {
-            if *ret_ty != Type::Unit {
+        if let Some(ref ret_ty) = self.current_fn_return_type
+            && *ret_ty != Type::Unit {
                 let fn_name = self.current_fn_name.clone().unwrap_or_default();
                 self.diagnostics.push(SemanticDiagnostic {
                     message: format!(
@@ -48,7 +48,6 @@ impl<'a> TypeChecker<'a> {
                     span: None,
                 });
             }
-        }
     }
 
     pub fn infer_expr(&mut self, expr: &Expr) -> TypedExpr {
@@ -141,12 +140,11 @@ impl<'a> TypeChecker<'a> {
                     // Overload matching
                     let mut matched_return = None;
                     for sym in symbols {
-                        if let Type::Function(ref ft) = sym.ty {
-                            if ft.params == param_types {
+                        if let Type::Function(ref ft) = sym.ty
+                            && ft.params == param_types {
                                 matched_return = Some(*ft.return_type.clone());
                                 break;
                             }
-                        }
                     }
 
                     if let Some(ret_ty) = matched_return {
@@ -275,8 +273,8 @@ impl<'a> TypeChecker<'a> {
             }
             Statement::Expr(expr) => {
                 let typed_expr = self.infer_expr(expr);
-                if let Some(ref ret_ty) = self.current_fn_return_type {
-                    if *ret_ty != Type::Unit && typed_expr.ty == Type::Unit {
+                if let Some(ref ret_ty) = self.current_fn_return_type
+                    && *ret_ty != Type::Unit && typed_expr.ty == Type::Unit {
                         let name = match expr {
                             Expr::Call { callee, .. } => callee.clone(),
                             Expr::MemberCall { object, method, .. } => format!("{}.{}", object, method),
@@ -291,7 +289,6 @@ impl<'a> TypeChecker<'a> {
                             span: None,
                         });
                     }
-                }
             }
             _ => {}
         }

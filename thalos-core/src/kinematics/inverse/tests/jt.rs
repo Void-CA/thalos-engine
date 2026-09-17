@@ -195,7 +195,7 @@ fn one_dof_reaches_known_target() {
 fn jacobian_matches_numerical() {
     let (fk, ee) = build_2dof_planar_arm();
 
-    let geometric = GeometricJacobian::new(fk.clone(), ee.clone());
+    let geometric = GeometricJacobian::new(fk.clone(), ee);
     let numerical = NumericalJacobian::new(fk, ee);
 
     let test_configs: Vec<Vec<f64>> = vec![
@@ -346,7 +346,7 @@ fn unreachable_target_does_not_explode() {
 
     for q0 in &start_configs {
         for &target in &targets {
-            let solver = JacobianTransposeSolver::new(fk.clone(), ee.clone(), 200, 1e-6, 0.5);
+            let solver = JacobianTransposeSolver::new(fk.clone(), ee, 200, 1e-6, 0.5);
             let result = solver
                 .solve(q0, IKGoal::Position(target))
                 .expect("JT solve should succeed");
@@ -388,7 +388,7 @@ fn singular_radial_error_blocks_convergence() {
     let target = Vector3::new(1.5, 0.0, 0.0);
 
     // Desde singular: J^T · e = 0 → stuck
-    let solver_sing = JacobianTransposeSolver::new(fk.clone(), ee.clone(), 100, 1e-6, 0.5);
+    let solver_sing = JacobianTransposeSolver::new(fk.clone(), ee, 100, 1e-6, 0.5);
     let result_singular = solver_sing
         .solve(&[0.0, 0.0], IKGoal::Position(target))
         .expect("JT solve should succeed");

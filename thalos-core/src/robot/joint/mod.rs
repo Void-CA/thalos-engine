@@ -1,5 +1,6 @@
 pub mod fixed;
 pub mod info;
+#[allow(clippy::module_inception)]
 pub mod joint;
 pub mod kind;
 pub mod prismatic;

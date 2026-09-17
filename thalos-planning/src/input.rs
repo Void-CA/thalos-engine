@@ -87,8 +87,8 @@ impl PlanningInput {
                     // `movec` is a circular move: it needs cartesian via + target
                     // (validated upstream). For any non-cartesian shape, fall back
                     // to the target-derived segment so this stays total.
-                    if let MotionKind::MoveC { via } = &m.kind {
-                        if let (Some(via_position), Some(target_position)) =
+                    if let MotionKind::MoveC { via } = &m.kind
+                        && let (Some(via_position), Some(target_position)) =
                             (target_position(via), target_position(&m.target))
                         {
                             return MotionSegment::MoveC {
@@ -99,7 +99,6 @@ impl PlanningInput {
                                 max_velocity: None,
                             };
                         }
-                    }
                     target_segment(origin, &m.target)
                 }
                 PlanningStep::Wait { seconds, provenance } => MotionSegment::Delay {

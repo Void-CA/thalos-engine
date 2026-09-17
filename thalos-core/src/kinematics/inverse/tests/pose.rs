@@ -124,7 +124,7 @@ fn pose_faster_than_jt_from_singular() {
 
     let target_pose = make_target_pose(ee, &[PI / 3.0, PI / 6.0]);
 
-    let dls = DampedLeastSquaresSolver::new(fk.clone(), ee.clone(), 500, 1e-6, 0.1);
+    let dls = DampedLeastSquaresSolver::new(fk.clone(), ee, 500, 1e-6, 0.1);
     let r_dls = dls
         .solve(&[0.0, 0.0], IKGoal::Pose(target_pose.clone()))
         .expect("DLS solve should succeed");
@@ -185,7 +185,7 @@ fn pose_converges_where_position_ik_stagnates() {
     };
 
     // DLS con posición sola → se estanca (error radial puro)
-    let dls_pos = DampedLeastSquaresSolver::new(fk.clone(), ee.clone(), 200, 1e-6, 0.1);
+    let dls_pos = DampedLeastSquaresSolver::new(fk.clone(), ee, 200, 1e-6, 0.1);
     let r_pos = dls_pos
         .solve(&[0.0, 0.0], IKGoal::Position(pos_target))
         .expect("DLS solve should succeed");

@@ -115,7 +115,7 @@ impl<'a> MultiStartIKSolver<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::kinematics::inverse::result::{IKResult, IKStatus};
+    use crate::kinematics::inverse::result::IKResult;
     use crate::kinematics::inverse::solver::{IKGoal, IKSolver};
     use thalos_math::Vector3;
 
@@ -144,7 +144,7 @@ mod tests {
             _goal: IKGoal,
         ) -> Result<IKResult, super::super::error::IkError> {
             // If q0[1] > 0, return solution A; if q0[1] < 0, return solution B
-            let q = if q0.get(1).map_or(false, |&v| v > 0.0) {
+            let q = if q0.get(1).is_some_and(|&v| v > 0.0) {
                 vec![0.0, 0.5, -0.3] // solution A
             } else {
                 vec![0.0, -0.5, 0.3] // solution B

@@ -79,11 +79,11 @@ impl WorkspaceSampler {
             let position = if let Some(tcp) = tcp {
                 result
                     .tcp_position(tcp)
-                    .ok_or_else(|| WorkspaceError::EmptyWorkspace)?
+                    .ok_or(WorkspaceError::EmptyWorkspace)?
             } else {
                 result
                     .ee_position()
-                    .ok_or_else(|| WorkspaceError::EmptyWorkspace)?
+                    .ok_or(WorkspaceError::EmptyWorkspace)?
             };
 
             samples.push(WorkspaceSample { q, position });

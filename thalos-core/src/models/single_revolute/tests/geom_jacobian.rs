@@ -1,7 +1,6 @@
 use crate::models::single_revolute::SingleRevoluteSpec;
 use crate::prelude::*;
 use thalos_math::constants::*;
-use thalos_math::*;
 
 #[test]
 fn geometric_matches_numerical() {
@@ -207,9 +206,9 @@ fn velocity_consistency() {
     let robot = SingleRevoluteSpec::ideal().build();
     let end_effector = robot.segments.last().unwrap().child;
     let fk = ForwardKinematics::new(robot.clone());
-    let jacobian = GeometricJacobian::new(fk, end_effector.clone());
+    let jacobian = GeometricJacobian::new(fk, end_effector);
     let numerical =
-        NumericalJacobian::new(ForwardKinematics::new(robot.clone()), end_effector.clone());
+        NumericalJacobian::new(ForwardKinematics::new(robot.clone()), end_effector);
 
     let test_configs = [[0.0], [0.4], [PI / 2.0], [PI], [-0.5], [PI / 3.0]];
 

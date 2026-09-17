@@ -7,7 +7,6 @@ use thalos_core::{
     ids::OperationId,
     models::{RobotModel, RobotRegistry},
     motion::segment::MotionSegment,
-    motion::target::OutputValue,
     robot::{serial_chain::SerialChain, state::RobotState},
     spatial::frame::FrameRegistry,
 };

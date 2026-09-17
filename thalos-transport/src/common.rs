@@ -83,7 +83,6 @@ impl<T: Transport + ?Sized> Transport for Box<T> {
 }
 
 /// Transporte simulado de bytes para pruebas de infraestructura.
-
 pub struct FakeTransport {
     sent: std::sync::Mutex<Vec<Vec<u8>>>,
     responses: std::sync::Mutex<Vec<Vec<u8>>>,

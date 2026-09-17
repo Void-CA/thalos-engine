@@ -28,7 +28,6 @@ use thalos_core::robot::adapter;
 use thalos_core::robot::joint::JointType;
 use thalos_core::robot::scale::manipulability_reference_dimension;
 use thalos_core::robot::serial_chain::SerialChain;
-use thalos_math::Vector3;
 
 /// Raw reference partition (backend planning thresholds, ~1 m robots).
 fn raw_grade(w: f64) -> ManipulabilityGrade {
@@ -55,7 +54,7 @@ fn normalized_grade(n: f64) -> ManipulabilityGrade {
 /// Evaluate raw + normalized at a configuration.
 fn evaluate(chain: &SerialChain, q: &[f64]) -> (f64, f64, ManipulabilityGrade) {
     let fk = ForwardKinematics::new(chain.clone());
-    let jac = GeometricJacobian::new(fk, chain.end_effector.clone());
+    let jac = GeometricJacobian::new(fk, chain.end_effector);
     let jacobian = jac.evaluate(q);
     let singularity = SingularityReport::analyze(&jacobian);
     let report = ManipulabilityReport::compute_with_normalization(&singularity, &jacobian, chain);
@@ -91,7 +90,7 @@ fn oracle_scara_grade_partition_reproduced_point_to_point() {
     // reference grade (0.3/0.5) AT THAT WAYPOINT.
     let chain = ScaraSpec::canonical().build();
     let fk = ForwardKinematics::new(chain.clone());
-    let jac = GeometricJacobian::new(fk, chain.end_effector.clone());
+    let jac = GeometricJacobian::new(fk, chain.end_effector);
 
     let mut rng = StdRng::seed_from_u64(42);
     let ws = WorkspaceSampler
@@ -145,7 +144,7 @@ fn oracle_icebot_not_force_promoted_and_scale_artifact_gone() {
     // genuinely below the SCARA-calibrated partition: 100% LOW, honest, no
     // force-promotion and no force-suppression.
     let fk = ForwardKinematics::new(chain.clone());
-    let jac = GeometricJacobian::new(fk, chain.end_effector.clone());
+    let jac = GeometricJacobian::new(fk, chain.end_effector);
 
     let mut rng = StdRng::seed_from_u64(42);
     let ws = WorkspaceSampler
@@ -188,7 +187,7 @@ fn oracle_icebot_not_force_promoted_and_scale_artifact_gone() {
     // "TODO rojo por artefacto de escala".
     let chain_x2 = scale_chain(&chain, 2.0);
     let fk2 = ForwardKinematics::new(chain_x2.clone());
-    let jac2 = GeometricJacobian::new(fk2, chain_x2.end_effector.clone());
+    let jac2 = GeometricJacobian::new(fk2, chain_x2.end_effector);
     let mut rng2 = StdRng::seed_from_u64(42);
     let ws2 = WorkspaceSampler
         .sample(
@@ -275,7 +274,7 @@ fn oracle_structural_rank_loss_stays_low() {
     // the structural rank of the original Jacobian, not an absolute epsilon.
     let chain = ScaraSpec::canonical().build();
     let fk = ForwardKinematics::new(chain.clone());
-    let jac = GeometricJacobian::new(fk, chain.end_effector.clone());
+    let jac = GeometricJacobian::new(fk, chain.end_effector);
 
     let jacobian = jac.evaluate(&[0.0, 0.0, 0.0, 0.0]);
     let singularity = SingularityReport::analyze(&jacobian);

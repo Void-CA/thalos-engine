@@ -1,7 +1,6 @@
 use crate::models::single_revolute::SingleRevoluteSpec;
 use crate::prelude::*;
 use thalos_math::constants::*;
-use thalos_math::*;
 
 // ─── ADR-0001 Z-up regression tests ──────────────────────────
 
@@ -103,7 +102,7 @@ fn pi_returns_negative_x_position() {
 
 #[test]
 fn has_one_pose() {
-    let (robot, fk) = setup();
+    let (_robot, fk) = setup();
 
     let result = fk.evaluate(&[0.0]);
     let frames: Vec<_> = result.frames().collect();

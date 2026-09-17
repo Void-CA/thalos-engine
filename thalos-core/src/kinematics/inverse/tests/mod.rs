@@ -8,7 +8,6 @@ use crate::kinematics::inverse::result::IKStatus;
 use crate::kinematics::inverse::solvers::JacobianTransposeSolver;
 use crate::prelude::*;
 use std::f64::consts::PI;
-use thalos_math::constants::*;
 use thalos_math::*;
 
 // ─── Helpers ───────────────────────────────────────────────────────────
@@ -32,8 +31,8 @@ fn build_1dof_arm(length: f64) -> (ForwardKinematics, FrameId) {
         Transform3D::from_translation(Vector3::new(length, 0.0, 0.0)),
     );
 
-    builder.add_segment(Segment::new(FrameId::World, ee.clone(), joint, link));
-    builder.set_end_effector(ee.clone());
+    builder.add_segment(Segment::new(FrameId::World, ee, joint, link));
+    builder.set_end_effector(ee);
 
     let chain = builder.build().expect("1-DOF arm: builder failed");
     (ForwardKinematics::new(chain), ee)
@@ -60,7 +59,7 @@ fn build_2dof_planar_arm() -> (ForwardKinematics, FrameId) {
     );
     builder.add_segment(Segment::new(
         FrameId::World,
-        shoulder.clone(),
+        shoulder,
         joint1,
         link1,
     ));
@@ -76,9 +75,9 @@ fn build_2dof_planar_arm() -> (ForwardKinematics, FrameId) {
         1,
         Transform3D::from_translation(Vector3::new(1.0, 0.0, 0.0)),
     );
-    builder.add_segment(Segment::new(shoulder, ee.clone(), joint2, link2));
+    builder.add_segment(Segment::new(shoulder, ee, joint2, link2));
 
-    builder.set_end_effector(ee.clone());
+    builder.set_end_effector(ee);
 
     let chain = builder.build().expect("2-DOF arm: builder failed");
     (ForwardKinematics::new(chain), ee)

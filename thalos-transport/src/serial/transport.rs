@@ -45,7 +45,7 @@ impl Transport for SerialTransport {
         }
         let builder = tokio_serial::new(&self.port, self.baud);
         let port = tokio_serial::SerialStream::open(&builder)
-            .map_err(|e| IoTransportError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| IoTransportError::Io(std::io::Error::other(e)))?;
         self.reader = Some(tokio::sync::Mutex::new(tokio::io::BufReader::new(port)));
         self.partial_line = Some(Vec::new());
         Ok(())

@@ -172,12 +172,11 @@ impl GoalResolver {
             (MetricAction::Ignore, MetricAction::Ignore)
         );
 
-        if active {
-            if let Some((singularity, manipulability)) = self.analyze_configuration(ctx, q) {
+        if active
+            && let Some((singularity, manipulability)) = self.analyze_configuration(ctx, q) {
                 metadata.singularity = Some(singularity);
                 metadata.manipulability = Some(manipulability);
             }
-        }
     }
 
     fn validate_joint_limits(&self, ctx: &PlanningContext, q: &[f64]) -> Result<(), PlanningError> {
@@ -203,8 +202,8 @@ impl GoalResolver {
 
             let value = q[joint_idx];
 
-            if self.config.strict_limits {
-                if value < limits.min || value > limits.max {
+            if self.config.strict_limits
+                && (value < limits.min || value > limits.max) {
                     return Err(PlanningError::JointLimitViolation {
                         joint_index: joint_idx,
                         value,
@@ -212,7 +211,6 @@ impl GoalResolver {
                         max: limits.max,
                     });
                 }
-            }
             joint_idx += 1;
         }
         Ok(())
@@ -227,7 +225,7 @@ impl GoalResolver {
         let jac_solver = if let Some(tcp) = ctx.tcp {
             GeometricJacobian::with_tcp(fk, tcp.clone())
         } else {
-            let ee = ctx.robot.end_effector().clone();
+            let ee = *ctx.robot.end_effector();
             GeometricJacobian::new(fk, ee)
         };
         let jacobian = jac_solver.evaluate(q);
@@ -258,7 +256,7 @@ mod tests {
         let state = RobotState::zero(4);
         let fk = ForwardKinematics::new(robot.clone());
         let solver =
-            DampedLeastSquaresSolver::new(fk.clone(), robot.end_effector().clone(), 500, 1e-6, 0.1);
+            DampedLeastSquaresSolver::new(fk.clone(), *robot.end_effector(), 500, 1e-6, 0.1);
         let ctx = PlanningContext {
             robot: &robot,
             current_state: &state,

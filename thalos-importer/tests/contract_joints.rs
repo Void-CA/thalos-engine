@@ -2,6 +2,7 @@ use thalos_importer::import_urdf;
 use thalos_models::joint::JointKind;
 
 #[test]
+#[allow(clippy::approx_constant)]
 fn joint_types_axes_and_limits_contract() {
     let xml = r#"
         <robot name="joint_test_bot">

@@ -62,9 +62,9 @@ impl SeedPolicy for ElbowAlternate {
 
         // Seed 2: elbow flipped + small perturbation
         let mut perturbed = seeds[1].clone();
-        for idx in 0..perturbed.len() {
+        for (idx, value) in perturbed.iter_mut().enumerate() {
             if !self.flip_joints.contains(&idx) {
-                perturbed[idx] += self.perturbation;
+                *value += self.perturbation;
             }
         }
         seeds.push(perturbed);

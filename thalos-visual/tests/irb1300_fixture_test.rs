@@ -22,7 +22,7 @@ fn test_irb1300_fixture_matrix() {
 
     // 1. Parse URDF
     let robot = import_urdf(&urdf_content).expect("URDF parsing should succeed");
-    assert!(robot.links.len() > 0, "Parse URDF: links > 0");
+    assert!(!robot.links.is_empty(), "Parse URDF: links > 0");
     assert_eq!(robot.links.len(), 9, "Parse URDF: expected 9 links (base_link, link_1..6, flange, tool0)");
     assert_eq!(robot.joints.len(), 8, "Parse URDF: expected 8 joints");
 
