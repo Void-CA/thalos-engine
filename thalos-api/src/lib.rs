@@ -23,7 +23,7 @@
 pub mod core {
     pub use thalos_core::{
         capability, collision, command, device, deviation, execution, ids, kinematics, motion,
-        operation, program, resource, robot, skill, spatial, trajectory,
+        operation, program, resource, robot, skill, spatial, station, trajectory,
     };
 }
 
