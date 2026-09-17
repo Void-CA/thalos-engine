@@ -3,7 +3,14 @@ use crate::ids::StationId;
 use crate::resource::ResourceRef;
 
 /// Station (ADR-014)
-/// Persistent operational environment context referencing participating resources.
+///
+/// Engine-side, resource-binding station: an identity plus the resources
+/// participating in it. This is the lightweight domain concept used by the
+/// resource/command layer.
+///
+/// Distinct from the application operational station
+/// (`thalos_runtime::station::Station`), which owns modules, lifecycle and
+/// sessions. Same name, different layers.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Station {
     pub id: StationId,

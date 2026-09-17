@@ -20,6 +20,9 @@
 /// Only the fundamental domain modules are public here. Internal/stepping-stone
 /// modules (`analysis`, `models` catalog, and the legacy ADR-014 inventory types)
 /// are exposed through their own namespaces below or kept private.
+///
+/// Note: `core::station::Station` (engine, resource-binding) is a different
+/// concept from `thalos_runtime::station::Station` (application, operational).
 pub mod core {
     pub use thalos_core::{
         capability, collision, command, device, deviation, execution, ids, kinematics, motion,
@@ -27,21 +30,24 @@ pub mod core {
     };
 }
 
-/// Analysis layer (workspace/singularity/manipulability analyzers and the
-/// canonical observation language). Initially re-exported from `thalos_core`;
-/// the analyzer services are being extracted into `thalos-analysis`.
+/// Analysis layer: workspace/singularity/manipulability analyzers, the
+/// canonical observation language, and the reusable analysis services.
 pub mod analysis {
     pub use thalos_core::analysis::*;
+    pub use thalos_analysis::{ManipulabilityService, SingularityService, WorkspaceService};
 }
 
-/// Robot models: structural/URDF types plus the built-in kinematic model catalog.
+/// Robot models: structural / URDF data types.
 pub mod models {
     pub use thalos_models::*;
+}
 
-    /// Built-in kinematic model catalog (`RobotModel`, `RobotRegistry`, …).
-    pub mod catalog {
-        pub use thalos_core::models::*;
-    }
+/// Built-in kinematic model catalog (`RobotModel`, `RobotRegistry`, …).
+///
+/// Distinct from [`models`]: this is the engine's preset kinematic catalog,
+/// not the structural robot description.
+pub mod catalog {
+    pub use thalos_core::models::*;
 }
 
 /// Fundamental math types (`Vector3`, `Transform3D`, `Quaternion`, …).

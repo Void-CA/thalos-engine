@@ -1,0 +1,12 @@
+[package]
+name = "thalos-analysis"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+thalos-core = { path = "../thalos-core" }
+thalos-math = { path = "../thalos-math" }
+rand = "0.8"

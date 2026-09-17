@@ -13,7 +13,7 @@ fn public_surface_is_self_contained() {
     use thalos_api::math::{Quaternion, Transform3D, Vector3};
 
     // Robot structure (URDF-like data) and the built-in kinematic catalog.
-    use thalos_api::models::catalog::{RobotModel, RobotRegistry};
+    use thalos_api::catalog::{RobotModel, RobotRegistry};
     use thalos_api::models::{Joint, Link, Robot};
 
     // Core domain primitives and algorithms.
@@ -31,6 +31,7 @@ fn public_surface_is_self_contained() {
 
     // Analysis, planning and language front-end.
     use thalos_api::analysis::workspace::WorkspaceConfig;
+    use thalos_api::analysis::{ManipulabilityService, SingularityService, WorkspaceService};
     use thalos_api::document::program_document::ProgramDocument;
     use thalos_api::importer::import_urdf;
     use thalos_api::lang::{parse_source, DEFAULT_PROGRAM};

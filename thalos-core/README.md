@@ -10,15 +10,19 @@ inversa, modelos de robot, articulaciones, y el grafo espacial de frames.
 
 | Módulo | Descripción |
 |--------|-------------|
-| `math` | Álgebra, geometría, rotaciones, transformaciones |
 | `robot` | Joints, Links, Segments, SerialChain, ToolFrame, ActiveRobot |
 | `kinematics` | FK, Jacobianos (geométrico, numérico), IK (DLS, JT) |
 | `spatial` | Frames, Poses, FrameRegistry, FrameGraph |
-| `models` | Catálogo de robots: Planar2R/3R, SCARA, Manipulator3DOF/6DOF, CylindricalRPP, SphericalPolarRRP, SingleRevolute |
+| `models` | Catálogo cinemático de robots: Planar2R/3R, SCARA, Manipulator3DOF/6DOF, CylindricalRPP, SphericalPolarRRP, SingleRevolute |
+| `motion`, `trajectory`, `program`, `command`, `operation` | Dominio de movimiento, programas y comandos físicos |
+| `resource`, `capability`, `station` | Vocabulario de recursos/estaciones referenciado por `command` |
+| `skill`, `deviation`, `evaluation` | Skills, análisis de desviación y métricas |
 | `collision` | Trait `CollisionChecker` |
 
-No depende de ningún otro crate del proyecto (excepto `thalos-math` para
-tipos base). Es la base sobre la que todo lo demás se construye.
+Depende de `thalos-math` (tipos base), `thalos-models` (estructura URDF) y
+`thalos-importer` (importación URDF, vía `robot::adapter`).
+
+Los analizadores y servicios de análisis se extrajeron a `thalos-analysis`.
 
 **No debe contener:** estado mutable, HTTP, escenas visuales, lógica de
 ejecución.

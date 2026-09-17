@@ -16,7 +16,9 @@ Mapea 1:1 a conceptos URDF y puede serializarse sin pérdida de significado.
 - `Geometry`, `Visual`, `Collision` — geometrías (Sphere, Box, Cylinder, Mesh)
 - `Material`, `Color` — materiales visuales
 - `RobotGraph` — grafo de conectividad (LinkId, JointId, Path)
-- `urdf` — parser URDF
+- `AssetRole`, `RobotAsset` — assets (mallas, materiales) referenciados por el robot
+
+El parser URDF vive en `thalos-importer`, no aquí.
 
 Depende de `thalos-math` para tipos geométricos base.
 

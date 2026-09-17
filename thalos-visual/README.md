@@ -18,6 +18,7 @@ geométricas y `FrameStyle`. También incluye validación de escenas
 - `SceneValidator` — 8 invariantes: world, unicidad, topología, conectividad,
   finitos, quaternions, links, twists
 
-Depende de `thalos-core` para los tipos espaciales (frames, poses).
+Depende de `thalos-core`, `thalos-math`, `thalos-models` y `thalos-importer`
+(para cargar mallas y resolver assets).
 
 **No debe contener:** estado mutable, HTTP, comandos de ejecución, solvers de IK.
