@@ -22,8 +22,8 @@
 /// are exposed through their own namespaces below or kept private.
 pub mod core {
     pub use thalos_core::{
-        collision, command, device, deviation, ids, kinematics, motion, operation, program, robot,
-        skill, spatial, trajectory,
+        capability, collision, command, device, deviation, execution, ids, kinematics, motion,
+        operation, program, resource, robot, skill, spatial, trajectory,
     };
 }
 
@@ -77,4 +77,9 @@ pub mod ports {
 /// Document representations (programs, scenes, resources).
 pub mod document {
     pub use thalos_document::*;
+}
+
+/// Visual scene representation (frames, links, primitives, trajectories).
+pub mod visual {
+    pub use thalos_visual::*;
 }
