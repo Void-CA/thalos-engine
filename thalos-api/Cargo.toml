@@ -17,3 +17,8 @@ thalos-importer = { path = "../thalos-importer" }
 thalos_ports = { path = "../thalos-ports" }
 thalos-document = { path = "../thalos-document" }
 thalos_visual = { path = "../thalos-visual" }
+
+[features]
+# Test doubles (fake transports, canonical semantic fixtures) across the public
+# boundary. Off by default so production consumers do not pull test code.
+test-support = ["thalos_ports/test-support", "thalos-language-service/test-support"]
