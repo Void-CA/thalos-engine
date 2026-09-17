@@ -1,8 +1,8 @@
 use crate::id::{LocationId, ObjectId};
 use crate::pose::Pose;
 use crate::resource::{Location, Object, Tool};
-use thalos_engine::core::motion::MotionPose;
-use thalos_engine::semantic::knowledge::{GraspPlan, KnowledgeProvider, LoweringError, PlacementPlan};
+use thalos_core::motion::MotionPose;
+use thalos_language_service::knowledge::{GraspPlan, KnowledgeProvider, LoweringError, PlacementPlan};
 
 // ---------------------------------------------------------------------------
 // Scene content — the logical world model for a task document
@@ -140,12 +140,12 @@ impl KnowledgeProvider for SceneKnowledge<'_> {
 mod tests {
     use super::*;
     use crate::id::ObjectId;
-    use thalos_engine::core::ids::OperationId;
-    use thalos_engine::core::motion::MotionProfile;
-    use thalos_engine::semantic::lowering::SemanticLowering;
-    use thalos_engine::semantic::lowering::context::LoweringContext;
-    use thalos_engine::semantic::operation::{HomeOp, SemanticOperation};
-    use thalos_engine::semantic::program::SemanticProgram;
+    use thalos_core::ids::OperationId;
+    use thalos_core::motion::MotionProfile;
+    use thalos_language_service::lowering::SemanticLowering;
+    use thalos_language_service::lowering::context::LoweringContext;
+    use thalos_language_service::operation::{HomeOp, SemanticOperation};
+    use thalos_language_service::program::SemanticProgram;
 
     fn default_pose() -> Pose {
         Pose {
@@ -376,7 +376,7 @@ mod tests {
         let program = SemanticProgram::new(vec![SemanticOperation::Home(HomeOp {
             origin: OperationId("op-1".into()),
         })]);
-        let ir = thalos_engine::semantic::ir::SemanticIr::from(&program);
+        let ir = thalos_language_service::ir::SemanticIr::from(&program);
 
         let result = SemanticLowering::lower(&ir, &ctx);
         assert!(

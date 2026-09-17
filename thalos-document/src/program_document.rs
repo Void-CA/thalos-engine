@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::id::ProgramDocumentId;
 use crate::scene::SceneContent;
-use thalos_engine::semantic::program::SemanticProgram;
+use thalos_language_service::program::SemanticProgram;
 
 // ---------------------------------------------------------------------------
 // Metadata — document identity and versioning
