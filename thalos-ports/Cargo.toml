@@ -1,5 +1,5 @@
 [package]
-name = "thalos_ports"
+name = "thalos-ports"
 version.workspace = true
 edition.workspace = true
 

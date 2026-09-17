@@ -3,13 +3,15 @@ name: CI
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   ci:
-    name: Build, test, publish dry-run
+    name: Build, lint, test, docs
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -19,6 +21,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
+          components: clippy
           cache: true
 
       - name: Build
@@ -26,3 +29,12 @@ jobs:
 
       - name: Test
         run: cargo test --workspace
+
+      - name: Clippy (deny warnings)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Docs
+        run: cargo doc --workspace --no-deps
+
+      # NOTE: `cargo fmt --check` is intentionally omitted until the formatting
+      # pass (Fase 5.1) lands; the workspace is not yet rustfmt-clean.

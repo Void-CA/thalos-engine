@@ -1,5 +1,5 @@
 [package]
-name = "thalos_visual"
+name = "thalos-visual"
 version.workspace = true
 edition.workspace = true
 
