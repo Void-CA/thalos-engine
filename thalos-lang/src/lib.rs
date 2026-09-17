@@ -11,7 +11,7 @@ pub use units::*;
 /// Programa inicial mostrado a todo proyecto nuevo en el editor.
 ///
 /// Fuente única de verdad del starter en el lenguaje oficial `.thls`.
-/// El editor debe importar esta constante (`thalos_engine::lang::DEFAULT_PROGRAM`)
+/// El editor debe importar esta constante (`thalos_lang::DEFAULT_PROGRAM`)
 /// en lugar de hardcodear su propia copia.
 pub const DEFAULT_PROGRAM: &str = r#"const CLEARANCE = [0mm, 0mm, 150mm]
 
