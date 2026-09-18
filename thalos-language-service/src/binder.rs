@@ -199,7 +199,7 @@ fn normalize_joints(callee: &str, args: Vec<Arg>, errors: &mut Vec<String>) -> E
     let mut seen: std::collections::HashSet<usize> = std::collections::HashSet::new();
     for arg in &args {
         let name = arg.name.as_deref().unwrap_or_default();
-        match parse_joint_index(name) {
+        match crate::member_schema::joint_index(name) {
             Some(index) if index >= 1 => {
                 if !seen.insert(index) {
                     errors.push(format!("Duplicate joint argument '{}'", name));
@@ -229,17 +229,6 @@ fn normalize_joints(callee: &str, args: Vec<Arg>, errors: &mut Vec<String>) -> E
 fn drop_names(args: Vec<Arg>) -> Vec<Arg> {
     args.into_iter().map(|arg| Arg::positional(arg.value)).collect()
 }
-
-/// Parse the trailing index of `j1`, `j2`, ... Returns `None` for non-`jN` names.
-fn parse_joint_index(name: &str) -> Option<usize> {
-    let rest = name.strip_prefix('j')?;
-    if rest.is_empty() {
-        return None;
-    }
-    rest.parse::<usize>().ok()
-}
-
-
 
 #[cfg(test)]
 mod tests {

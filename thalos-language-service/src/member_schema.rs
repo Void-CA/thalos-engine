@@ -118,6 +118,19 @@ impl MemberSchema {
     }
 }
 
+/// Parse a joint member name (`j1`, `j2`, ...) into its 1-based index.
+///
+/// Returns `None` for names that are not of the form `j<positive integer>`.
+/// This is the single definition of the joint naming convention, shared by the
+/// binder and the member reader.
+pub fn joint_index(name: &str) -> Option<usize> {
+    let rest = name.strip_prefix('j')?;
+    if rest.is_empty() {
+        return None;
+    }
+    rest.parse::<usize>().ok()
+}
+
 impl Type {
     /// The value member schema for this type, if it exposes named members.
     ///

@@ -497,9 +497,18 @@ fn lower_expr(
     consts: &std::collections::HashSet<String>,
 ) -> SemanticExpr {
     match expr {
-        AstExpr::MemberAccess { object, member } => SemanticExpr::ChannelAccess {
-            module: object.clone(),
-            channel: member.clone(),
+        AstExpr::MemberAccess { object, member } => match evaluator.eval_expr(expr) {
+            EvalResult::Value(val) => SemanticExpr::Constant(val),
+            _ => SemanticExpr::MemberAccess {
+                object: Box::new(lower_expr(
+                    &AstExpr::Identifier(object.clone()),
+                    evaluator,
+                    params,
+                    locals,
+                    consts,
+                )),
+                member: member.clone(),
+            },
         },
         _ => match evaluator.eval_expr(expr) {
             EvalResult::Value(val) => SemanticExpr::Constant(val),

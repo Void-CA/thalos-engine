@@ -308,7 +308,50 @@ impl<'a> Evaluator<'a> {
                     }),
                 }
             }
+            // Member access reads a component of a typed value. When the
+            // receiver is a compile-time value (target/const) it folds here;
+            // otherwise it stays symbolic and the resolver evaluates it.
+            Expr::MemberAccess { object, member } => {
+                match self.eval_expr(&Expr::Identifier(object.clone())) {
+                    EvalResult::Value(value) => match read_member(&value, member) {
+                        Some(member_value) => EvalResult::Value(member_value),
+                        None => EvalResult::NotConstant,
+                    },
+                    other => other,
+                }
+            }
             _ => EvalResult::NotConstant,
         }
+    }
+}
+
+/// Read a named member from a compile-time value.
+///
+/// This is the **single** implementation of member extraction, shared by the
+/// compile-time evaluator and the resolver, so accessor semantics cannot diverge.
+///
+/// `Vector3` components are read as `Length` to match the member schema; note
+/// that a `Vector3` is not strongly unit-typed, so this is an approximation.
+pub fn read_member(value: &CompileTimeValue, member: &str) -> Option<CompileTimeValue> {
+    match value {
+        CompileTimeValue::Position(p) => vector_component(&p.point, member),
+        CompileTimeValue::Pose(p) => vector_component(&p.transform.translation, member),
+        CompileTimeValue::Vector3(v) => vector_component(v, member),
+        CompileTimeValue::Joints(values) => {
+            let index = crate::member_schema::joint_index(member)?;
+            values
+                .get(index.checked_sub(1)?)
+                .map(|v| CompileTimeValue::Angle(*v))
+        }
+        _ => None,
+    }
+}
+
+fn vector_component(v: &Vector3, member: &str) -> Option<CompileTimeValue> {
+    match member {
+        "x" => Some(CompileTimeValue::Length(v.x)),
+        "y" => Some(CompileTimeValue::Length(v.y)),
+        "z" => Some(CompileTimeValue::Length(v.z)),
+        _ => None,
     }
 }

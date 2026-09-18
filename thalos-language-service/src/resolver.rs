@@ -267,6 +267,11 @@ impl SemanticResolver {
                     Err(format!("Unresolved function call '{}'", function))
                 }
             }
+            SemanticExpr::MemberAccess { object, member } => {
+                let value = Self::eval_value(object, env, targets, functions)?;
+                crate::evaluator::read_member(&value, member)
+                    .ok_or_else(|| format!("Unknown member '{}'", member))
+            }
             _ => Err("Complex expression resolution not supported yet".to_string()),
         }
     }

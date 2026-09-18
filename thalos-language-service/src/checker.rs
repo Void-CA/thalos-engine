@@ -240,11 +240,55 @@ impl<'a> TypeChecker<'a> {
                     }
                 }
             }
-            Expr::MemberAccess { .. } => TypedExpr {
-                expr: expr.clone(),
-                ty: Type::Float,
-                span: None,
-            },
+            Expr::MemberAccess { object, member } => {
+                // `object` is a bare identifier in v1. Resolve its type first;
+                // the member is then looked up in that type's schema. This also
+                // means a namespace like `module.channel` no longer maps to a
+                // value: if `module` is not a declared value, the receiver
+                // inference reports it (no dead ChannelAccess fallback).
+                let receiver = self.infer_expr(&Expr::Identifier(object.clone()));
+                if receiver.ty.is_error() {
+                    return TypedExpr {
+                        expr: expr.clone(),
+                        ty: Type::Error,
+                        span: None,
+                    };
+                }
+                match receiver.ty.member_schema() {
+                    Some(schema) => match schema.field_ty(member) {
+                        Some(member_ty) => TypedExpr {
+                            expr: expr.clone(),
+                            ty: member_ty.clone(),
+                            span: None,
+                        },
+                        None => {
+                            let available: Vec<&str> = schema.names().collect();
+                            self.push_diag(format!(
+                                "Unknown member '{}' on type {:?}; available: {}",
+                                member,
+                                receiver.ty,
+                                available.join(", ")
+                            ));
+                            TypedExpr {
+                                expr: expr.clone(),
+                                ty: Type::Error,
+                                span: None,
+                            }
+                        }
+                    },
+                    None => {
+                        self.push_diag(format!(
+                            "Type {:?} has no member '{}'",
+                            receiver.ty, member
+                        ));
+                        TypedExpr {
+                            expr: expr.clone(),
+                            ty: Type::Error,
+                            span: None,
+                        }
+                    }
+                }
+            }
             _ => TypedExpr {
                 expr: expr.clone(),
                 ty: Type::Unit,
@@ -430,5 +474,102 @@ mod tests {
             vec!["Unknown function 'mystery_position'"],
             "cascading diagnostics must be suppressed, got: {messages:?}"
         );
+    }
+
+    fn table_with_members() -> SymbolTable {
+        let mut table = SymbolTable::new();
+        table
+            .declare(Symbol::new("ptt", SymbolKind::Target, Type::Position, None))
+            .unwrap();
+        table
+            .declare(Symbol::new(
+                "jtt",
+                SymbolKind::Target,
+                Type::Joints { dimension: Some(6) },
+                None,
+            ))
+            .unwrap();
+        table
+            .declare(Symbol::new("len", SymbolKind::Target, Type::Length, None))
+            .unwrap();
+        table
+    }
+
+    fn member_ty(table: &mut SymbolTable, object: &str, member: &str) -> Type {
+        let checker = &mut TypeChecker::new(table);
+        checker
+            .infer_expr_silent(&Expr::MemberAccess {
+                object: object.to_string(),
+                member: member.to_string(),
+            })
+            .ty
+    }
+
+    fn member_diagnostics(table: &mut SymbolTable, object: &str, member: &str) -> Vec<String> {
+        let mut checker = TypeChecker::new(table);
+        checker.infer_expr(&Expr::MemberAccess {
+            object: object.to_string(),
+            member: member.to_string(),
+        });
+        checker
+            .diagnostics
+            .into_iter()
+            .map(|d| d.message)
+            .collect()
+    }
+
+    #[test]
+    fn member_access_types_flow_from_the_schema() {
+        let mut table = table_with_members();
+        assert_eq!(member_ty(&mut table, "ptt", "x"), Type::Length);
+        assert_eq!(member_ty(&mut table, "ptt", "z"), Type::Length);
+        assert_eq!(member_ty(&mut table, "jtt", "j2"), Type::Angle);
+        assert_eq!(member_ty(&mut table, "jtt", "j6"), Type::Angle);
+    }
+
+    #[test]
+    fn unknown_member_on_position_is_rejected_from_the_schema() {
+        let mut table = table_with_members();
+        let diagnostics = member_diagnostics(&mut table, "ptt", "j2");
+        assert_eq!(diagnostics.len(), 1);
+        assert!(
+            diagnostics[0].contains("Unknown member 'j2' on type Position"),
+            "got: {diagnostics:?}"
+        );
+        assert!(diagnostics[0].contains("x, y, z"));
+    }
+
+    #[test]
+    fn unknown_member_on_joints_lists_joint_members() {
+        let mut table = table_with_members();
+        let diagnostics = member_diagnostics(&mut table, "jtt", "x");
+        assert_eq!(diagnostics.len(), 1);
+        assert!(diagnostics[0].contains("Unknown member 'x'"), "got: {diagnostics:?}");
+        assert!(diagnostics[0].contains("j1"));
+    }
+
+    #[test]
+    fn out_of_range_joint_member_is_rejected() {
+        let mut table = table_with_members();
+        let diagnostics = member_diagnostics(&mut table, "jtt", "j7");
+        assert_eq!(diagnostics.len(), 1);
+        assert!(diagnostics[0].contains("Unknown member 'j7'"), "got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn member_on_type_without_schema_is_rejected() {
+        let mut table = table_with_members();
+        let diagnostics = member_diagnostics(&mut table, "len", "x");
+        assert_eq!(
+            diagnostics,
+            vec!["Type Length has no member 'x'".to_string()]
+        );
+    }
+
+    #[test]
+    fn namespace_style_access_reports_the_unknown_receiver() {
+        let mut table = table_with_members();
+        let diagnostics = member_diagnostics(&mut table, "module", "channel");
+        assert_eq!(diagnostics, vec!["Unknown identifier 'module'".to_string()]);
     }
 }

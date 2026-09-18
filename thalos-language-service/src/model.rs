@@ -87,6 +87,15 @@ pub enum SemanticExpr {
         member: String,
         args: Vec<SemanticExpr>,
     },
+    /// Read-only member access on a typed value (`PTT.x`, `JTT.j2`).
+    ///
+    /// Constant receivers fold to `Constant` before lowering; this variant
+    /// carries accesses whose receiver is only known at resolution time
+    /// (locals/parameters).
+    MemberAccess {
+        object: Box<SemanticExpr>,
+        member: String,
+    },
     ChannelAccess {
         module: String,
         channel: String,
