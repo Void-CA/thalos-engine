@@ -120,6 +120,9 @@ pub fn analyze_intelligence(source: &str, revision: u64) -> DocumentIntelligence
     };
 
     let program = spanned.clone().unspan();
+    // Resolve named arguments once, exactly like the compiler does, so tooling
+    // and the semantic pipeline agree on the canonical argument order.
+    let (program, bind_errors) = crate::binder::normalize_program(&program);
     let PreparedSymbols {
         mut table,
         errors: prepare_errors,
@@ -131,6 +134,7 @@ pub fn analyze_intelligence(source: &str, revision: u64) -> DocumentIntelligence
     let mut expressions = Vec::new();
     let mut diagnostics: Vec<Diagnostic> = prepare_errors
         .into_iter()
+        .chain(bind_errors)
         .map(|message| semantic_diagnostic(source, message))
         .collect();
 
@@ -430,14 +434,18 @@ fn collect_expr(
             collect_expr(sp, p, checker, source, expressions);
             collect_expr(so, o, checker, source, expressions);
         }
+        // NOTE: the semantic side is the *normalized* program, so a named call
+        // may have more (defaulted) positional args than the spanned source.
+        // `zip` truncates to the source args; for `joints` every member is an
+        // `Angle`, so the inferred types stay correct.
         (SpannedExprKind::Call { args: sa, .. }, Expr::Call { args, .. }) => {
             for (s, d) in sa.iter().zip(args.iter()) {
-                collect_expr(s, d, checker, source, expressions);
+                collect_expr(&s.value, &d.value, checker, source, expressions);
             }
         }
         (SpannedExprKind::MemberCall { args: sa, .. }, Expr::MemberCall { args, .. }) => {
             for (s, d) in sa.iter().zip(args.iter()) {
-                collect_expr(s, d, checker, source, expressions);
+                collect_expr(&s.value, &d.value, checker, source, expressions);
             }
         }
         (

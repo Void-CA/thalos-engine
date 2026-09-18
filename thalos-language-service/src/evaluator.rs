@@ -139,7 +139,7 @@ impl<'a> Evaluator<'a> {
             Expr::Call { callee, args } => match callee.as_str() {
                 "position" => {
                     if args.len() == 1 {
-                        match self.eval_expr(&args[0]) {
+                        match self.eval_expr(&args[0].value) {
                             EvalResult::Value(CompileTimeValue::Vector3(pt)) => {
                                 EvalResult::Value(CompileTimeValue::Position(Position { point: pt }))
                             }
@@ -154,8 +154,8 @@ impl<'a> Evaluator<'a> {
                 }
                 "pose" => {
                     if args.len() == 2 {
-                        let pos_val = self.eval_expr(&args[0]);
-                        let rot_val = self.eval_expr(&args[1]);
+                        let pos_val = self.eval_expr(&args[0].value);
+                        let rot_val = self.eval_expr(&args[1].value);
                         let pt = match pos_val {
                             EvalResult::Value(CompileTimeValue::Vector3(pt)) => Some(pt),
                             EvalResult::Value(CompileTimeValue::Position(p)) => Some(p.point),
@@ -184,7 +184,7 @@ impl<'a> Evaluator<'a> {
                 "joints" => {
                     let mut vals = Vec::new();
                     for arg in args {
-                        match self.eval_expr(arg) {
+                        match self.eval_expr(&arg.value) {
                             EvalResult::Value(CompileTimeValue::Angle(a)) => vals.push(a),
                             EvalResult::Value(CompileTimeValue::Length(l)) => vals.push(l),
                             EvalResult::Value(CompileTimeValue::Float(f)) => vals.push(f),
@@ -200,15 +200,15 @@ impl<'a> Evaluator<'a> {
                 }
                 "euler" => {
                     if args.len() == 3 {
-                        let r = match self.eval_expr(&args[0]) {
+                        let r = match self.eval_expr(&args[0].value) {
                             EvalResult::Value(CompileTimeValue::Angle(a)) => a,
                             other => return other,
                         };
-                        let p = match self.eval_expr(&args[1]) {
+                        let p = match self.eval_expr(&args[1].value) {
                             EvalResult::Value(CompileTimeValue::Angle(a)) => a,
                             other => return other,
                         };
-                        let y = match self.eval_expr(&args[2]) {
+                        let y = match self.eval_expr(&args[2].value) {
                             EvalResult::Value(CompileTimeValue::Angle(a)) => a,
                             other => return other,
                         };
@@ -225,22 +225,22 @@ impl<'a> Evaluator<'a> {
                 }
                 "quaternion" => {
                     if args.len() == 4 {
-                        let w = match self.eval_expr(&args[0]) {
+                        let w = match self.eval_expr(&args[0].value) {
                             EvalResult::Value(CompileTimeValue::Float(f)) => f,
                             EvalResult::Value(CompileTimeValue::Int(i)) => i as f64,
                             other => return other,
                         };
-                        let x = match self.eval_expr(&args[1]) {
+                        let x = match self.eval_expr(&args[1].value) {
                             EvalResult::Value(CompileTimeValue::Float(f)) => f,
                             EvalResult::Value(CompileTimeValue::Int(i)) => i as f64,
                             other => return other,
                         };
-                        let y = match self.eval_expr(&args[2]) {
+                        let y = match self.eval_expr(&args[2].value) {
                             EvalResult::Value(CompileTimeValue::Float(f)) => f,
                             EvalResult::Value(CompileTimeValue::Int(i)) => i as f64,
                             other => return other,
                         };
-                        let z = match self.eval_expr(&args[3]) {
+                        let z = match self.eval_expr(&args[3].value) {
                             EvalResult::Value(CompileTimeValue::Float(f)) => f,
                             EvalResult::Value(CompileTimeValue::Int(i)) => i as f64,
                             other => return other,

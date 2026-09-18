@@ -15,13 +15,21 @@ pub struct SemanticCompiler;
 
 impl SemanticCompiler {
     pub fn compile(ast: &Program) -> Result<SemanticProgram, Vec<String>> {
+        // Resolve named arguments into canonical positional form once, up front.
+        // Every stage below (evaluator, checker, lowering, resolver) only ever
+        // sees positional arguments and never re-implements named-arg semantics.
+        let (ast, bind_errors) = crate::binder::normalize_program(ast);
+        if !bind_errors.is_empty() {
+            return Err(bind_errors);
+        }
+
         let PreparedSymbols {
             mut table,
             target_values,
             const_names,
             resolved_targets,
             mut errors,
-        } = prepare_symbols(ast);
+        } = prepare_symbols(&ast);
 
         // 3. Type check AST functions and statements in isolated parameter scope
         let mut checker = TypeChecker::new(&mut table);
@@ -416,11 +424,11 @@ fn lower_statement(
         AstStatement::Expr(AstExpr::Call { callee, args }) => {
             match callee.as_str() {
                 "set_output" => {
-                    let name = match args.first().map(|a| evaluator.eval_expr(a)) {
+                    let name = match args.first().map(|a| evaluator.eval_expr(&a.value)) {
                         Some(EvalResult::Value(CompileTimeValue::String(s))) => s,
                         _ => "output".to_string(),
                     };
-                    let value = match args.get(1).map(|a| evaluator.eval_expr(a)) {
+                    let value = match args.get(1).map(|a| evaluator.eval_expr(&a.value)) {
                         Some(EvalResult::Value(CompileTimeValue::Bool(b))) => b,
                         _ => false,
                     };
@@ -431,7 +439,7 @@ fn lower_statement(
                     }
                 }
                 "movej" => {
-                    let target_expr = args.first().cloned().unwrap_or(AstExpr::Identifier("default".into()));
+                    let target_expr = args.first().map(|a| a.value.clone()).unwrap_or(AstExpr::Identifier("default".into()));
                     let source_name = match &target_expr {
                         AstExpr::Identifier(id) => Some(id.clone()),
                         _ => None,
@@ -444,7 +452,7 @@ fn lower_statement(
                     })
                 }
                 "movel" => {
-                    let target_expr = args.first().cloned().unwrap_or(AstExpr::Identifier("default".into()));
+                    let target_expr = args.first().map(|a| a.value.clone()).unwrap_or(AstExpr::Identifier("default".into()));
                     let source_name = match &target_expr {
                         AstExpr::Identifier(id) => Some(id.clone()),
                         _ => None,
@@ -457,7 +465,7 @@ fn lower_statement(
                     })
                 }
                 "wait" => {
-                    let dur_expr = args.first().cloned().unwrap_or(AstExpr::Number(0.0));
+                    let dur_expr = args.first().map(|a| a.value.clone()).unwrap_or(AstExpr::Number(0.0));
                     let sem_expr = lower_expr(&dur_expr, evaluator, params, locals, consts);
                     SemanticStatement::Wait {
                         duration: sem_expr,
@@ -465,7 +473,7 @@ fn lower_statement(
                     }
                 }
                 _ => {
-                    let sem_args = args.iter().map(|a| lower_expr(a, evaluator, params, locals, consts)).collect();
+                    let sem_args = args.iter().map(|a| lower_expr(&a.value, evaluator, params, locals, consts)).collect();
                     SemanticStatement::Call {
                         function: callee.clone(),
                         args: sem_args,
@@ -516,7 +524,7 @@ fn lower_expr(
                     function: callee.clone(),
                     args: args
                         .iter()
-                        .map(|a| lower_expr(a, evaluator, params, locals, consts))
+                        .map(|a| lower_expr(&a.value, evaluator, params, locals, consts))
                         .collect(),
                 },
                 AstExpr::MemberCall { object, method, args } => SemanticExpr::MemberCall {
@@ -530,7 +538,7 @@ fn lower_expr(
                     member: method.clone(),
                     args: args
                         .iter()
-                        .map(|a| lower_expr(a, evaluator, params, locals, consts))
+                        .map(|a| lower_expr(&a.value, evaluator, params, locals, consts))
                         .collect(),
                 },
                 _ => SemanticExpr::ParameterRef(format!("{:?}", expr)),

@@ -163,6 +163,80 @@ fn main() {
 }
 
 #[test]
+fn test_parse_named_arguments_capture_name_and_span() {
+    let source = r#"target JTT = joints(j3 = 30deg, j1 = 10deg)"#;
+    let program = parse_source_spanned(source).expect("must parse");
+
+    let target = match &program.items[0] {
+        SpannedItem::Target(t) => t,
+        other => panic!("expected target, got {other:?}"),
+    };
+
+    match &target.pose.kind {
+        SpannedExprKind::Call { callee, args, .. } => {
+            assert_eq!(callee, "joints");
+            assert_eq!(args.len(), 2);
+
+            assert_eq!(args[0].name.as_deref(), Some("j3"));
+            assert_eq!(char_slice(source, args[0].name_span.expect("name span")), "j3");
+            assert_eq!(args[1].name.as_deref(), Some("j1"));
+            assert_eq!(char_slice(source, args[1].name_span.expect("name span")), "j1");
+        }
+        other => panic!("expected call, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_positional_arguments_are_unnamed() {
+    let source = r#"target JTT = joints(10deg, 20deg)"#;
+    let program = parse_source_spanned(source).expect("must parse");
+
+    let target = match &program.items[0] {
+        SpannedItem::Target(t) => t,
+        other => panic!("expected target, got {other:?}"),
+    };
+
+    match &target.pose.kind {
+        SpannedExprKind::Call { args, .. } => {
+            assert!(args.iter().all(|a| a.name.is_none()));
+            assert!(args.iter().all(|a| a.name_span.is_none()));
+        }
+        other => panic!("expected call, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_named_argument_lookahead_does_not_break_comparisons() {
+    // `a == b` must parse as a comparison argument, not as `a = (b)`.
+    let source = r#"fn main() {
+    movel(choose(a == b))
+}"#;
+    let program = parse_source_spanned(source).expect("must parse");
+
+    let function = match &program.items[0] {
+        SpannedItem::Function(f) => f,
+        other => panic!("expected function, got {other:?}"),
+    };
+    let target = match &function.body[0].kind {
+        SpannedStatementKind::MoveL { target } => target,
+        other => panic!("expected movel, got {other:?}"),
+    };
+
+    match &target.kind {
+        SpannedExprKind::Call { callee, args, .. } => {
+            assert_eq!(callee, "choose");
+            assert_eq!(args.len(), 1);
+            assert!(args[0].name.is_none());
+            assert!(matches!(
+                args[0].value.kind,
+                SpannedExprKind::Binary { op: BinaryOp::Eq, .. }
+            ));
+        }
+        other => panic!("expected call, got {other:?}"),
+    }
+}
+
+#[test]
 fn test_parse_movec_circular_move() {
     let source = r#"
         fn main() {

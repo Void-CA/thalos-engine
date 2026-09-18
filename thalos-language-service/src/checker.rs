@@ -165,7 +165,8 @@ impl<'a> TypeChecker<'a> {
                 }
             }
             Expr::Call { callee, args } => {
-                let arg_types: Vec<TypedExpr> = args.iter().map(|a| self.infer_expr(a)).collect();
+                let arg_types: Vec<TypedExpr> =
+                    args.iter().map(|a| self.infer_expr(&a.value)).collect();
                 let param_types: Vec<Type> = arg_types.iter().map(|a| a.ty.clone()).collect();
 
                 // `joints` is a variadic constructor: any number of Angle/Length/

@@ -3,8 +3,8 @@ use std::ops::Range;
 use chumsky::prelude::*;
 
 use crate::ast::spanned::{
-    Spanned, SpannedConstDecl, SpannedExpr, SpannedExprKind, SpannedFnDecl, SpannedItem,
-    SpannedProgram, SpannedStatement, SpannedStatementKind, SpannedTargetDecl,
+    Spanned, SpannedArg, SpannedConstDecl, SpannedExpr, SpannedExprKind, SpannedFnDecl,
+    SpannedItem, SpannedProgram, SpannedStatement, SpannedStatementKind, SpannedTargetDecl,
 };
 use crate::ast::item::{Param, UseDecl};
 use crate::ast::program::Program;
@@ -102,16 +102,43 @@ pub fn parser() -> impl Parser<char, SpannedProgram, Error = Simple<char>> {
                 }
             });
 
+        // Assignment token: `=` that is not the start of `==`. The lookahead
+        // keeps `f(x == 1)` parsing as a comparison while still accepting
+        // `joints(j2 = 5deg)` and `joints(j2=5deg)`.
+        let assign = just('=').then_ignore(none_of('=').rewind());
+
+        // An argument is either `name = expr` (named) or a bare expression
+        // (positional). The `rewind()` lookahead distinguishes the two without
+        // committing: when no assignment follows the identifier, the positional
+        // branch parses the full expression instead (e.g. `PICK + LIFT`).
+        let arg = ident_spanned
+            .clone()
+            .then_ignore(assign.clone().padded())
+            .rewind()
+            .then_ignore(ident_spanned.clone())
+            .then_ignore(assign.clone().padded())
+            .then(expr.clone())
+            .map(|((name, name_span), value): ((String, Span), SpannedExpr)| SpannedArg {
+                name: Some(name),
+                name_span: Some(name_span),
+                value,
+            })
+            .or(expr.clone().map(|value: SpannedExpr| SpannedArg {
+                name: None,
+                name_span: None,
+                value,
+            }));
+
         let call_expr = ident_spanned
             .clone()
             .then(
-                expr.clone()
+                arg.clone()
                     .separated_by(just(',').padded())
                     .allow_trailing()
                     .delimited_by(just('('), just(')')),
             )
             .map_with_span(
-                |((callee, callee_span), args): ((String, Span), Vec<SpannedExpr>),
+                |((callee, callee_span), args): ((String, Span), Vec<SpannedArg>),
                  span: Range<usize>| SpannedExpr {
                     kind: SpannedExprKind::Call {
                         callee,

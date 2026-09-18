@@ -5,6 +5,7 @@
 //! (`compiler` → `resolver` → `ir` → `validation` → `lowering`), junto con el
 //! modelo de dominio de operaciones/programas y `knowledge`.
 
+pub mod binder;
 pub mod builtins;
 pub mod checker;
 pub mod compiler;

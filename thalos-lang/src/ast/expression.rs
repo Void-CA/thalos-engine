@@ -1,6 +1,34 @@
 use serde::{Deserialize, Serialize};
 use crate::units::{AngleRadians, DurationSeconds, LengthMeters};
 
+/// A single call argument.
+///
+/// Named arguments (`j2 = 5deg`, `x = -10mm`) carry a name; positional ones do
+/// not. Names are resolved into canonical positional order by the binder before
+/// any downstream stage sees the program.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Arg {
+    pub name: Option<String>,
+    pub value: Expr,
+}
+
+impl Arg {
+    pub fn positional(value: Expr) -> Self {
+        Self { name: None, value }
+    }
+
+    pub fn named(name: impl Into<String>, value: Expr) -> Self {
+        Self {
+            name: Some(name.into()),
+            value,
+        }
+    }
+
+    pub fn is_named(&self) -> bool {
+        self.name.is_some()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Expr {
     Identifier(String),
@@ -17,12 +45,12 @@ pub enum Expr {
     },
     Call {
         callee: String,
-        args: Vec<Expr>,
+        args: Vec<Arg>,
     },
     MemberCall {
         object: String,
         method: String,
-        args: Vec<Expr>,
+        args: Vec<Arg>,
     },
     MemberAccess {
         object: String,

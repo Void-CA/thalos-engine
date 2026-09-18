@@ -23,7 +23,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::ast::expression::BinaryOp;
+use crate::ast::expression::{Arg, BinaryOp};
 use crate::ast::item::{ConstDecl, FnDecl, Item, Param, UseDecl};
 use crate::ast::program::Program;
 use crate::ast::statement::Statement;
@@ -128,6 +128,26 @@ pub struct SpannedExpr {
     pub span: Span,
 }
 
+/// A call argument with the source span of its name, when it is named.
+///
+/// The name span is preserved separately so diagnostics and tooling can point at
+/// `j2` in `joints(j2 = 5deg)` rather than at the whole argument.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SpannedArg {
+    pub name: Option<String>,
+    pub name_span: Option<Span>,
+    pub value: SpannedExpr,
+}
+
+impl SpannedArg {
+    pub fn unspan(self) -> Arg {
+        Arg {
+            name: self.name,
+            value: self.value.unspan(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SpannedExprKind {
     Identifier(String),
@@ -145,12 +165,12 @@ pub enum SpannedExprKind {
     Call {
         callee: String,
         callee_span: Span,
-        args: Vec<SpannedExpr>,
+        args: Vec<SpannedArg>,
     },
     MemberCall {
         object: String,
         method: String,
-        args: Vec<SpannedExpr>,
+        args: Vec<SpannedArg>,
     },
     MemberAccess {
         object: String,
@@ -267,7 +287,7 @@ impl SpannedExpr {
             },
             SpannedExprKind::Call { callee, args, .. } => Expr::Call {
                 callee,
-                args: args.into_iter().map(SpannedExpr::unspan).collect(),
+                args: args.into_iter().map(SpannedArg::unspan).collect(),
             },
             SpannedExprKind::MemberCall {
                 object,
@@ -276,7 +296,7 @@ impl SpannedExpr {
             } => Expr::MemberCall {
                 object,
                 method,
-                args: args.into_iter().map(SpannedExpr::unspan).collect(),
+                args: args.into_iter().map(SpannedArg::unspan).collect(),
             },
             SpannedExprKind::MemberAccess { object, member } => {
                 Expr::MemberAccess { object, member }
