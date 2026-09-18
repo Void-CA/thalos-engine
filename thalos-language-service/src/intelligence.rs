@@ -168,10 +168,7 @@ pub fn analyze_intelligence(source: &str, revision: u64) -> DocumentIntelligence
                     name: decl.name.clone(),
                     kind: SymbolKind::Function,
                     ty: Type::Function(function_type(&table, &decl.name).unwrap_or_else(|| {
-                        FunctionType {
-                            params: Vec::new(),
-                            return_type: Box::new(Type::Unit),
-                        }
+                        FunctionType::new(Vec::new(), Type::Unit)
                     })),
                     span: byte_span(source, decl.span),
                     name_span: byte_span(source, decl.name_span),

@@ -289,13 +289,17 @@ pub(crate) fn prepare_symbols(ast: &Program) -> PreparedSymbols {
                 })
                 .collect();
 
+            let param_names: Vec<String> =
+                f.params.iter().map(|p| p.name.clone()).collect();
+
             let _ = table.declare(Symbol::new(
                 f.name.clone(),
                 SymbolKind::Function,
-                Type::Function(crate::types::FunctionType {
-                    params: param_types,
-                    return_type: Box::new(ret_ty),
-                }),
+                Type::Function(crate::types::FunctionType::with_names(
+                    param_types,
+                    param_names,
+                    ret_ty,
+                )),
                 None,
             ));
         }

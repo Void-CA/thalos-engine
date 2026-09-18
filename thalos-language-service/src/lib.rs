@@ -14,6 +14,7 @@ pub mod execution;
 pub mod ir;
 pub mod knowledge;
 pub mod lowering;
+pub mod member_schema;
 pub mod model;
 pub mod operation;
 pub mod operators;
