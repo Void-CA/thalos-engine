@@ -34,6 +34,7 @@ const PURE_DOMAIN_CRATES: &[&str] = &[
     "thalos-planning",
     "thalos-lang",
     "thalos-ports",
+    "thalos-telemetry",
     "thalos-document",
 ];
 

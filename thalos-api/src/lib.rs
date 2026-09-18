@@ -21,10 +21,10 @@
 //! execution mechanism). The following public namespaces are planned:
 //!
 //! - `execution::supervision` — execution semantics and supervision contracts
-//! - `telemetry` — execution evidence and observation semantics
+//! - `telemetry` — execution evidence and observation semantics (**materialized**, F2.1b)
 //! - `robot::controller` — robot controller contract and capabilities
 //!
-//! These namespaces are intentionally **not materialized** until the
+//! The remaining namespaces are intentionally **not materialized** until the
 //! corresponding ownership move introduces their first concrete public items.
 //! Each is added in the same change that brings the concepts across the boundary,
 //! so every public path here has real semantic content behind it.
@@ -106,4 +106,11 @@ pub mod document {
 /// Visual scene representation (frames, links, primitives, trajectories).
 pub mod visual {
     pub use thalos_visual::*;
+}
+
+/// Execution evidence and observation semantics (traces, samples, analyzer,
+/// lifecycle events). Implemented by [`thalos_telemetry`]; the recording
+/// mechanism and the live state stay in the application.
+pub mod telemetry {
+    pub use thalos_telemetry::*;
 }

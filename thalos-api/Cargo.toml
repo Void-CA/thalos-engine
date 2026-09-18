@@ -16,6 +16,7 @@ thalos-lang = { path = "../thalos-lang" }
 thalos-language-service = { path = "../thalos-language-service" }
 thalos-importer = { path = "../thalos-importer" }
 thalos-ports = { path = "../thalos-ports" }
+thalos-telemetry = { path = "../thalos-telemetry" }
 thalos-document = { path = "../thalos-document" }
 thalos-visual = { path = "../thalos-visual" }
 

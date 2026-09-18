@@ -1,0 +1,14 @@
+[package]
+name = "thalos-telemetry"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+thalos-core = { path = "../thalos-core" }
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1"

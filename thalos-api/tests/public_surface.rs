@@ -83,4 +83,25 @@ fn public_surface_is_self_contained() {
     let _ = std::any::type_name::<TracePoint>();
     let _ = std::any::type_name::<PlanExecutionComparison>();
     let _ = std::any::type_name::<ComparisonMetrics>();
+
+    // Shared kinematic authority: joints → TCP (F2.2).
+    use thalos_api::core::kinematics::{KinematicContext, TcpPose};
+    let _ = std::any::type_name::<KinematicContext>();
+    let _ = std::any::type_name::<TcpPose>();
+
+    // Execution evidence / observation semantics (materialized in F2.1b).
+    use thalos_api::core::execution::ExecutionSource;
+    use thalos_api::telemetry::{
+        ExecutionSample as TelemetryExecutionSample, ExecutionStatistics, ExecutionTrace,
+        MotionSample, MotionTrace, TelemetryLifecycleEvent, TraceAnalyzer, TraceMetadata,
+    };
+    let _ = std::any::type_name::<ExecutionSource>();
+    let _ = std::any::type_name::<TelemetryExecutionSample>();
+    let _ = std::any::type_name::<ExecutionTrace>();
+    let _ = std::any::type_name::<TraceMetadata>();
+    let _ = std::any::type_name::<MotionSample>();
+    let _ = std::any::type_name::<MotionTrace>();
+    let _ = std::any::type_name::<TelemetryLifecycleEvent>();
+    let _ = std::any::type_name::<TraceAnalyzer>();
+    let _ = std::any::type_name::<ExecutionStatistics>();
 }
