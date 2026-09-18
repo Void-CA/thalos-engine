@@ -32,6 +32,11 @@ pub enum Type {
     // Functions & Special
     Function(FunctionType),
     Unit,
+
+    /// Internal poison type: the expression's type could not be inferred
+    /// because an error was already reported for it. It suppresses cascading
+    /// diagnostics and is never surfaced to the user.
+    Error,
 }
 
 impl Type {
@@ -41,6 +46,13 @@ impl Type {
 
     pub fn is_target(&self) -> bool {
         matches!(self, Type::Position | Type::Pose | Type::Joints { .. })
+    }
+
+    /// True when this type is the internal error poison. Used to avoid emitting
+    /// diagnostics that are merely downstream consequences of an already
+    /// reported error.
+    pub fn is_error(&self) -> bool {
+        matches!(self, Type::Error)
     }
 
     pub fn from_name(name: &str) -> Option<Type> {

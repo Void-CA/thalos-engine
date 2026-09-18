@@ -8,6 +8,7 @@
 pub mod builtins;
 pub mod checker;
 pub mod compiler;
+pub mod intelligence;
 pub mod evaluator;
 pub mod execution;
 pub mod ir;

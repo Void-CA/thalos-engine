@@ -24,6 +24,7 @@ pub struct TypeChecker<'a> {
     pub diagnostics: Vec<SemanticDiagnostic>,
     pub current_fn_name: Option<String>,
     pub current_fn_return_type: Option<Type>,
+    silent: bool,
 }
 
 impl<'a> TypeChecker<'a> {
@@ -33,7 +34,30 @@ impl<'a> TypeChecker<'a> {
             diagnostics: Vec::new(),
             current_fn_name: None,
             current_fn_return_type: None,
+            silent: false,
         }
+    }
+
+    /// Record a diagnostic unless we are in a silent (type-collection) pass.
+    fn push_diag(&mut self, message: String) {
+        if !self.silent {
+            self.diagnostics.push(SemanticDiagnostic {
+                message,
+                span: None,
+            });
+        }
+    }
+
+    /// Infer the type of an expression without emitting diagnostics.
+    ///
+    /// Used by tooling (hover) to reuse the exact same inference rules as the
+    /// checker while a separate pass owns diagnostic emission.
+    pub fn infer_expr_silent(&mut self, expr: &Expr) -> TypedExpr {
+        let previous = self.silent;
+        self.silent = true;
+        let typed = self.infer_expr(expr);
+        self.silent = previous;
+        typed
     }
 
     fn check_purity_for_statement(&mut self, stmt_kind: &str) {
@@ -90,13 +114,10 @@ impl<'a> TypeChecker<'a> {
                         span: None,
                     }
                 } else {
-                    self.diagnostics.push(SemanticDiagnostic {
-                        message: format!("Unknown identifier '{}'", id),
-                        span: None,
-                    });
+                    self.push_diag(format!("Unknown identifier '{}'", id));
                     TypedExpr {
                         expr: expr.clone(),
-                        ty: Type::Unit,
+                        ty: Type::Error,
                         span: None,
                     }
                 }
@@ -105,6 +126,16 @@ impl<'a> TypeChecker<'a> {
                 let typed_left = self.infer_expr(left);
                 let typed_right = self.infer_expr(right);
 
+                // If an operand already failed, don't pile on a second
+                // diagnostic: the binary operation is not the root cause.
+                if typed_left.ty.is_error() || typed_right.ty.is_error() {
+                    return TypedExpr {
+                        expr: expr.clone(),
+                        ty: Type::Error,
+                        span: None,
+                    };
+                }
+
                 match BinaryOpRule::infer(&typed_left.ty, *op, &typed_right.ty) {
                     Ok(res_ty) => TypedExpr {
                         expr: expr.clone(),
@@ -112,23 +143,24 @@ impl<'a> TypeChecker<'a> {
                         span: None,
                     },
                     Err(err) => {
-                        self.diagnostics.push(SemanticDiagnostic {
-                            message: err,
-                            span: None,
-                        });
+                        self.push_diag(err);
                         TypedExpr {
                             expr: expr.clone(),
-                            ty: Type::Unit,
+                            ty: Type::Error,
                             span: None,
                         }
                     }
                 }
             }
             Expr::Vector3([x, y, z]) => {
-                let _ = (self.infer_expr(x), self.infer_expr(y), self.infer_expr(z));
+                let elems = [self.infer_expr(x), self.infer_expr(y), self.infer_expr(z)];
                 TypedExpr {
                     expr: expr.clone(),
-                    ty: Type::Vector3,
+                    ty: if elems.iter().any(|e| e.ty.is_error()) {
+                        Type::Error
+                    } else {
+                        Type::Vector3
+                    },
                     span: None,
                 }
             }
@@ -136,7 +168,41 @@ impl<'a> TypeChecker<'a> {
                 let arg_types: Vec<TypedExpr> = args.iter().map(|a| self.infer_expr(a)).collect();
                 let param_types: Vec<Type> = arg_types.iter().map(|a| a.ty.clone()).collect();
 
+                // `joints` is a variadic constructor: any number of Angle/Length/
+                // Number values, or a single Vector3 expanded to three. The
+                // fixed-arity overload model cannot express it, so it is handled
+                // explicitly (mirrors the compile-time evaluator).
+                if callee == "joints" {
+                    if arg_types.iter().any(|a| a.ty.is_error()) {
+                        return TypedExpr {
+                            expr: expr.clone(),
+                            ty: Type::Error,
+                            span: None,
+                        };
+                    }
+                    let dimension = if arg_types.len() == 1 && param_types[0] == Type::Vector3 {
+                        Some(3)
+                    } else {
+                        Some(arg_types.len())
+                    };
+                    return TypedExpr {
+                        expr: expr.clone(),
+                        ty: Type::Joints { dimension },
+                        span: None,
+                    };
+                }
+
                 if let Some(symbols) = self.symbol_table.lookup(callee) {
+                    // If an argument already failed to type-check, the call
+                    // itself is not the root cause: suppress the overload error.
+                    if param_types.iter().any(Type::is_error) {
+                        return TypedExpr {
+                            expr: expr.clone(),
+                            ty: Type::Error,
+                            span: None,
+                        };
+                    }
+
                     // Overload matching
                     let mut matched_return = None;
                     for sym in symbols {
@@ -154,27 +220,21 @@ impl<'a> TypeChecker<'a> {
                             span: None,
                         }
                     } else {
-                        self.diagnostics.push(SemanticDiagnostic {
-                            message: format!(
-                                "No matching overload for call '{}' with argument types {:?}",
-                                callee, param_types
-                            ),
-                            span: None,
-                        });
+                        self.push_diag(format!(
+                            "No matching overload for call '{}' with argument types {:?}",
+                            callee, param_types
+                        ));
                         TypedExpr {
                             expr: expr.clone(),
-                            ty: Type::Unit,
+                            ty: Type::Error,
                             span: None,
                         }
                     }
                 } else {
-                    self.diagnostics.push(SemanticDiagnostic {
-                        message: format!("Unknown function '{}'", callee),
-                        span: None,
-                    });
+                    self.push_diag(format!("Unknown function '{}'", callee));
                     TypedExpr {
                         expr: expr.clone(),
-                        ty: Type::Unit,
+                        ty: Type::Error,
                         span: None,
                     }
                 }
@@ -196,7 +256,7 @@ impl<'a> TypeChecker<'a> {
         match stmt {
             Statement::If { condition, then_branch, else_branch } => {
                 let typed_cond = self.infer_expr(condition);
-                if typed_cond.ty != Type::Bool {
+                if !typed_cond.ty.is_error() && typed_cond.ty != Type::Bool {
                     self.diagnostics.push(SemanticDiagnostic {
                         message: format!("if condition expected Bool, got {:?}", typed_cond.ty),
                         span: None,
@@ -215,7 +275,7 @@ impl<'a> TypeChecker<'a> {
                 let typed_val = self.infer_expr(value);
                 if let Some(ann) = type_ann {
                     if let Some(expected_ty) = Type::from_name(ann) {
-                        if expected_ty != typed_val.ty {
+                        if !typed_val.ty.is_error() && expected_ty != typed_val.ty {
                             self.diagnostics.push(SemanticDiagnostic {
                                 message: format!(
                                     "Type mismatch in let binding '{}': expected {:?}, got {:?}",
@@ -241,7 +301,7 @@ impl<'a> TypeChecker<'a> {
             Statement::MoveJ { target } => {
                 self.check_purity_for_statement("movej");
                 let typed_target = self.infer_expr(target);
-                if !typed_target.ty.is_target() {
+                if !typed_target.ty.is_error() && !typed_target.ty.is_target() {
                     self.diagnostics.push(SemanticDiagnostic {
                         message: format!("movej expected a target (Position, Pose, or Joints), got {:?}", typed_target.ty),
                         span: None,
@@ -251,7 +311,7 @@ impl<'a> TypeChecker<'a> {
             Statement::MoveL { target } => {
                 self.check_purity_for_statement("movel");
                 let typed_target = self.infer_expr(target);
-                if !typed_target.ty.is_spatial_target() {
+                if !typed_target.ty.is_error() && !typed_target.ty.is_spatial_target() {
                     self.diagnostics.push(SemanticDiagnostic {
                         message: format!("movel expected a spatial target (Position or Pose), got {:?}", typed_target.ty),
                         span: None,
@@ -261,7 +321,7 @@ impl<'a> TypeChecker<'a> {
             Statement::Wait(dur_expr) => {
                 self.check_purity_for_statement("wait");
                 let typed_dur = self.infer_expr(dur_expr);
-                if typed_dur.ty != Type::Duration {
+                if !typed_dur.ty.is_error() && typed_dur.ty != Type::Duration {
                     self.diagnostics.push(SemanticDiagnostic {
                         message: format!("wait expected Duration, got {:?}", typed_dur.ty),
                         span: None,
@@ -292,5 +352,82 @@ impl<'a> TypeChecker<'a> {
             }
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::scope::ScopeKind;
+    use thalos_lang::ast::BinaryOp;
+
+    fn table_with_locals() -> SymbolTable {
+        let mut table = SymbolTable::new();
+        table
+            .declare(Symbol::new("ptt", SymbolKind::Target, Type::Position, None))
+            .unwrap();
+        table
+            .declare(Symbol::new("offset1", SymbolKind::Variable, Type::Vector3, None))
+            .unwrap();
+        table.push_scope(ScopeKind::Function);
+        table
+    }
+
+    #[test]
+    fn unknown_identifier_does_not_cascade_into_operand_errors() {
+        let mut table = table_with_locals();
+        let mut checker = TypeChecker::new(&mut table);
+        checker.current_fn_name = Some("main".to_string());
+        checker.current_fn_return_type = Some(Type::Unit);
+
+        // movel(ptt2 - offset1) with `ptt2` undeclared: the only root cause is
+        // the unknown identifier, not the subtraction nor the movel argument.
+        let stmt = Statement::MoveL {
+            target: Expr::Binary {
+                left: Box::new(Expr::Identifier("ptt2".to_string())),
+                op: BinaryOp::Sub,
+                right: Box::new(Expr::Identifier("offset1".to_string())),
+            },
+        };
+        checker.check_statement(&stmt);
+
+        let messages: Vec<&str> = checker
+            .diagnostics
+            .iter()
+            .map(|d| d.message.as_str())
+            .collect();
+        assert_eq!(
+            messages,
+            vec!["Unknown identifier 'ptt2'"],
+            "cascading diagnostics must be suppressed, got: {messages:?}"
+        );
+    }
+
+    #[test]
+    fn unknown_function_does_not_cascade_into_call_errors() {
+        let mut table = table_with_locals();
+        let mut checker = TypeChecker::new(&mut table);
+        checker.current_fn_name = Some("main".to_string());
+        checker.current_fn_return_type = Some(Type::Unit);
+
+        // movel(mystery_position()) where the function is unknown.
+        let stmt = Statement::MoveL {
+            target: Expr::Call {
+                callee: "mystery_position".to_string(),
+                args: vec![],
+            },
+        };
+        checker.check_statement(&stmt);
+
+        let messages: Vec<&str> = checker
+            .diagnostics
+            .iter()
+            .map(|d| d.message.as_str())
+            .collect();
+        assert_eq!(
+            messages,
+            vec!["Unknown function 'mystery_position'"],
+            "cascading diagnostics must be suppressed, got: {messages:?}"
+        );
     }
 }

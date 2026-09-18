@@ -1,6 +1,11 @@
 use thalos_lang::parse_source;
 use thalos_lang::ast::*;
+use thalos_lang::parser::parse_source_spanned;
 use thalos_lang::units::{DurationSeconds, LengthMeters};
+
+fn char_slice(source: &str, span: thalos_lang::Span) -> String {
+    source.chars().skip(span.start).take(span.end - span.start).collect()
+}
 
 #[test]
 fn test_parse_simple_program() {
@@ -48,6 +53,113 @@ fn test_parse_simple_program() {
         }
         _ => panic!("expected FnDecl"),
     }
+}
+
+#[test]
+fn test_unspan_roundtrip_equivalence() {
+    // Guard: stripping spans must reproduce the semantic AST exactly.
+    let sources = [
+        thalos_lang::DEFAULT_PROGRAM,
+        r#"
+target jtt = joints(20deg, 30deg, 0deg, 0deg, 0deg, 0deg)
+target ptt = position([2.152, 0.783, 1.882])
+
+fn main() {
+    movej(jtt)
+    movel(ptt)
+
+    let offset1 = [1, 0, 0]
+    movel(ptt - offset1)
+}
+"#,
+        r#"
+use material_handling
+
+const CLEARANCE: Length = 150mm
+
+target ABOVE = pose(PART_CENTER + [0mm, 0mm, 300mm], euler(0deg, 180deg, 0deg))
+
+fn main() {
+    movec(A, B)
+    wait(1s)
+    set_output(GRIPPER, true)
+    if sensors.value > 1mm {
+        movej(B)
+    } else {
+        wait(50ms)
+    }
+}
+"#,
+    ];
+
+    for source in sources {
+        let semantic = parse_source(source).expect("semantic parse");
+        let spanned = parse_source_spanned(source).expect("spanned parse");
+        assert_eq!(
+            spanned.unspan(),
+            semantic,
+            "unspan(spanned) must equal the semantic AST"
+        );
+    }
+}
+
+#[test]
+fn test_spanned_spans_disambiguate_repeated_identifiers() {
+    let source = r#"target PARK = position([1mm, 0mm, 0mm])
+target PICK = position([2mm, 0mm, 0mm])
+
+fn main() {
+    movej(PARK)
+    movel(PICK)
+    movej(PARK)
+}
+"#;
+
+    let program = parse_source_spanned(source).expect("must parse");
+
+    // Declaration name spans point at the declarations, not the first match.
+    let park_decl = match &program.items[0] {
+        SpannedItem::Target(t) => t,
+        other => panic!("expected target, got {other:?}"),
+    };
+    assert_eq!(char_slice(source, park_decl.name_span), "PARK");
+
+    let function = match &program.items[2] {
+        SpannedItem::Function(f) => f,
+        other => panic!("expected function, got {other:?}"),
+    };
+    assert_eq!(function.body.len(), 3);
+
+    let first_use = match &function.body[0].kind {
+        SpannedStatementKind::MoveJ { target } => target,
+        other => panic!("expected movej, got {other:?}"),
+    };
+    let repeated_use = match &function.body[2].kind {
+        SpannedStatementKind::MoveJ { target } => target,
+        other => panic!("expected movej, got {other:?}"),
+    };
+
+    assert_eq!(char_slice(source, first_use.span), "PARK");
+    assert_eq!(char_slice(source, repeated_use.span), "PARK");
+    assert_ne!(
+        first_use.span, repeated_use.span,
+        "repeated identifiers must resolve to distinct source locations"
+    );
+    assert!(repeated_use.span.start > first_use.span.start);
+
+    // Call callee spans are captured separately from the whole call.
+    let pick_call = match &function.body[1].kind {
+        SpannedStatementKind::MoveL { target } => target,
+        other => panic!("expected movel, got {other:?}"),
+    };
+    match &park_decl.pose.kind {
+        SpannedExprKind::Call { callee, callee_span, .. } => {
+            assert_eq!(callee, "position");
+            assert_eq!(char_slice(source, *callee_span), "position");
+        }
+        other => panic!("expected call, got {other:?}"),
+    }
+    assert_eq!(char_slice(source, pick_call.span), "PICK");
 }
 
 #[test]

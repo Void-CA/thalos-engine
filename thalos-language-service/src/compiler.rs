@@ -15,133 +15,13 @@ pub struct SemanticCompiler;
 
 impl SemanticCompiler {
     pub fn compile(ast: &Program) -> Result<SemanticProgram, Vec<String>> {
-        let mut table = SymbolTable::new();
-        register_builtins(&mut table);
-
-        let mut resolved_targets = Vec::new();
-        let mut target_values = HashMap::new();
-        let mut const_names = std::collections::HashSet::new();
-        let mut errors = Vec::new();
-
-        // 1. Resolve and evaluate consts and targets sequentially
-        for item in &ast.items {
-            match item {
-                Item::Const(ConstDecl { name, value, .. }) => {
-                    let eval_result = {
-                        let evaluator = Evaluator::with_target_values(&table, &target_values);
-                        evaluator.eval_expr(value)
-                    };
-
-                    match eval_result {
-                        EvalResult::Value(val) => {
-                            const_names.insert(name.clone());
-                            target_values.insert(name.clone(), val.clone());
-                            let _ = table.declare(Symbol::new(
-                                name.clone(),
-                                SymbolKind::Const,
-                                val.get_type(),
-                                None,
-                            ));
-                        }
-                        _ => {
-                            errors.push(format!("const '{}' must evaluate to a compile-time constant", name));
-                        }
-                    }
-                }
-                Item::Target(TargetDecl { name, pose, .. }) => {
-                    let eval_result = {
-                        let evaluator = Evaluator::with_target_values(&table, &target_values);
-                        evaluator.eval_expr(pose)
-                    };
-
-                    match eval_result {
-                        EvalResult::Value(CompileTimeValue::Position(p)) => {
-                            let target_val = MotionTarget::Position(p.clone());
-                            target_values.insert(name.clone(), CompileTimeValue::Position(p));
-                            let _ = table.declare(Symbol::new(
-                                name.clone(),
-                                SymbolKind::Target,
-                                Type::Position,
-                                None,
-                            ));
-                            resolved_targets.push(ResolvedTarget {
-                                name: name.clone(),
-                                value: target_val,
-                                provenance: Provenance::new(Some(name.clone()), None),
-                            });
-                        }
-                        EvalResult::Value(CompileTimeValue::Pose(p)) => {
-                            let target_val = MotionTarget::Pose(p.clone());
-                            target_values.insert(name.clone(), CompileTimeValue::Pose(p));
-                            let _ = table.declare(Symbol::new(
-                                name.clone(),
-                                SymbolKind::Target,
-                                Type::Pose,
-                                None,
-                            ));
-                            resolved_targets.push(ResolvedTarget {
-                                name: name.clone(),
-                                value: target_val,
-                                provenance: Provenance::new(Some(name.clone()), None),
-                            });
-                        }
-                        EvalResult::Value(CompileTimeValue::Joints(j)) => {
-                            let target_val = MotionTarget::Joints(JointConfiguration::new(j.clone()));
-                            target_values.insert(name.clone(), CompileTimeValue::Joints(j.clone()));
-                            let _ = table.declare(Symbol::new(
-                                name.clone(),
-                                SymbolKind::Target,
-                                Type::Joints {
-                                    dimension: Some(j.len()),
-                                },
-                                None,
-                            ));
-                            resolved_targets.push(ResolvedTarget {
-                                name: name.clone(),
-                                value: target_val,
-                                provenance: Provenance::new(Some(name.clone()), None),
-                            });
-                        }
-                        _ => {
-                            errors.push(format!("Target '{}' could not be evaluated to a constant target", name));
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        // 2. Declare all user functions in SymbolTable
-        for item in &ast.items {
-            if let Item::Function(f) = item {
-                let ret_ty = f
-                    .return_type
-                    .as_deref()
-                    .and_then(Type::from_name)
-                    .unwrap_or(Type::Unit);
-
-                let param_types: Vec<Type> = f
-                    .params
-                    .iter()
-                    .map(|p| {
-                        p.type_ann
-                            .as_deref()
-                            .and_then(Type::from_name)
-                            .unwrap_or(Type::Position)
-                    })
-                    .collect();
-
-                let _ = table.declare(Symbol::new(
-                    f.name.clone(),
-                    SymbolKind::Function,
-                    Type::Function(crate::types::FunctionType {
-                        params: param_types,
-                        return_type: Box::new(ret_ty),
-                    }),
-                    None,
-                ));
-            }
-        }
+        let PreparedSymbols {
+            mut table,
+            target_values,
+            const_names,
+            resolved_targets,
+            mut errors,
+        } = prepare_symbols(ast);
 
         // 3. Type check AST functions and statements in isolated parameter scope
         let mut checker = TypeChecker::new(&mut table);
@@ -176,7 +56,7 @@ impl SemanticCompiler {
                 }
                 if let Some(ref tail) = f.tail_expr {
                     let typed_tail = checker.infer_expr(tail);
-                    if expected_ret != Type::Unit && expected_ret != typed_tail.ty {
+                    if !typed_tail.ty.is_error() && expected_ret != Type::Unit && expected_ret != typed_tail.ty {
                         checker.diagnostics.push(crate::checker::SemanticDiagnostic {
                             message: format!(
                                 "Function '{}' return type mismatch: expected {:?}, got {:?}",
@@ -242,6 +122,191 @@ impl SemanticCompiler {
             functions: semantic_functions,
             entry_point: "main".to_string(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use thalos_lang::parse_source;
+
+    #[test]
+    fn undeclared_identifier_reports_a_single_root_cause() {
+        let source = r#"
+target jtt = joints(20deg, 30deg, 0deg, 0deg, 0deg, 0deg)
+target ptt = position([2.152, 0.783, 1.882])
+
+fn main() {
+    movej(jtt)
+    movel(ptt)
+
+    let offset1 = [1, 0, 0]
+    movel(ptt2 - offset1)
+}
+"#;
+        let program = parse_source(source).expect("source must parse as syntactically valid");
+        let errors = SemanticCompiler::compile(&program).expect_err("compile must fail");
+
+        assert_eq!(
+            errors,
+            vec!["Unknown identifier 'ptt2'".to_string()],
+            "only the root cause must be reported, got: {errors:?}"
+        );
+    }
+}
+
+/// Symbols resolved from the top-level declarations of a program.
+///
+/// Shared by the semantic compiler (which lowers to a `SemanticProgram`) and by
+/// the tooling intelligence pass (which projects types for the editor), so both
+/// agree on how consts/targets/functions are declared and typed.
+pub(crate) struct PreparedSymbols {
+    pub table: SymbolTable,
+    pub target_values: HashMap<String, CompileTimeValue>,
+    pub const_names: std::collections::HashSet<String>,
+    pub resolved_targets: Vec<ResolvedTarget>,
+    pub errors: Vec<String>,
+}
+
+/// Resolve consts, targets and user function signatures into a symbol table.
+///
+/// This is steps 1 and 2 of the compilation pipeline, extracted so type tooling
+/// can reuse them without duplicating the declaration/typing rules.
+pub(crate) fn prepare_symbols(ast: &Program) -> PreparedSymbols {
+    let mut table = SymbolTable::new();
+    register_builtins(&mut table);
+
+    let mut resolved_targets = Vec::new();
+    let mut target_values = HashMap::new();
+    let mut const_names = std::collections::HashSet::new();
+    let mut errors = Vec::new();
+
+    // 1. Resolve and evaluate consts and targets sequentially
+    for item in &ast.items {
+        match item {
+            Item::Const(ConstDecl { name, value, .. }) => {
+                let eval_result = {
+                    let evaluator = Evaluator::with_target_values(&table, &target_values);
+                    evaluator.eval_expr(value)
+                };
+
+                match eval_result {
+                    EvalResult::Value(val) => {
+                        const_names.insert(name.clone());
+                        target_values.insert(name.clone(), val.clone());
+                        let _ = table.declare(Symbol::new(
+                            name.clone(),
+                            SymbolKind::Const,
+                            val.get_type(),
+                            None,
+                        ));
+                    }
+                    _ => {
+                        errors.push(format!("const '{}' must evaluate to a compile-time constant", name));
+                    }
+                }
+            }
+            Item::Target(TargetDecl { name, pose, .. }) => {
+                let eval_result = {
+                    let evaluator = Evaluator::with_target_values(&table, &target_values);
+                    evaluator.eval_expr(pose)
+                };
+
+                match eval_result {
+                    EvalResult::Value(CompileTimeValue::Position(p)) => {
+                        let target_val = MotionTarget::Position(p.clone());
+                        target_values.insert(name.clone(), CompileTimeValue::Position(p));
+                        let _ = table.declare(Symbol::new(
+                            name.clone(),
+                            SymbolKind::Target,
+                            Type::Position,
+                            None,
+                        ));
+                        resolved_targets.push(ResolvedTarget {
+                            name: name.clone(),
+                            value: target_val,
+                            provenance: Provenance::new(Some(name.clone()), None),
+                        });
+                    }
+                    EvalResult::Value(CompileTimeValue::Pose(p)) => {
+                        let target_val = MotionTarget::Pose(p.clone());
+                        target_values.insert(name.clone(), CompileTimeValue::Pose(p));
+                        let _ = table.declare(Symbol::new(
+                            name.clone(),
+                            SymbolKind::Target,
+                            Type::Pose,
+                            None,
+                        ));
+                        resolved_targets.push(ResolvedTarget {
+                            name: name.clone(),
+                            value: target_val,
+                            provenance: Provenance::new(Some(name.clone()), None),
+                        });
+                    }
+                    EvalResult::Value(CompileTimeValue::Joints(j)) => {
+                        let target_val = MotionTarget::Joints(JointConfiguration::new(j.clone()));
+                        target_values.insert(name.clone(), CompileTimeValue::Joints(j.clone()));
+                        let _ = table.declare(Symbol::new(
+                            name.clone(),
+                            SymbolKind::Target,
+                            Type::Joints {
+                                dimension: Some(j.len()),
+                            },
+                            None,
+                        ));
+                        resolved_targets.push(ResolvedTarget {
+                            name: name.clone(),
+                            value: target_val,
+                            provenance: Provenance::new(Some(name.clone()), None),
+                        });
+                    }
+                    _ => {
+                        errors.push(format!("Target '{}' could not be evaluated to a constant target", name));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // 2. Declare all user functions in SymbolTable
+    for item in &ast.items {
+        if let Item::Function(f) = item {
+            let ret_ty = f
+                .return_type
+                .as_deref()
+                .and_then(Type::from_name)
+                .unwrap_or(Type::Unit);
+
+            let param_types: Vec<Type> = f
+                .params
+                .iter()
+                .map(|p| {
+                    p.type_ann
+                        .as_deref()
+                        .and_then(Type::from_name)
+                        .unwrap_or(Type::Position)
+                })
+                .collect();
+
+            let _ = table.declare(Symbol::new(
+                f.name.clone(),
+                SymbolKind::Function,
+                Type::Function(crate::types::FunctionType {
+                    params: param_types,
+                    return_type: Box::new(ret_ty),
+                }),
+                None,
+            ));
+        }
+    }
+
+    PreparedSymbols {
+        table,
+        target_values,
+        const_names,
+        resolved_targets,
+        errors,
     }
 }
 

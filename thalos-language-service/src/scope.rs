@@ -96,4 +96,14 @@ impl SymbolTable {
         }
         None
     }
+
+    /// Iterate every declared symbol across all scopes (builtins included).
+    ///
+    /// Read-only projection used by tooling; the symbol table itself remains an
+    /// internal structure of the checker.
+    pub fn iter(&self) -> impl Iterator<Item = &Symbol> {
+        self.scopes
+            .iter()
+            .flat_map(|scope| scope.symbols.values().flatten())
+    }
 }

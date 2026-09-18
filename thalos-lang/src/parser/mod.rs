@@ -1,11 +1,32 @@
+use std::ops::Range;
+
 use chumsky::prelude::*;
-use crate::ast::*;
+
+use crate::ast::spanned::{
+    Spanned, SpannedConstDecl, SpannedExpr, SpannedExprKind, SpannedFnDecl, SpannedItem,
+    SpannedProgram, SpannedStatement, SpannedStatementKind, SpannedTargetDecl,
+};
+use crate::ast::item::{Param, UseDecl};
+use crate::ast::program::Program;
+use crate::span::Span;
 use crate::units::{AngleRadians, DurationSeconds, LengthMeters};
 
 pub type ParseError = Simple<char>;
 
-pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
+/// Convert a chumsky char-index span into the language [`Span`].
+///
+/// Spans stay in **character offsets** throughout the parser/spanned tree; the
+/// language service performs the single char → byte conversion at its boundary.
+fn char_span(range: Range<usize>) -> Span {
+    Span::new(range.start, range.end)
+}
+
+pub fn parser() -> impl Parser<char, SpannedProgram, Error = Simple<char>> {
     let ident = text::ident();
+
+    let ident_spanned = ident
+        .clone()
+        .map_with_span(|name: String, span: Range<usize>| (name, char_span(span)));
 
     let digits = filter(|c: &char| c.is_ascii_digit() || *c == '.')
         .repeated()
@@ -30,7 +51,10 @@ pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
 
     let duration_expr = number
         .then(duration_unit)
-        .map(|(val, mult)| Expr::Duration(DurationSeconds(val * mult)));
+        .map_with_span(|(val, mult), span: Range<usize>| SpannedExpr {
+            kind: SpannedExprKind::Duration(DurationSeconds(val * mult)),
+            span: char_span(span),
+        });
 
     let length_unit = choice((
         just("mm").map(|_| 0.001),
@@ -39,7 +63,10 @@ pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
 
     let length_expr = number
         .then(length_unit)
-        .map(|(val, mult)| Expr::Length(LengthMeters(val * mult)));
+        .map_with_span(|(val, mult), span: Range<usize>| SpannedExpr {
+            kind: SpannedExprKind::Length(LengthMeters(val * mult)),
+            span: char_span(span),
+        });
 
     let angle_unit = choice((
         just("deg").map(|_| std::f64::consts::PI / 180.0),
@@ -48,7 +75,10 @@ pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
 
     let angle_expr = number
         .then(angle_unit)
-        .map(|(val, mult)| Expr::Angle(AngleRadians(val * mult)));
+        .map_with_span(|(val, mult), span: Range<usize>| SpannedExpr {
+            kind: SpannedExprKind::Angle(AngleRadians(val * mult)),
+            span: char_span(span),
+        });
 
     let expr = recursive(|expr| {
         let vector3_expr = expr
@@ -57,73 +87,125 @@ pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
             .separated_by(just(','))
             .allow_trailing()
             .delimited_by(just('[').padded(), just(']').padded())
-            .try_map(|elems: Vec<Expr>, span| {
+            .try_map(|elems: Vec<SpannedExpr>, span: Range<usize>| {
                 if elems.len() == 3 {
-                    Ok(Expr::Vector3([
-                        Box::new(elems[0].clone()),
-                        Box::new(elems[1].clone()),
-                        Box::new(elems[2].clone()),
-                    ]))
+                    Ok(SpannedExpr {
+                        kind: SpannedExprKind::Vector3([
+                            Box::new(elems[0].clone()),
+                            Box::new(elems[1].clone()),
+                            Box::new(elems[2].clone()),
+                        ]),
+                        span: char_span(span),
+                    })
                 } else {
                     Err(Simple::custom(span, "Vector3 expects exactly 3 elements"))
                 }
             });
 
-        let call_expr = ident
+        let call_expr = ident_spanned
+            .clone()
             .then(
                 expr.clone()
                     .separated_by(just(',').padded())
                     .allow_trailing()
                     .delimited_by(just('('), just(')')),
             )
-            .map(|(callee, args)| Expr::Call { callee, args });
+            .map_with_span(
+                |((callee, callee_span), args): ((String, Span), Vec<SpannedExpr>),
+                 span: Range<usize>| SpannedExpr {
+                    kind: SpannedExprKind::Call {
+                        callee,
+                        callee_span,
+                        args,
+                    },
+                    span: char_span(span),
+                },
+            );
 
         let string_expr = filter(|c: &char| *c != '"')
             .repeated()
             .collect::<String>()
             .delimited_by(just('"'), just('"'))
-            .map(Expr::StringLiteral);
+            .map_with_span(|value: String, span: Range<usize>| SpannedExpr {
+                kind: SpannedExprKind::StringLiteral(value),
+                span: char_span(span),
+            });
 
-        let member_access = ident
+        let member_access = ident_spanned
+            .clone()
             .then_ignore(just('.'))
-            .then(ident)
-            .map(|(object, member)| Expr::MemberAccess { object, member });
+            .then(ident_spanned.clone())
+            .map_with_span(
+                |((object, _), (member, _)): ((String, Span), (String, Span)),
+                 span: Range<usize>| SpannedExpr {
+                    kind: SpannedExprKind::MemberAccess { object, member },
+                    span: char_span(span),
+                },
+            );
+
+        let boolean_expr = choice((
+            just("true").map(|_| true),
+            just("false").map(|_| false),
+        ))
+        .map_with_span(|value: bool, span: Range<usize>| SpannedExpr {
+            kind: SpannedExprKind::Boolean(value),
+            span: char_span(span),
+        });
+
+        let number_expr = number
+            .clone()
+            .map_with_span(|value: f64, span: Range<usize>| SpannedExpr {
+                kind: SpannedExprKind::Number(value),
+                span: char_span(span),
+            });
+
+        let identifier_expr = ident_spanned
+            .clone()
+            .map_with_span(|(name, _): (String, Span), span: Range<usize>| SpannedExpr {
+                kind: SpannedExprKind::Identifier(name),
+                span: char_span(span),
+            });
 
         let literal_expr = choice((
             duration_expr,
             length_expr,
             angle_expr,
-            number.map(Expr::Number),
+            number_expr,
             string_expr,
-            just("true").map(|_| Expr::Boolean(true)),
-            just("false").map(|_| Expr::Boolean(false)),
+            boolean_expr,
             member_access,
-            ident.map(Expr::Identifier),
+            identifier_expr,
         ));
 
         let atom = choice((vector3_expr, call_expr, literal_expr)).padded();
 
         let op = choice((
-            just(">=").map(|_| BinaryOp::Gte),
-            just("<=").map(|_| BinaryOp::Lte),
-            just("==").map(|_| BinaryOp::Eq),
-            just("!=").map(|_| BinaryOp::Neq),
-            just('>').map(|_| BinaryOp::Gt),
-            just('<').map(|_| BinaryOp::Lt),
-            just('+').map(|_| BinaryOp::Add),
-            just('-').map(|_| BinaryOp::Sub),
-            just('*').map(|_| BinaryOp::Mul),
-            just('/').map(|_| BinaryOp::Div),
+            just(">=").map(|_| crate::ast::BinaryOp::Gte),
+            just("<=").map(|_| crate::ast::BinaryOp::Lte),
+            just("==").map(|_| crate::ast::BinaryOp::Eq),
+            just("!=").map(|_| crate::ast::BinaryOp::Neq),
+            just('>').map(|_| crate::ast::BinaryOp::Gt),
+            just('<').map(|_| crate::ast::BinaryOp::Lt),
+            just('+').map(|_| crate::ast::BinaryOp::Add),
+            just('-').map(|_| crate::ast::BinaryOp::Sub),
+            just('*').map(|_| crate::ast::BinaryOp::Mul),
+            just('/').map(|_| crate::ast::BinaryOp::Div),
         ))
         .padded();
 
         atom.clone()
             .then(op.then(atom.clone()).repeated())
-            .map(|(first, rest)| {
-                rest.into_iter().fold(first, |acc, (op, val)| Expr::Binary {
-                    left: Box::new(acc),
-                    op,
-                    right: Box::new(val),
+            .map(|(first, rest): (SpannedExpr, Vec<(crate::ast::BinaryOp, SpannedExpr)>)| {
+                rest.into_iter().fold(first, |acc, (op, val)| {
+                    let span = Span::new(acc.span.start, val.span.end);
+                    SpannedExpr {
+                        kind: SpannedExprKind::Binary {
+                            left: Box::new(acc),
+                            op,
+                            right: Box::new(val),
+                        },
+                        span,
+                    }
                 })
             })
     });
@@ -132,26 +214,39 @@ pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
 
     let stmt_parser = recursive(|stmt| {
         let let_stmt = just("let")
-            .ignore_then(ident.padded())
+            .ignore_then(ident_spanned.clone().padded())
             .then(type_ann.or_not())
             .then_ignore(just('=').padded())
             .then(expr.clone())
             .then_ignore(just(';').or_not())
-            .map(|((name, type_ann), value)| Statement::Let {
-                name,
-                type_ann,
-                value,
-            });
+            .map_with_span(
+                |(((name, name_span), type_ann), value): (((String, Span), Option<String>), SpannedExpr),
+                 span: Range<usize>| SpannedStatement {
+                    kind: SpannedStatementKind::Let {
+                        name,
+                        name_span,
+                        type_ann,
+                        value,
+                    },
+                    span: char_span(span),
+                },
+            );
 
         let movej_stmt = just("movej")
             .ignore_then(expr.clone().delimited_by(just('('), just(')')))
             .then_ignore(just(';').or_not())
-            .map(|target| Statement::MoveJ { target });
+            .map_with_span(|target: SpannedExpr, span: Range<usize>| SpannedStatement {
+                kind: SpannedStatementKind::MoveJ { target },
+                span: char_span(span),
+            });
 
         let movel_stmt = just("movel")
             .ignore_then(expr.clone().delimited_by(just('('), just(')')))
             .then_ignore(just(';').or_not())
-            .map(|target| Statement::MoveL { target });
+            .map_with_span(|target: SpannedExpr, span: Range<usize>| SpannedStatement {
+                kind: SpannedStatementKind::MoveL { target },
+                span: char_span(span),
+            });
 
         // movec(VIA, TARGET): circular move through an intermediate (via) point
         // to the final target. Both are expressions resolving to positions/poses.
@@ -163,24 +258,44 @@ pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
                     .delimited_by(just('(').padded(), just(')').padded()),
             )
             .then_ignore(just(';').or_not())
-            .map(|(via, target)| Statement::MoveC { via, target });
+            .map_with_span(
+                |(via, target): (SpannedExpr, SpannedExpr),
+                 span: Range<usize>| SpannedStatement {
+                    kind: SpannedStatementKind::MoveC { via, target },
+                    span: char_span(span),
+                },
+            );
 
         let wait_stmt = just("wait")
             .ignore_then(expr.clone().delimited_by(just('('), just(')')))
             .then_ignore(just(';').or_not())
-            .map(Statement::Wait);
+            .map_with_span(|duration: SpannedExpr, span: Range<usize>| SpannedStatement {
+                kind: SpannedStatementKind::Wait(duration),
+                span: char_span(span),
+            });
 
         // set_output(CHANNEL, value): operational (non-geometric) instruction.
         let set_output_stmt = just("set_output")
             .ignore_then(
-                ident
+                ident_spanned
+                    .clone()
                     .padded()
                     .then_ignore(just(',').padded())
                     .then(expr.clone())
                     .delimited_by(just('(').padded(), just(')').padded()),
             )
             .then_ignore(just(';').or_not())
-            .map(|(output, value)| Statement::SetOutput { output, value });
+            .map_with_span(
+                |((output, output_span), value): ((String, Span), SpannedExpr),
+                 span: Range<usize>| SpannedStatement {
+                    kind: SpannedStatementKind::SetOutput {
+                        output,
+                        output_span,
+                        value,
+                    },
+                    span: char_span(span),
+                },
+            );
 
         let block = stmt
             .clone()
@@ -196,10 +311,27 @@ pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
             .ignore_then(expr.clone())
             .then(block)
             .then(else_branch.or_not())
-            .map(|((condition, then_branch), else_branch)| Statement::If {
-                condition,
-                then_branch,
-                else_branch,
+            .map_with_span(
+                |((condition, then_branch), else_branch): (
+                    (SpannedExpr, Vec<SpannedStatement>),
+                    Option<Vec<SpannedStatement>>,
+                ),
+                 span: Range<usize>| SpannedStatement {
+                    kind: SpannedStatementKind::If {
+                        condition,
+                        then_branch,
+                        else_branch,
+                    },
+                    span: char_span(span),
+                },
+            );
+
+        let expr_stmt = expr
+            .clone()
+            .then_ignore(just(';'))
+            .map_with_span(|expr: SpannedExpr, span: Range<usize>| SpannedStatement {
+                kind: SpannedStatementKind::Expr(expr),
+                span: char_span(span),
             });
 
         choice((
@@ -210,72 +342,116 @@ pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
             movec_stmt,
             wait_stmt,
             set_output_stmt,
-            expr.clone()
-                .then_ignore(just(';'))
-                .map(Statement::Expr),
+            expr_stmt,
         ))
         .padded()
     });
 
     let fn_body = stmt_parser
+        .clone()
         .repeated()
         .then(expr.clone().or_not())
         .delimited_by(just('{').padded(), just('}').padded());
 
+    let param = ident_spanned
+        .clone()
+        .padded()
+        .then(type_ann.or_not())
+        .map_with_span(
+            |((name, _name_span), type_ann): ((String, Span), Option<String>),
+             span: Range<usize>| Spanned {
+                node: Param { name, type_ann },
+                span: char_span(span),
+            },
+        );
+
     let fn_decl = just("fn")
-        .ignore_then(ident.padded())
+        .ignore_then(ident_spanned.clone().padded())
         .then(
-            ident
-                .padded()
-                .then(type_ann.or_not())
-                .map(|(name, type_ann)| Param { name, type_ann })
+            param
                 .separated_by(just(',').padded())
                 .allow_trailing()
                 .delimited_by(just('('), just(')')),
         )
         .then(just("->").padded().ignore_then(ident.padded()).or_not())
         .then(fn_body)
-        .map(|(((name, params), return_type), (body, tail_expr))| {
-            Item::Function(FnDecl {
-                name,
-                params,
-                return_type,
-                body,
-                tail_expr: tail_expr.map(Box::new),
-            })
-        });
+        .map_with_span(
+            |((((name, name_span), params), return_type), (body, tail_expr)): (
+                (((String, Span), Vec<Spanned<Param>>), Option<String>),
+                (Vec<SpannedStatement>, Option<SpannedExpr>),
+            ),
+             span: Range<usize>| {
+                SpannedItem::Function(SpannedFnDecl {
+                    name,
+                    name_span,
+                    params,
+                    return_type,
+                    body,
+                    tail_expr,
+                    span: char_span(span),
+                })
+            },
+        );
 
     let const_decl = just("const")
-        .ignore_then(ident.padded())
+        .ignore_then(ident_spanned.clone().padded())
         .then(type_ann.or_not())
         .then_ignore(just('=').padded())
         .then(expr.clone().padded())
         .then_ignore(just(';').or_not())
-        .map(|((name, type_ann), value)| {
-            Item::Const(ConstDecl {
-                name,
-                type_ann,
-                value,
-            })
-        });
+        .map_with_span(
+            |(((name, name_span), type_ann), value): (
+                ((String, Span), Option<String>),
+                SpannedExpr,
+            ),
+             span: Range<usize>| {
+                SpannedItem::Const(SpannedConstDecl {
+                    name,
+                    name_span,
+                    type_ann,
+                    value,
+                    span: char_span(span),
+                })
+            },
+        );
 
     let target_decl = just("target")
-        .ignore_then(ident.padded())
+        .ignore_then(ident_spanned.clone().padded())
         .then_ignore(just('='))
         .then(expr.clone().padded())
         .then_ignore(just(';').or_not())
-        .map(|(name, pose)| Item::Target(TargetDecl { name, pose }));
+        .map_with_span(
+            |((name, name_span), pose): ((String, Span), SpannedExpr), span: Range<usize>| {
+                SpannedItem::Target(SpannedTargetDecl {
+                    name,
+                    name_span,
+                    pose,
+                    span: char_span(span),
+                })
+            },
+        );
 
     let use_decl = just("use")
         .ignore_then(ident.padded())
         .then_ignore(just(';').or_not())
-        .map(|path| Item::Use(UseDecl { path }));
+        .map_with_span(|path: String, span: Range<usize>| SpannedItem::Use {
+            decl: UseDecl { path },
+            span: char_span(span),
+        });
 
     let item = choice((const_decl, fn_decl, target_decl, use_decl)).padded();
 
-    item.repeated().then_ignore(end()).map(|items| Program { items })
+    item.repeated()
+        .then_ignore(end())
+        .map(|items| SpannedProgram { items })
 }
 
-pub fn parse_source(source: &str) -> Result<Program, Vec<Simple<char>>> {
+/// Parse source into the spanned (tooling) tree.
+pub fn parse_source_spanned(source: &str) -> Result<SpannedProgram, Vec<Simple<char>>> {
     parser().parse(source)
+}
+
+/// Parse source into the semantic AST (spans stripped).
+pub fn parse_source(source: &str) -> Result<Program, Vec<Simple<char>>> {
+    parse_source_spanned(source).map(SpannedProgram::unspan)
 }
