@@ -1,9 +1,11 @@
 pub mod action;
 pub mod capability;
+pub mod catalog;
 pub mod definition;
 pub mod observation;
 
 pub use action::{RobotAction, RobotCommand};
+pub use catalog::{RobotCatalogEntry, RobotCatalogError};
 pub use observation::RobotObservation;
 pub mod policy;
 pub mod profile;

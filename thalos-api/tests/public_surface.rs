@@ -84,10 +84,43 @@ fn public_surface_is_self_contained() {
     let _ = std::any::type_name::<PlanExecutionComparison>();
     let _ = std::any::type_name::<ComparisonMetrics>();
 
+    // Declarative robot identity catalog entry (F2.5).
+    use thalos_api::core::robot::catalog::{RobotCatalogEntry, RobotCatalogError};
+    let _ = std::any::type_name::<RobotCatalogEntry>();
+    let _ = std::any::type_name::<RobotCatalogError>();
+
+    // Interconnection semantics over device channels (F2.4).
+    use thalos_api::core::device::{
+        InterconnectionLease, LeaseId, ObservationRequirement, SamplingPolicy,
+    };
+    let _ = std::any::type_name::<ObservationRequirement>();
+    let _ = std::any::type_name::<SamplingPolicy>();
+    let _ = std::any::type_name::<InterconnectionLease>();
+    let _ = std::any::type_name::<LeaseId>();
+
     // Shared kinematic authority: joints → TCP (F2.2).
     use thalos_api::core::kinematics::{KinematicContext, TcpPose};
     let _ = std::any::type_name::<KinematicContext>();
     let _ = std::any::type_name::<TcpPose>();
+
+    // Supervision semantics + runner contracts (F2.3).
+    use thalos_api::core::execution::session::{
+        Action, Decision, ExecutionConfiguration, ExecutionSession, ExecutionSessionState,
+        ObservationBundle, TickContext, TickOutcome, TickResult,
+    };
+    use thalos_api::core::execution::{ExecutionEvent, ExecutionRunner, TemporalInvariants};
+    let _ = std::any::type_name::<ExecutionSession>();
+    let _ = std::any::type_name::<ExecutionSessionState>();
+    let _ = std::any::type_name::<ExecutionConfiguration>();
+    let _ = std::any::type_name::<Decision>();
+    let _ = std::any::type_name::<Action>();
+    let _ = std::any::type_name::<ObservationBundle>();
+    let _ = std::any::type_name::<TickContext>();
+    let _ = std::any::type_name::<TickOutcome>();
+    let _ = std::any::type_name::<TickResult>();
+    let _ = std::any::type_name::<ExecutionEvent>();
+    let _ = std::any::type_name::<TemporalInvariants>();
+    let _: Option<&dyn ExecutionRunner> = None;
 
     // Execution evidence / observation semantics (materialized in F2.1b).
     use thalos_api::core::execution::ExecutionSource;
