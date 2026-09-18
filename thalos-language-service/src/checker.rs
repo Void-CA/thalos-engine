@@ -193,6 +193,71 @@ impl<'a> TypeChecker<'a> {
                     };
                 }
 
+                // `offset` is receiver-type-directed: the receiver's type
+                // decides the delta shape and component names. Canonicalization
+                // is shared with the evaluator (crate::offset).
+                if callee == "offset" {
+                    let Some(receiver_arg) = args.first() else {
+                        self.push_diag("offset requires a receiver argument".to_string());
+                        return TypedExpr {
+                            expr: expr.clone(),
+                            ty: Type::Error,
+                            span: None,
+                        };
+                    };
+                    let receiver = self.infer_expr(&receiver_arg.value);
+                    if receiver.ty.is_error() {
+                        return TypedExpr {
+                            expr: expr.clone(),
+                            ty: Type::Error,
+                            span: None,
+                        };
+                    }
+                    let canonical = match crate::offset::canonicalize_delta(&receiver.ty, &args[1..])
+                    {
+                        Ok(canonical) => canonical,
+                        Err(message) => {
+                            self.push_diag(message);
+                            return TypedExpr {
+                                expr: expr.clone(),
+                                ty: Type::Error,
+                                span: None,
+                            };
+                        }
+                    };
+                    let mut ok = true;
+                    match canonical.shape {
+                        crate::offset::DeltaShape::Vector3 => {
+                            let delta_ty = self.infer_expr(&canonical.args[0].value).ty;
+                            if !delta_ty.is_error() && delta_ty != Type::Vector3 {
+                                self.push_diag(format!(
+                                    "offset delta expected Vector3, got {:?}",
+                                    delta_ty
+                                ));
+                                ok = false;
+                            }
+                        }
+                        crate::offset::DeltaShape::Scalars => {
+                            for arg in &canonical.args {
+                                let delta_ty = self.infer_expr(&arg.value).ty;
+                                if !delta_ty.is_error() && !is_offset_scalar(&delta_ty) {
+                                    self.push_diag(format!(
+                                        "offset joint delta expected Angle, Length, or number, got {:?}",
+                                        delta_ty
+                                    ));
+                                    ok = false;
+                                }
+                            }
+                        }
+                    }
+                    let ty = if ok { receiver.ty } else { Type::Error };
+                    return TypedExpr {
+                        expr: expr.clone(),
+                        ty,
+                        span: None,
+                    };
+                }
+
                 if let Some(symbols) = self.symbol_table.lookup(callee) {
                     // If an argument already failed to type-check, the call
                     // itself is not the root cause: suppress the overload error.
@@ -398,6 +463,10 @@ impl<'a> TypeChecker<'a> {
             _ => {}
         }
     }
+}
+
+fn is_offset_scalar(ty: &Type) -> bool {
+    matches!(ty, Type::Angle | Type::Length | Type::Float | Type::Int)
 }
 
 #[cfg(test)]

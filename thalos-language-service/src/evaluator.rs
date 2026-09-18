@@ -223,6 +223,42 @@ impl<'a> Evaluator<'a> {
                         })
                     }
                 }
+                "offset" => {
+                    let Some(receiver_arg) = args.first() else {
+                        return EvalResult::Error(SemanticDiagnostic {
+                            message: "offset requires a receiver argument".to_string(),
+                            span: None,
+                        });
+                    };
+                    let receiver = match self.eval_expr(&receiver_arg.value) {
+                        EvalResult::Value(value) => value,
+                        other => return other,
+                    };
+                    let canonical =
+                        match crate::offset::canonicalize_delta(&receiver.get_type(), &args[1..]) {
+                            Ok(canonical) => canonical,
+                            Err(message) => {
+                                return EvalResult::Error(SemanticDiagnostic {
+                                    message,
+                                    span: None,
+                                });
+                            }
+                        };
+                    let mut delta = Vec::with_capacity(canonical.args.len());
+                    for arg in &canonical.args {
+                        match self.eval_expr(&arg.value) {
+                            EvalResult::Value(value) => delta.push(value),
+                            other => return other,
+                        }
+                    }
+                    match crate::offset::apply(&receiver, &delta) {
+                        Ok(value) => EvalResult::Value(value),
+                        Err(message) => EvalResult::Error(SemanticDiagnostic {
+                            message,
+                            span: None,
+                        }),
+                    }
+                }
                 "quaternion" => {
                     if args.len() == 4 {
                         let w = match self.eval_expr(&args[0].value) {

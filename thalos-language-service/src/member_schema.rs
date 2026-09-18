@@ -81,6 +81,11 @@ impl MemberSchema {
         self.members.iter().find(|m| m.name == name)
     }
 
+    /// Position of a member in the schema's canonical component order.
+    pub fn index_of(&self, name: &str) -> Option<usize> {
+        self.members.iter().position(|m| m.name == name)
+    }
+
     pub fn has(&self, name: &str) -> bool {
         self.get(name).is_some()
     }

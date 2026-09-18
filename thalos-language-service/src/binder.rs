@@ -164,6 +164,16 @@ fn normalize_call(callee: &str, args: Vec<Arg>, errors: &mut Vec<String>) -> Exp
     if callee == "joints" {
         return normalize_joints(callee, args, errors);
     }
+    if callee == "offset" {
+        // `offset` binding is receiver-type-directed, so it cannot be resolved
+        // here (types are not known yet). Named delta arguments are preserved
+        // and canonicalized later by `crate::offset`, called from the checker
+        // and the evaluator.
+        return Expr::Call {
+            callee: callee.to_string(),
+            args,
+        };
+    }
     if args.iter().any(Arg::is_named) {
         errors.push(format!("Named arguments are not supported for '{}'", callee));
     }
