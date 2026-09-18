@@ -82,7 +82,7 @@ fn canonicalize_xyz(delta_args: &[Arg]) -> Result<CanonicalDelta, String> {
     let mut components: [Option<Expr>; 3] = [None, None, None];
     for arg in delta_args {
         let name = arg.name.as_deref().unwrap_or_default();
-        match schema.index_of(name) {
+        match schema.field_index_of(name) {
             Some(index) => {
                 if components[index].is_some() {
                     return Err(format!("Duplicate offset component '{}'", name));
@@ -138,7 +138,7 @@ fn canonicalize_joints(dimension: usize, delta_args: &[Arg]) -> Result<Canonical
     let mut components: Vec<Option<Expr>> = vec![None; dimension];
     for arg in delta_args {
         let name = arg.name.as_deref().unwrap_or_default();
-        match schema.index_of(name) {
+        match schema.field_index_of(name) {
             Some(index) => {
                 if components[index].is_some() {
                     return Err(format!("Duplicate offset component '{}'", name));

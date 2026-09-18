@@ -237,6 +237,65 @@ fn test_named_argument_lookahead_does_not_break_comparisons() {
 }
 
 #[test]
+fn test_parse_member_call_captures_object_method_and_args() {
+    let source = r#"target P = position([1mm, 2mm, 3mm])
+fn main() {
+    movel(P.offset(x = -10mm))
+}"#;
+    let program = parse_source_spanned(source).expect("must parse");
+
+    let function = match &program.items[1] {
+        SpannedItem::Function(f) => f,
+        other => panic!("expected function, got {other:?}"),
+    };
+    let target = match &function.body[0].kind {
+        SpannedStatementKind::MoveL { target } => target,
+        other => panic!("expected movel, got {other:?}"),
+    };
+
+    match &target.kind {
+        SpannedExprKind::MemberCall {
+            object,
+            method,
+            args,
+        } => {
+            assert_eq!(object, "P");
+            assert_eq!(method, "offset");
+            assert_eq!(args.len(), 1);
+            assert_eq!(args[0].name.as_deref(), Some("x"));
+            assert_eq!(char_slice(source, args[0].name_span.expect("name span")), "x");
+        }
+        other => panic!("expected member call, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_parse_member_access_without_args_stays_a_member_access() {
+    let source = r#"target P = position([1mm, 2mm, 3mm])
+fn main() {
+    movel(P.x)
+}"#;
+    let program = parse_source_spanned(source).expect("must parse");
+
+    let function = match &program.items[1] {
+        SpannedItem::Function(f) => f,
+        other => panic!("expected function, got {other:?}"),
+    };
+    let target = match &function.body[0].kind {
+        SpannedStatementKind::MoveL { target } => target,
+        other => panic!("expected movel, got {other:?}"),
+    };
+
+    match &target.kind {
+        SpannedExprKind::MemberAccess { object, member } => {
+            assert_eq!(object, "P");
+            assert_eq!(member, "x");
+        }
+        other => panic!("expected member access, got {other:?}"),
+    }
+}
+
+#[test]
 fn test_parse_movec_circular_move() {
     let source = r#"
         fn main() {

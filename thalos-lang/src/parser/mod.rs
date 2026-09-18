@@ -158,14 +158,37 @@ pub fn parser() -> impl Parser<char, SpannedProgram, Error = Simple<char>> {
                 span: char_span(span),
             });
 
-        let member_access = ident_spanned
+        // `receiver.member` is a member access; `receiver.member(args)` is a
+        // member call. Both share one rule so the optional argument list never
+        // forces backtracking.
+        let member_expr = ident_spanned
             .clone()
             .then_ignore(just('.'))
             .then(ident_spanned.clone())
+            .then(
+                arg.clone()
+                    .separated_by(just(',').padded())
+                    .allow_trailing()
+                    .delimited_by(just('('), just(')'))
+                    .or_not(),
+            )
             .map_with_span(
-                |((object, _), (member, _)): ((String, Span), (String, Span)),
+                |(((object, _), (method, _)), args): (
+                    ((String, Span), (String, Span)),
+                    Option<Vec<SpannedArg>>,
+                ),
                  span: Range<usize>| SpannedExpr {
-                    kind: SpannedExprKind::MemberAccess { object, member },
+                    kind: match args {
+                        Some(args) => SpannedExprKind::MemberCall {
+                            object,
+                            method,
+                            args,
+                        },
+                        None => SpannedExprKind::MemberAccess {
+                            object,
+                            member: method,
+                        },
+                    },
                     span: char_span(span),
                 },
             );
@@ -200,7 +223,7 @@ pub fn parser() -> impl Parser<char, SpannedProgram, Error = Simple<char>> {
             number_expr,
             string_expr,
             boolean_expr,
-            member_access,
+            member_expr,
             identifier_expr,
         ));
 

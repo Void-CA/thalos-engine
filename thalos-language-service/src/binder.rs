@@ -135,17 +135,23 @@ fn normalize_expr(expr: &Expr, errors: &mut Vec<String>) -> Expr {
             args,
         } => {
             let normalized = normalize_args(args, errors);
-            if normalized.iter().any(Arg::is_named) {
+            if !crate::member_schema::is_member_operation(method) {
                 errors.push(format!(
-                    "Named arguments are not supported for '{}.{}'",
-                    object, method
+                    "Unknown member operation '{}' on '{}'",
+                    method, object
                 ));
+                return Expr::MemberCall {
+                    object: object.clone(),
+                    method: method.clone(),
+                    args: normalized,
+                };
             }
-            Expr::MemberCall {
-                object: object.clone(),
-                method: method.clone(),
-                args: drop_names(normalized),
-            }
+            // `receiver.op(args)` desugars to `op(receiver, args)`; the operation
+            // itself (e.g. `offset`) owns all its semantics.
+            let mut call_args = Vec::with_capacity(normalized.len() + 1);
+            call_args.push(Arg::positional(Expr::Identifier(object.clone())));
+            call_args.extend(normalized);
+            normalize_call(method, call_args, errors)
         }
         other => other.clone(),
     }
