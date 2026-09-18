@@ -11,10 +11,15 @@
 //! If the analysis surface later grows independent causes (IK failures,
 //! unsupported robots, …), replace this with a dedicated `AnalysisError`.
 
+pub mod comparison;
 pub mod manipulability;
 pub mod singularity;
 pub mod workspace;
 
+pub use comparison::{
+    AlignedPair, Alignment, ComparePipeline, ComparePipelineError, ComparePipelineOutput,
+    ComparisonMetrics, JointErrorMetrics, PlanExecutionComparison, TracePoint, compare_points,
+};
 pub use manipulability::ManipulabilityService;
 pub use singularity::SingularityService;
 pub use workspace::WorkspaceService;

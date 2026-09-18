@@ -34,7 +34,11 @@ pub mod core {
 /// canonical observation language, and the reusable analysis services.
 pub mod analysis {
     pub use thalos_core::analysis::*;
-    pub use thalos_analysis::{ManipulabilityService, SingularityService, WorkspaceService};
+    pub use thalos_analysis::{
+        AlignedPair, Alignment, ComparePipeline, ComparePipelineError, ComparePipelineOutput,
+        ComparisonMetrics, JointErrorMetrics, ManipulabilityService, PlanExecutionComparison,
+        SingularityService, TracePoint, WorkspaceService, compare_points,
+    };
 }
 
 /// Robot models: structural / URDF data types.
