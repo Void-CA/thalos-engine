@@ -7,6 +7,10 @@
 //! runtime keeps only the adapters that build `TracePoint`s from its traces.
 
 pub mod alignment;
+// The inner module is named after its domain concept and its path
+// (`comparison::comparison`) is part of the public re-export below. Renaming it
+// would be a public API change, which is out of scope for this lint chore.
+#[allow(clippy::module_inception)]
 pub mod comparison;
 pub mod input;
 pub mod metrics;

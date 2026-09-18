@@ -14,6 +14,20 @@
 //!   omitted; slimming the internal crates later must not break this surface.
 //! - `thalos-api` **must not** depend on `thalos-runtime`: the application layer
 //!   depends on the API, never the other way around.
+//!
+//! ## Target surface — ADR-020
+//!
+//! Per ADR-020, the engine owns domain + supervision **semantics** (not its
+//! execution mechanism). The following public namespaces are planned:
+//!
+//! - `execution::supervision` — execution semantics and supervision contracts
+//! - `telemetry` — execution evidence and observation semantics
+//! - `robot::controller` — robot controller contract and capabilities
+//!
+//! These namespaces are intentionally **not materialized** until the
+//! corresponding ownership move introduces their first concrete public items.
+//! Each is added in the same change that brings the concepts across the boundary,
+//! so every public path here has real semantic content behind it.
 
 /// Curated core domain surface.
 ///

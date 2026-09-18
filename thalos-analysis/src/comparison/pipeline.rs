@@ -15,6 +15,10 @@ pub enum ComparePipelineError {
     DetectorError(String),
 }
 
+// `EventEmitted` carries the full `DeviationEvent` by value on purpose: this is
+// a public boundary type (re-exported through `thalos-api`) and boxing it would
+// change its shape for every consumer. The size difference is accepted.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, PartialEq)]
 pub enum ComparePipelineOutput {
     NotComparable,
