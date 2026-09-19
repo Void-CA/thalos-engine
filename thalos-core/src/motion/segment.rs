@@ -1,4 +1,5 @@
 use crate::ids::OperationId;
+use crate::motion::constraints::MotionConstraints;
 use crate::spatial::frame::FrameId;
 use crate::spatial::pose::Pose;
 use serde::{Deserialize, Serialize};
@@ -118,6 +119,42 @@ impl MotionSegment {
             | MotionSegment::MoveC { origin, .. }
             | MotionSegment::Delay { origin, .. }
             | MotionSegment::SetOutput { origin, .. } => origin,
+        }
+    }
+
+    /// The movement's temporal REQUEST (intent), as declared by the program.
+    ///
+    /// A missing request stays `None` — it must NOT be confused with a planner
+    /// default or a robot capability. The planner resolves the request against
+    /// its defaults into an effective profile.
+    ///
+    /// `Delay` and `SetOutput` are temporal/operational, not motion: no motion
+    /// constraints apply.
+    pub fn constraints(&self) -> MotionConstraints {
+        match self {
+            MotionSegment::MoveJ {
+                max_velocity,
+                max_acceleration,
+                ..
+            }
+            | MotionSegment::MoveJPosition {
+                max_velocity,
+                max_acceleration,
+                ..
+            }
+            | MotionSegment::MoveJPose {
+                max_velocity,
+                max_acceleration,
+                ..
+            } => MotionConstraints::new(*max_velocity, *max_acceleration),
+            MotionSegment::MoveL { max_velocity, .. }
+            | MotionSegment::MoveLPosition { max_velocity, .. }
+            | MotionSegment::MoveC { max_velocity, .. } => {
+                MotionConstraints::new(*max_velocity, None)
+            }
+            MotionSegment::Delay { .. } | MotionSegment::SetOutput { .. } => {
+                MotionConstraints::NONE
+            }
         }
     }
 }

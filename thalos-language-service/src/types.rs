@@ -112,6 +112,16 @@ impl Type {
         matches!(self, Type::Error)
     }
 
+    /// Numeric widening: an `Int` value satisfies a `Float` expectation.
+    ///
+    /// This is **not** subtyping and **not** dimensional coercion — it only
+    /// promotes between the two numeric representations of the `Number`
+    /// category. `Float` never satisfies `Int`, and no physical dimension is
+    /// ever silently satisfied by a `Number`.
+    pub fn accepts_numeric_widening(&self, actual: &Type) -> bool {
+        self == actual || (*self == Type::Float && *actual == Type::Int)
+    }
+
     pub fn from_name(name: &str) -> Option<Type> {
         match name {
             "Bool" => Some(Type::Bool),

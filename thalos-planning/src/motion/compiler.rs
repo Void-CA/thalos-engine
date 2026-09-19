@@ -19,6 +19,8 @@ use crate::motion::move_c::{MoveCConfig, MoveCPlanner};
 use crate::motion::move_l::{MoveLConfig, MoveLPlanner};
 use crate::motion::planner::{SegmentPlanner, SegmentPlanningContext};
 use crate::motion::program::{CompiledPlan, PlannedSegment, PlanningProgram};
+use crate::motion::temporal::{resolve_profile, MOVE_CARTESIAN_DEFAULTS, MOVE_J_DEFAULTS};
+use thalos_core::motion::MotionConstraints;
 
 /// Dispatches a `MotionSegment` to the appropriate `MotionPlanner`.
 ///
@@ -63,17 +65,17 @@ fn plan_joint_to_config(
     ctx: &SegmentPlanningContext,
     resolver: &GoalResolver,
     joints: Option<Vec<f64>>,
-    max_velocity: Option<f64>,
-    max_acceleration: Option<f64>,
+    constraints: MotionConstraints,
 ) -> Result<Trajectory, PlanningError> {
     let joints = joints.ok_or_else(|| {
         PlanningError::InvalidContext("resolved goal missing joint positions".into())
     })?;
     let goal: ValidatedGoal<JointGoal> = resolver.resolve_joint(ctx, &joints)?;
+    let profile = resolve_profile(constraints, MOVE_J_DEFAULTS);
     let planner = MoveJPlanner::new(MoveJConfig {
-        max_velocity: max_velocity.unwrap_or(1.0),
-        max_acceleration: max_acceleration.unwrap_or(0.5),
-        time_step: 0.01,
+        max_velocity: profile.velocity,
+        max_acceleration: profile.acceleration,
+        time_step: profile.time_step,
     });
     planner.plan(ctx, &goal)
 }
@@ -85,19 +87,15 @@ impl MotionPlannerDispatcher for DefaultPlannerDispatcher {
         ctx: &SegmentPlanningContext,
     ) -> Result<Trajectory, PlanningError> {
         match segment {
-            MotionSegment::MoveJ {
-                target,
-                max_velocity,
-                max_acceleration,
-                ..
-            } => {
+            MotionSegment::MoveJ { target, .. } => {
                 let resolver = GoalResolver::new(self.goal_resolver_config.clone());
                 let goal: ValidatedGoal<JointGoal> = resolver.resolve_joint(ctx, target)?;
 
+                let profile = resolve_profile(segment.constraints(), MOVE_J_DEFAULTS);
                 let planner = MoveJPlanner::new(MoveJConfig {
-                    max_velocity: max_velocity.unwrap_or(1.0),
-                    max_acceleration: max_acceleration.unwrap_or(0.5),
-                    time_step: 0.01,
+                    max_velocity: profile.velocity,
+                    max_acceleration: profile.acceleration,
+                    time_step: profile.time_step,
                 });
                 planner.plan(ctx, &goal)
             }
@@ -109,8 +107,6 @@ impl MotionPlannerDispatcher for DefaultPlannerDispatcher {
             MotionSegment::MoveJPosition {
                 frame: _,
                 target_position,
-                max_velocity,
-                max_acceleration,
                 ..
             } => {
                 let resolver = GoalResolver::new(self.goal_resolver_config.clone());
@@ -123,14 +119,12 @@ impl MotionPlannerDispatcher for DefaultPlannerDispatcher {
                     ),
                 )?;
                 let joints = goal.goal.state.positions();
-                plan_joint_to_config(ctx, &resolver, joints, *max_velocity, *max_acceleration)
+                plan_joint_to_config(ctx, &resolver, joints, segment.constraints())
             }
 
             MotionSegment::MoveJPose {
                 frame: _,
                 target_pose,
-                max_velocity,
-                max_acceleration,
                 ..
             } => {
                 let resolver = GoalResolver::new(self.goal_resolver_config.clone());
@@ -149,20 +143,20 @@ impl MotionPlannerDispatcher for DefaultPlannerDispatcher {
                         .positions(),
                     Err(other) => return Err(other),
                 };
-                plan_joint_to_config(ctx, &resolver, joints, *max_velocity, *max_acceleration)
+                plan_joint_to_config(ctx, &resolver, joints, segment.constraints())
             }
 
             MotionSegment::MoveL {
                 frame: _,
                 target_pose,
-                max_velocity,
                 ..
             } => {
                 let resolver = GoalResolver::new(self.goal_resolver_config.clone());
+                let profile = resolve_profile(segment.constraints(), MOVE_CARTESIAN_DEFAULTS);
                 let planner = MoveLPlanner::new(MoveLConfig {
-                    max_velocity: max_velocity.unwrap_or(0.25),
-                    max_acceleration: 0.125,
-                    time_step: 0.01,
+                    max_velocity: profile.velocity,
+                    max_acceleration: profile.acceleration,
+                    time_step: profile.time_step,
                     cartesian_step: 0.01,
                 });
 
@@ -193,7 +187,6 @@ impl MotionPlannerDispatcher for DefaultPlannerDispatcher {
             MotionSegment::MoveLPosition {
                 frame: _,
                 target_position,
-                max_velocity,
                 ..
             } => {
                 let resolver = GoalResolver::new(self.goal_resolver_config.clone());
@@ -206,10 +199,11 @@ impl MotionPlannerDispatcher for DefaultPlannerDispatcher {
                     ),
                 )?;
 
+                let profile = resolve_profile(segment.constraints(), MOVE_CARTESIAN_DEFAULTS);
                 let planner = MoveLPlanner::new(MoveLConfig {
-                    max_velocity: max_velocity.unwrap_or(0.25),
-                    max_acceleration: 0.125,
-                    time_step: 0.01,
+                    max_velocity: profile.velocity,
+                    max_acceleration: profile.acceleration,
+                    time_step: profile.time_step,
                     cartesian_step: 0.01,
                 });
                 planner.plan_position(ctx, &goal)
@@ -219,7 +213,6 @@ impl MotionPlannerDispatcher for DefaultPlannerDispatcher {
                 frame: _,
                 via_position,
                 target_position,
-                max_velocity,
                 ..
             } => {
                 let resolver = GoalResolver::new(self.goal_resolver_config.clone());
@@ -238,10 +231,11 @@ impl MotionPlannerDispatcher for DefaultPlannerDispatcher {
                 let goal: ValidatedGoal<ResolvedPositionGoal> =
                     resolver.resolve_position(ctx, target)?;
 
+                let profile = resolve_profile(segment.constraints(), MOVE_CARTESIAN_DEFAULTS);
                 let planner = MoveCPlanner::new(MoveCConfig {
-                    max_velocity: max_velocity.unwrap_or(0.25),
-                    max_acceleration: 0.125,
-                    time_step: 0.01,
+                    max_velocity: profile.velocity,
+                    max_acceleration: profile.acceleration,
+                    time_step: profile.time_step,
                     cartesian_step: 0.01,
                 });
                 planner.plan(ctx, via, &goal)

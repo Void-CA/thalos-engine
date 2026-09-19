@@ -24,6 +24,10 @@ pub enum CompileTimeValue {
     Length(f64),
     Angle(f64),
     Duration(f64),
+    /// `Length / Duration`, stored in m/s.
+    Speed(f64),
+    /// `Angle / Duration`, stored in rad/s.
+    AngularSpeed(f64),
     Vector3(Vector3),
     Quaternion(UnitQuaternion),
     Transform3D(Transform3D),
@@ -42,6 +46,8 @@ impl CompileTimeValue {
             CompileTimeValue::Length(_) => Type::Length,
             CompileTimeValue::Angle(_) => Type::Angle,
             CompileTimeValue::Duration(_) => Type::Duration,
+            CompileTimeValue::Speed(_) => Type::Speed,
+            CompileTimeValue::AngularSpeed(_) => Type::AngularSpeed,
             CompileTimeValue::Vector3(_) => Type::Vector3,
             CompileTimeValue::Quaternion(_) => Type::Quaternion,
             CompileTimeValue::Transform3D(_) => Type::Transform3D,
@@ -396,6 +402,8 @@ pub fn negate_value(value: &CompileTimeValue) -> Option<CompileTimeValue> {
         CompileTimeValue::Length(l) => Some(CompileTimeValue::Length(-l)),
         CompileTimeValue::Angle(a) => Some(CompileTimeValue::Angle(-a)),
         CompileTimeValue::Duration(d) => Some(CompileTimeValue::Duration(-d)),
+        CompileTimeValue::Speed(s) => Some(CompileTimeValue::Speed(-s)),
+        CompileTimeValue::AngularSpeed(s) => Some(CompileTimeValue::AngularSpeed(-s)),
         CompileTimeValue::Vector3(v) => Some(CompileTimeValue::Vector3(-*v)),
         _ => None,
     }
