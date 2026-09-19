@@ -106,7 +106,7 @@ fn length_over_duration_is_speed() {
 
 #[test]
 fn speed_times_duration_is_length() {
-    compile_ok("fn main() { let d : Length = (100mm / 2s) * 1s }");
+    compile_ok("fn main() { let d : Length = 100mm / 2s * 1s }");
 }
 
 #[test]
@@ -174,7 +174,7 @@ fn dimensional_value_in_a_function_body() {
     compile_ok(
         r#"
 fn main() {
-    let d = (100mm / 2s) * 1s
+    let d = 100mm / 2s * 1s
     movel(position([d, 0mm, 0mm]))
 }
 "#,
@@ -189,7 +189,7 @@ fn pause(t : Duration) {
 }
 
 fn main() {
-    pause(2s)
+    pause(2s);
 }
 "#;
     let ast = parse_source(source).expect("parse");
@@ -217,7 +217,7 @@ fn move_for(p : Position, v : Speed, t : Duration) {
 }
 
 fn main() {
-    move_for(START, 100mm / 2s, 1s)
+    move_for(START, 100mm / 2s, 1s);
 }
 "#;
     let ast = parse_source(source).expect("parse");

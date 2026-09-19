@@ -37,6 +37,7 @@ pub fn binary_value(
 
     match (lhs, rhs) {
         // ── Length ──────────────────────────────────────────────────
+        (V::Length(a), V::Length(b)) if op == BinaryOp::Div => Ok(V::Float(a / b)),
         (V::Length(a), V::Length(b)) => same_dimension(op, *a, *b, V::Length, true),
         (V::Length(a), V::Duration(b)) if op == BinaryOp::Div => Ok(V::Speed(a / b)),
         (V::Length(a), r) if number_of(r).is_some() => scale(op, *a, number_of(r).unwrap(), V::Length),
@@ -45,6 +46,7 @@ pub fn binary_value(
         }
 
         // ── Angle ───────────────────────────────────────────────────
+        (V::Angle(a), V::Angle(b)) if op == BinaryOp::Div => Ok(V::Float(a / b)),
         (V::Angle(a), V::Angle(b)) => same_dimension(op, *a, *b, V::Angle, true),
         (V::Angle(a), V::Duration(b)) if op == BinaryOp::Div => Ok(V::AngularSpeed(a / b)),
         (V::Angle(a), r) if number_of(r).is_some() => scale(op, *a, number_of(r).unwrap(), V::Angle),
@@ -53,6 +55,7 @@ pub fn binary_value(
         }
 
         // ── Duration ────────────────────────────────────────────────
+        (V::Duration(a), V::Duration(b)) if op == BinaryOp::Div => Ok(V::Float(a / b)),
         (V::Duration(a), V::Duration(b)) => same_dimension(op, *a, *b, V::Duration, true),
         (V::Duration(a), r) if number_of(r).is_some() => {
             scale(op, *a, number_of(r).unwrap(), V::Duration)
