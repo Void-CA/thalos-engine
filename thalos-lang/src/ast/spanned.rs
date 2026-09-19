@@ -59,6 +59,8 @@ pub struct SpannedConstDecl {
     pub name: String,
     pub name_span: Span,
     pub type_ann: Option<String>,
+    /// Source span of the explicit type annotation, when present.
+    pub type_span: Option<Span>,
     pub value: SpannedExpr,
     pub span: Span,
 }
@@ -71,12 +73,24 @@ pub struct SpannedTargetDecl {
     pub span: Span,
 }
 
+/// A function parameter with the spans tooling needs to classify its tokens
+/// (name and, when written, the explicit type annotation).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SpannedParam {
+    pub name: String,
+    pub name_span: Span,
+    pub type_ann: Option<String>,
+    pub type_span: Option<Span>,
+    pub span: Span,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SpannedFnDecl {
     pub name: String,
     pub name_span: Span,
-    pub params: Vec<Spanned<Param>>,
+    pub params: Vec<SpannedParam>,
     pub return_type: Option<String>,
+    pub return_type_span: Option<Span>,
     pub body: Vec<SpannedStatement>,
     pub tail_expr: Option<SpannedExpr>,
     pub span: Span,
@@ -95,6 +109,8 @@ pub enum SpannedStatementKind {
         name: String,
         name_span: Span,
         type_ann: Option<String>,
+        /// Source span of the explicit type annotation, when present.
+        type_span: Option<Span>,
         value: SpannedExpr,
     },
     MoveJ {
@@ -169,12 +185,16 @@ pub enum SpannedExprKind {
     },
     MemberCall {
         object: String,
+        object_span: Span,
         method: String,
+        method_span: Span,
         args: Vec<SpannedArg>,
     },
     MemberAccess {
         object: String,
+        object_span: Span,
         member: String,
+        member_span: Span,
     },
     Binary {
         left: Box<SpannedExpr>,
@@ -214,7 +234,14 @@ impl SpannedItem {
             }),
             SpannedItem::Function(f) => Item::Function(FnDecl {
                 name: f.name,
-                params: f.params.into_iter().map(|p| p.node).collect(),
+                params: f
+                    .params
+                    .into_iter()
+                    .map(|p| Param {
+                        name: p.name,
+                        type_ann: p.type_ann,
+                    })
+                    .collect(),
                 return_type: f.return_type,
                 body: f.body.into_iter().map(SpannedStatement::unspan).collect(),
                 tail_expr: f.tail_expr.map(|e| Box::new(e.unspan())),
@@ -297,14 +324,15 @@ impl SpannedExpr {
                 object,
                 method,
                 args,
+                ..
             } => Expr::MemberCall {
                 object,
                 method,
                 args: args.into_iter().map(SpannedArg::unspan).collect(),
             },
-            SpannedExprKind::MemberAccess { object, member } => {
-                Expr::MemberAccess { object, member }
-            }
+            SpannedExprKind::MemberAccess {
+                object, member, ..
+            } => Expr::MemberAccess { object, member },
             SpannedExprKind::Binary { left, op, right } => Expr::Binary {
                 left: Box::new(left.unspan()),
                 op,

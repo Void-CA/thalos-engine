@@ -1,4 +1,5 @@
 use thalos_language_service::intelligence::analyze_intelligence;
+use thalos_language_service::intelligence::{HintOrigin, SemanticTokenKind};
 use thalos_language_service::types::Type;
 
 fn slice<'a>(source: &'a str, span: &thalos_language_service::SourceSpan) -> &'a str {
@@ -42,6 +43,95 @@ fn infers_declaration_types_as_inlay_hints() {
 }
 
 #[test]
+fn inlay_hints_distinguish_declared_from_inferred_types() {
+    let source = r#"const D : Length = 5mm
+const I = 5mm
+target t = position([1mm, 2mm, 3mm])
+
+fn f(p : Position, q, side : Length) {
+    let a : Length = side
+    let b = side
+    movel(p)
+}
+
+fn main() {}
+"#;
+    let intelligence = analyze_intelligence(source, 1);
+    assert!(
+        intelligence.diagnostics.is_empty(),
+        "program must be valid, got {:?}",
+        intelligence.diagnostics
+    );
+
+    let origin = |name: &str| {
+        intelligence
+            .hints
+            .iter()
+            .find(|h| h.name == name)
+            .unwrap_or_else(|| panic!("missing hint for {name}"))
+            .origin
+    };
+
+    // Explicit annotations must not be repeated as inlay hints.
+    assert_eq!(origin("D"), HintOrigin::Declared);
+    assert_eq!(origin("p"), HintOrigin::Declared);
+    assert_eq!(origin("side"), HintOrigin::Declared);
+    assert_eq!(origin("a"), HintOrigin::Declared);
+
+    // Inferred declarations keep their hint.
+    assert_eq!(origin("I"), HintOrigin::Inferred);
+    assert_eq!(origin("q"), HintOrigin::Inferred);
+    assert_eq!(origin("b"), HintOrigin::Inferred);
+    // `target` has no annotation syntax, so it is always inferred.
+    assert_eq!(origin("t"), HintOrigin::Inferred);
+}
+
+#[test]
+fn classifies_semantic_tokens_by_role() {
+    let source = r#"target jtt = joints(20deg, 30deg, 0deg, 0deg, 0deg, 0deg)
+target ptt = position([1mm, 2mm, 3mm])
+const LIMIT : Length = 5mm
+
+fn draw_square(start_point : Position, side : Length) {
+    let p1 = start_point.offset(x = side)
+    let dx = start_point.x
+    movel(p1)
+}
+
+fn main() {
+    movej(jtt)
+    draw_square(ptt, LIMIT)
+}
+"#;
+    let intelligence = analyze_intelligence(source, 1);
+
+    let has = |kind: SemanticTokenKind, text: &str| {
+        intelligence
+            .tokens
+            .iter()
+            .any(|token| token.kind == kind && slice(source, &token.span) == text)
+    };
+
+    // Explicit type annotations.
+    assert!(has(SemanticTokenKind::Type, "Position"));
+    assert!(has(SemanticTokenKind::Type, "Length"));
+    // Function declarations and calls (builtins included).
+    assert!(has(SemanticTokenKind::Function, "draw_square"));
+    assert!(has(SemanticTokenKind::Function, "joints"));
+    assert!(has(SemanticTokenKind::Function, "position"));
+    // Member call vs member access.
+    assert!(has(SemanticTokenKind::Method, "offset"));
+    assert!(has(SemanticTokenKind::Property, "x"));
+    // Symbol references.
+    assert!(has(SemanticTokenKind::Parameter, "start_point"));
+    assert!(has(SemanticTokenKind::Parameter, "side"));
+    assert!(has(SemanticTokenKind::Variable, "p1"));
+    assert!(has(SemanticTokenKind::Target, "jtt"));
+    assert!(has(SemanticTokenKind::Target, "ptt"));
+    assert!(has(SemanticTokenKind::Const, "LIMIT"));
+}
+
+#[test]
 fn exposes_expression_types_with_precise_spans() {
     let intelligence = analyze_intelligence(PROGRAM, 1);
 
@@ -65,7 +155,7 @@ fn exposes_expression_types_with_precise_spans() {
 }
 
 #[test]
-fn reports_semantic_diagnostics_with_best_effort_span() {
+fn reports_semantic_diagnostics_with_real_source_spans() {
     let source = r#"target ptt = position([2.152, 0.783, 1.882])
 
 fn main() {
@@ -77,7 +167,27 @@ fn main() {
     assert_eq!(intelligence.diagnostics.len(), 1);
     let diagnostic = &intelligence.diagnostics[0];
     assert_eq!(diagnostic.message, "Unknown identifier 'ptt2'");
-    assert_eq!(slice(source, &diagnostic.span), "ptt2");
+    // The span is the engine-owned target expression, not a fabricated location.
+    assert_eq!(slice(source, &diagnostic.span), "ptt2 - ptt");
+}
+
+#[test]
+fn motion_type_error_points_at_the_target_node() {
+    let source = r#"target jtt = joints(20deg, 30deg, 0deg, 0deg, 0deg, 0deg)
+
+fn main() {
+    movel(jtt)
+}
+"#;
+    let intelligence = analyze_intelligence(source, 1);
+
+    let diagnostic = intelligence
+        .diagnostics
+        .iter()
+        .find(|d| d.message.contains("movel expected a spatial target"))
+        .expect("expected a movel target diagnostic");
+    // Points at `jtt`, not at the whole `movel(jtt)` statement.
+    assert_eq!(slice(source, &diagnostic.span), "jtt");
 }
 
 #[test]

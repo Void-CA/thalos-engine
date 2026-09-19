@@ -269,6 +269,7 @@ fn main() {
             object,
             method,
             args,
+            ..
         } => {
             assert_eq!(object, "P");
             assert_eq!(method, "offset");
@@ -298,12 +299,50 @@ fn main() {
     };
 
     match &target.kind {
-        SpannedExprKind::MemberAccess { object, member } => {
+        SpannedExprKind::MemberAccess { object, member, .. } => {
             assert_eq!(object, "P");
             assert_eq!(member, "x");
         }
         other => panic!("expected member access, got {other:?}"),
     }
+}
+
+#[test]
+fn test_parse_captures_type_and_member_spans() {
+    let source = r#"fn f(p : Position) {
+    let q : Length = p.offset(x = 1mm)
+}"#;
+    let program = parse_source_spanned(source).expect("must parse");
+
+    let SpannedItem::Function(f) = &program.items[0] else {
+        panic!("expected function");
+    };
+    let param = &f.params[0];
+    assert_eq!(char_slice(source, param.name_span), "p");
+    assert_eq!(char_slice(source, param.type_span.expect("param type span")), "Position");
+
+    let SpannedStatementKind::Let {
+        name_span,
+        type_span,
+        value,
+        ..
+    } = &f.body[0].kind
+    else {
+        panic!("expected let");
+    };
+    assert_eq!(char_slice(source, *name_span), "q");
+    assert_eq!(char_slice(source, type_span.expect("let type span")), "Length");
+
+    let SpannedExprKind::MemberCall {
+        object_span,
+        method_span,
+        ..
+    } = &value.kind
+    else {
+        panic!("expected member call, got {:?}", value.kind);
+    };
+    assert_eq!(char_slice(source, *object_span), "p");
+    assert_eq!(char_slice(source, *method_span), "offset");
 }
 
 #[test]
