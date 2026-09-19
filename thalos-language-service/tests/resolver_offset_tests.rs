@@ -39,7 +39,7 @@ fn assert_close(actual: f64, expected: f64) {
 fn offset_over_locals_in_a_called_function_resolves() {
     let source = r#"
 target jtt = joints(20deg, 30deg, 0deg, 0deg, 0deg, 0deg)
-target ptt = position([2.152, 0.783, 1.882])
+target ptt = position([2.152m, 0.783m, 1.882m])
 
 fn draw_square(start_point : Position, side : Length) {
     let p1 = start_point.offset(x = side);

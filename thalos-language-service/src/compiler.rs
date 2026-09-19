@@ -142,13 +142,13 @@ mod tests {
     fn undeclared_identifier_reports_a_single_root_cause() {
         let source = r#"
 target jtt = joints(20deg, 30deg, 0deg, 0deg, 0deg, 0deg)
-target ptt = position([2.152, 0.783, 1.882])
+target ptt = position([2.152m, 0.783m, 1.882m])
 
 fn main() {
     movej(jtt)
     movel(ptt)
 
-    let offset1 = [1, 0, 0]
+    let offset1 = [1m, 0m, 0m]
     movel(ptt2 - offset1)
 }
 "#;
@@ -209,6 +209,9 @@ pub(crate) fn prepare_symbols(ast: &Program) -> PreparedSymbols {
                             None,
                         ));
                     }
+                    EvalResult::Error(diag) => {
+                        errors.push(format!("const '{}': {}", name, diag.message));
+                    }
                     _ => {
                         errors.push(format!("const '{}' must evaluate to a compile-time constant", name));
                     }
@@ -267,6 +270,9 @@ pub(crate) fn prepare_symbols(ast: &Program) -> PreparedSymbols {
                             value: target_val,
                             provenance: Provenance::new(Some(name.clone()), None),
                         });
+                    }
+                    EvalResult::Error(diag) => {
+                        errors.push(format!("Target '{}': {}", name, diag.message));
                     }
                     _ => {
                         errors.push(format!("Target '{}' could not be evaluated to a constant target", name));

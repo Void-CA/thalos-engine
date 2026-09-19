@@ -70,6 +70,12 @@ pub enum Type {
     Angle,
     Duration,
 
+    // Derived physical units
+    /// `Length / Duration` (m/s).
+    Speed,
+    /// `Angle / Duration` (rad/s).
+    AngularSpeed,
+
     // Geometry
     Vector3,
     Quaternion,
@@ -115,6 +121,8 @@ impl Type {
             "Length" => Some(Type::Length),
             "Angle" => Some(Type::Angle),
             "Duration" => Some(Type::Duration),
+            "Speed" => Some(Type::Speed),
+            "AngularSpeed" => Some(Type::AngularSpeed),
             "Vector3" => Some(Type::Vector3),
             "Quaternion" => Some(Type::Quaternion),
             "Transform3D" => Some(Type::Transform3D),

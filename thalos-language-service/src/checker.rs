@@ -192,15 +192,35 @@ impl<'a> TypeChecker<'a> {
                     span: None,
                 }
             }
-            Expr::Vector3([x, y, z]) => {
-                let elems = [self.infer_expr(x), self.infer_expr(y), self.infer_expr(z)];
+            Expr::Vector3(components) => {
+                // A `Vector3` is a geometric displacement: each component must be
+                // a `Length`. Bare `Number` components are rejected (no implicit
+                // Number -> dimension coercion).
+                let elems = [
+                    self.infer_expr(&components[0]),
+                    self.infer_expr(&components[1]),
+                    self.infer_expr(&components[2]),
+                ];
+                if elems.iter().any(|e| e.ty.is_error()) {
+                    return TypedExpr {
+                        expr: expr.clone(),
+                        ty: Type::Error,
+                        span: None,
+                    };
+                }
+                let mut ok = true;
+                for elem in &elems {
+                    if elem.ty != Type::Length {
+                        self.push_diag(format!(
+                            "vector component expected Length, found {:?}",
+                            elem.ty
+                        ));
+                        ok = false;
+                    }
+                }
                 TypedExpr {
                     expr: expr.clone(),
-                    ty: if elems.iter().any(|e| e.ty.is_error()) {
-                        Type::Error
-                    } else {
-                        Type::Vector3
-                    },
+                    ty: if ok { Type::Vector3 } else { Type::Error },
                     span: None,
                 }
             }
@@ -209,10 +229,10 @@ impl<'a> TypeChecker<'a> {
                     args.iter().map(|a| self.infer_expr(&a.value)).collect();
                 let param_types: Vec<Type> = arg_types.iter().map(|a| a.ty.clone()).collect();
 
-                // `joints` is a variadic constructor: any number of Angle/Length/
-                // Number values, or a single Vector3 expanded to three. The
-                // fixed-arity overload model cannot express it, so it is handled
-                // explicitly (mirrors the compile-time evaluator).
+                // `joints` is a variadic constructor of `Angle` components (a
+                // joint configuration is not a cartesian Vector3). The
+                // fixed-arity overload model cannot express variadicity, so it is
+                // handled explicitly (mirrors the compile-time evaluator).
                 if callee == "joints" {
                     if arg_types.iter().any(|a| a.ty.is_error()) {
                         return TypedExpr {
@@ -221,14 +241,25 @@ impl<'a> TypeChecker<'a> {
                             span: None,
                         };
                     }
-                    let dimension = if arg_types.len() == 1 && param_types[0] == Type::Vector3 {
-                        Some(3)
-                    } else {
-                        Some(arg_types.len())
-                    };
+                    let mut ok = true;
+                    for arg in &arg_types {
+                        if arg.ty != Type::Angle {
+                            self.push_diag(format!(
+                                "joints component expected Angle, found {:?}",
+                                arg.ty
+                            ));
+                            ok = false;
+                        }
+                    }
                     return TypedExpr {
                         expr: expr.clone(),
-                        ty: Type::Joints { dimension },
+                        ty: if ok {
+                            Type::Joints {
+                                dimension: Some(arg_types.len()),
+                            }
+                        } else {
+                            Type::Error
+                        },
                         span: None,
                     };
                 }
@@ -282,7 +313,7 @@ impl<'a> TypeChecker<'a> {
                                 let delta_ty = self.infer_expr(&arg.value).ty;
                                 if !delta_ty.is_error() && !is_offset_scalar(&delta_ty) {
                                     self.push_diag(format!(
-                                        "offset joint delta expected Angle, Length, or number, got {:?}",
+                                        "offset joint delta expected Angle, found {:?}",
                                         delta_ty
                                     ));
                                     ok = false;
@@ -505,8 +536,10 @@ impl<'a> TypeChecker<'a> {
     }
 }
 
+/// `offset` joint deltas address a revolute joint, so they must be an `Angle`.
+/// Prismatic joints (`Length`) are a future joint-kind profile.
 fn is_offset_scalar(ty: &Type) -> bool {
-    matches!(ty, Type::Angle | Type::Length | Type::Float | Type::Int)
+    matches!(ty, Type::Angle)
 }
 
 #[cfg(test)]

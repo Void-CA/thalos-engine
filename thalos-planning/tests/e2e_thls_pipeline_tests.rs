@@ -85,7 +85,7 @@ fn test_e2e_rejection_guard_movel_on_joints() {
     // movel(joints(...)) is invalid and must be rejected in thalos-semantic before reaching PlanningInput
     let source = "
     fn main() {
-        movel(joints([0deg, 0deg, 0deg]))
+        movel(joints(0deg, 0deg, 0deg))
     }
     ";
 

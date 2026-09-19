@@ -99,28 +99,29 @@ impl<'a> Evaluator<'a> {
             Expr::Angle(a) => EvalResult::Value(CompileTimeValue::Angle(a.0)),
             Expr::Duration(d) => EvalResult::Value(CompileTimeValue::Duration(d.0)),
             Expr::Vector3([x_expr, y_expr, z_expr]) => {
-                let x = match self.eval_expr(x_expr) {
-                    EvalResult::Value(CompileTimeValue::Length(v)) => v,
-                    EvalResult::Value(CompileTimeValue::Angle(v)) => v,
-                    EvalResult::Value(CompileTimeValue::Float(v)) => v,
-                    EvalResult::Value(CompileTimeValue::Int(v)) => v as f64,
-                    other => return other,
-                };
-                let y = match self.eval_expr(y_expr) {
-                    EvalResult::Value(CompileTimeValue::Length(v)) => v,
-                    EvalResult::Value(CompileTimeValue::Angle(v)) => v,
-                    EvalResult::Value(CompileTimeValue::Float(v)) => v,
-                    EvalResult::Value(CompileTimeValue::Int(v)) => v as f64,
-                    other => return other,
-                };
-                let z = match self.eval_expr(z_expr) {
-                    EvalResult::Value(CompileTimeValue::Length(v)) => v,
-                    EvalResult::Value(CompileTimeValue::Angle(v)) => v,
-                    EvalResult::Value(CompileTimeValue::Float(v)) => v,
-                    EvalResult::Value(CompileTimeValue::Int(v)) => v as f64,
-                    other => return other,
-                };
-                EvalResult::Value(CompileTimeValue::Vector3(Vector3::new(x, y, z)))
+                // A Vector3 is a geometric displacement: every component must be
+                // a `Length`. No implicit Number -> dimension coercion.
+                let mut components = [0.0_f64; 3];
+                for (index, component_expr) in [x_expr, y_expr, z_expr].into_iter().enumerate() {
+                    match self.eval_expr(component_expr) {
+                        EvalResult::Value(CompileTimeValue::Length(v)) => components[index] = v,
+                        EvalResult::Value(other) => {
+                            return EvalResult::Error(SemanticDiagnostic {
+                                message: format!(
+                                    "vector component expected Length, found {:?}",
+                                    other.get_type()
+                                ),
+                                span: None,
+                            });
+                        }
+                        other => return other,
+                    }
+                }
+                EvalResult::Value(CompileTimeValue::Vector3(Vector3::new(
+                    components[0],
+                    components[1],
+                    components[2],
+                )))
             }
             Expr::Identifier(id) => {
                 if let Some(values) = self.target_values
@@ -182,18 +183,23 @@ impl<'a> Evaluator<'a> {
                     }
                 }
                 "joints" => {
+                    // A joint configuration is a sequence of `Angle` components;
+                    // bare numbers and cartesian vectors are rejected.
                     let mut vals = Vec::new();
                     for arg in args {
                         match self.eval_expr(&arg.value) {
                             EvalResult::Value(CompileTimeValue::Angle(a)) => vals.push(a),
-                            EvalResult::Value(CompileTimeValue::Length(l)) => vals.push(l),
-                            EvalResult::Value(CompileTimeValue::Float(f)) => vals.push(f),
-                            EvalResult::Value(CompileTimeValue::Vector3(v)) => {
-                                vals.push(v.x);
-                                vals.push(v.y);
-                                vals.push(v.z);
+                            EvalResult::Error(err) => return EvalResult::Error(err),
+                            EvalResult::NotConstant => return EvalResult::NotConstant,
+                            EvalResult::Value(other) => {
+                                return EvalResult::Error(SemanticDiagnostic {
+                                    message: format!(
+                                        "joints component expected Angle, found {:?}",
+                                        other.get_type()
+                                    ),
+                                    span: None,
+                                });
                             }
-                            other => return other,
                         }
                     }
                     EvalResult::Value(CompileTimeValue::Joints(vals))

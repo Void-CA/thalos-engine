@@ -86,7 +86,7 @@ fn negated_parameter_in_a_function_body_compiles() {
     compile_ok(
         r#"
 target jtt = joints(20deg, 30deg, 0deg, 0deg, 0deg, 0deg)
-target ptt = position([2.152, 0.783, 1.882])
+target ptt = position([2.152m, 0.783m, 1.882m])
 
 fn draw_square(start_point : Position, side : Length) {
     movel(start_point.offset(x = side))
@@ -98,8 +98,8 @@ fn draw_square(start_point : Position, side : Length) {
 fn main() {
     movej(jtt)
     movel(ptt)
-    movel(ptt.offset(x = -1))
-    movel(ptt.offset(y = -0.5))
+    movel(ptt.offset(x = -1m))
+    movel(ptt.offset(y = -0.5m))
 }
 "#,
     );

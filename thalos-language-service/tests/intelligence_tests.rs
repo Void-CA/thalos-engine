@@ -7,13 +7,13 @@ fn slice<'a>(source: &'a str, span: &thalos_language_service::SourceSpan) -> &'a
 }
 
 const PROGRAM: &str = r#"target jtt = joints(20deg, 30deg, 0deg, 0deg, 0deg, 0deg)
-target ptt = position([2.152, 0.783, 1.882])
+target ptt = position([2.152m, 0.783m, 1.882m])
 
 fn main() {
     movej(jtt)
     movel(ptt)
 
-    let offset1 = [1, 0, 0]
+    let offset1 = [1m, 0m, 0m]
     movel(ptt - offset1)
 }
 "#;
@@ -156,7 +156,7 @@ fn exposes_expression_types_with_precise_spans() {
 
 #[test]
 fn reports_semantic_diagnostics_with_real_source_spans() {
-    let source = r#"target ptt = position([2.152, 0.783, 1.882])
+    let source = r#"target ptt = position([2.152m, 0.783m, 1.882m])
 
 fn main() {
     movel(ptt2 - ptt)
@@ -192,7 +192,7 @@ fn main() {
 
 #[test]
 fn joints_constructor_is_known_inside_function_bodies() {
-    let source = "fn main() {\n    movel(joints([0deg, 0deg, 0deg]))\n}";
+    let source = "fn main() {\n    movel(joints(0deg, 0deg, 0deg))\n}";
     let intelligence = analyze_intelligence(source, 1);
 
     // `joints` must resolve to Joints, so movel is rejected on the spatial
