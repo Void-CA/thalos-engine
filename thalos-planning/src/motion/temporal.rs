@@ -110,8 +110,7 @@ mod tests {
 
     #[test]
     fn absent_request_resolves_to_the_legacy_cartesian_defaults() {
-        let profile =
-            resolve_profile(MotionConstraints::NONE, MotionDefaults::default().cartesian);
+        let profile = resolve_profile(MotionConstraints::NONE, MotionDefaults::default().cartesian);
         assert_eq!(profile.velocity, 0.25);
         assert_eq!(profile.acceleration, 0.125);
         assert_eq!(profile.time_step, DEFAULT_TIME_STEP);

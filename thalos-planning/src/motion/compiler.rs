@@ -133,7 +133,13 @@ impl MotionPlannerDispatcher for DefaultPlannerDispatcher {
                     ),
                 )?;
                 let joints = goal.goal.state.positions();
-                plan_joint_to_config(ctx, &resolver, joints, segment.constraints(), self.motion_defaults.joint)
+                plan_joint_to_config(
+                    ctx,
+                    &resolver,
+                    joints,
+                    segment.constraints(),
+                    self.motion_defaults.joint,
+                )
             }
 
             MotionSegment::MoveJPose {
@@ -157,7 +163,13 @@ impl MotionPlannerDispatcher for DefaultPlannerDispatcher {
                         .positions(),
                     Err(other) => return Err(other),
                 };
-                plan_joint_to_config(ctx, &resolver, joints, segment.constraints(), self.motion_defaults.joint)
+                plan_joint_to_config(
+                    ctx,
+                    &resolver,
+                    joints,
+                    segment.constraints(),
+                    self.motion_defaults.joint,
+                )
             }
 
             MotionSegment::MoveL {
@@ -166,7 +178,8 @@ impl MotionPlannerDispatcher for DefaultPlannerDispatcher {
                 ..
             } => {
                 let resolver = GoalResolver::new(self.goal_resolver_config.clone());
-                let profile = resolve_profile(segment.constraints(), self.motion_defaults.cartesian);
+                let profile =
+                    resolve_profile(segment.constraints(), self.motion_defaults.cartesian);
                 let planner = MoveLPlanner::new(MoveLConfig {
                     max_velocity: profile.velocity,
                     max_acceleration: profile.acceleration,
@@ -213,7 +226,8 @@ impl MotionPlannerDispatcher for DefaultPlannerDispatcher {
                     ),
                 )?;
 
-                let profile = resolve_profile(segment.constraints(), self.motion_defaults.cartesian);
+                let profile =
+                    resolve_profile(segment.constraints(), self.motion_defaults.cartesian);
                 let planner = MoveLPlanner::new(MoveLConfig {
                     max_velocity: profile.velocity,
                     max_acceleration: profile.acceleration,
@@ -242,7 +256,8 @@ impl MotionPlannerDispatcher for DefaultPlannerDispatcher {
                 let goal: ValidatedGoal<ResolvedPositionGoal> =
                     resolver.resolve_position(ctx, target)?;
 
-                let profile = resolve_profile(segment.constraints(), self.motion_defaults.cartesian);
+                let profile =
+                    resolve_profile(segment.constraints(), self.motion_defaults.cartesian);
                 let planner = MoveCPlanner::new(MoveCConfig {
                     max_velocity: profile.velocity,
                     max_acceleration: profile.acceleration,
