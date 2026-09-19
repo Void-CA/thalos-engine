@@ -42,7 +42,7 @@ fn public_surface_is_self_contained() {
     };
     use thalos_api::document::program_document::ProgramDocument;
     use thalos_api::importer::import_urdf;
-    use thalos_api::lang::{parse_source, DEFAULT_PROGRAM};
+    use thalos_api::lang::parse_source;
     use thalos_api::planning::execution_plan_builder::ExecutionPlanBuilder;
     use thalos_api::semantic::DocumentAnalysis;
     use thalos_api::visual::{SceneBuilder, VisualScene};

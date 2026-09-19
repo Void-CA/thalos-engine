@@ -59,7 +59,18 @@ fn test_parse_simple_program() {
 fn test_unspan_roundtrip_equivalence() {
     // Guard: stripping spans must reproduce the semantic AST exactly.
     let sources = [
-        thalos_lang::DEFAULT_PROGRAM,
+        r#"const CLEARANCE = [0mm, 0mm, 150mm]
+
+target PARK = joints(0deg, -30deg, -25deg, 0deg)
+target PICK = position([1320mm, 140mm, 80mm])
+
+fn main() {
+    movej(PARK)
+    movel(PICK)
+    wait(500ms)
+    movej(PARK)
+}
+"#,
         r#"
 target jtt = joints(20deg, 30deg, 0deg, 0deg, 0deg, 0deg)
 target ptt = position([2.152, 0.783, 1.882])
