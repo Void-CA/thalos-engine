@@ -19,7 +19,7 @@ use crate::motion::move_j::{MoveJConfig, MoveJPlanner};
 use crate::motion::move_l::{MoveLConfig, MoveLPlanner};
 use crate::motion::planner::{SegmentPlanner, SegmentPlanningContext};
 use crate::motion::program::{CompiledPlan, PlannedSegment, PlanningProgram};
-use crate::motion::temporal::{MOVE_CARTESIAN_DEFAULTS, MOVE_J_DEFAULTS, resolve_profile};
+use crate::motion::temporal::{MotionDefaults, PlannerDefaults, resolve_profile};
 use thalos_core::motion::MotionConstraints;
 
 /// Dispatches a `MotionSegment` to the appropriate `MotionPlanner`.
@@ -42,16 +42,29 @@ pub trait MotionPlannerDispatcher {
 /// Uses `GoalResolver` for validation and delegates to `MoveJPlanner` /
 /// `MoveLPlanner`. New segment types require a new `match` arm here —
 /// the compiler stays untouched.
+///
+/// `motion_defaults` is the planner's configurable temporal configuration. The
+/// dispatcher does NOT know where it comes from: it only receives it, so a
+/// robot profile / safety authority can be layered in later.
 #[derive(Default)]
 pub struct DefaultPlannerDispatcher {
     pub goal_resolver_config: GoalResolverConfig,
+    pub motion_defaults: MotionDefaults,
 }
 
 impl DefaultPlannerDispatcher {
     pub fn new(config: GoalResolverConfig) -> Self {
         Self {
             goal_resolver_config: config,
+            motion_defaults: MotionDefaults::default(),
         }
+    }
+
+    /// Inject the planner's motion defaults (the temporal fallback used when a
+    /// movement does not request a constraint).
+    pub fn with_motion_defaults(mut self, motion_defaults: MotionDefaults) -> Self {
+        self.motion_defaults = motion_defaults;
+        self
     }
 }
 
@@ -59,18 +72,20 @@ impl DefaultPlannerDispatcher {
 /// plan a JOINT-space trajectory to it.
 ///
 /// Shared by the cartesian-target `MoveJ` variants so a declared `movej` never
-/// degrades into a linear cartesian move.
+/// degrades into a linear cartesian move. `defaults` are the JOINT-space
+/// planner defaults.
 fn plan_joint_to_config(
     ctx: &SegmentPlanningContext,
     resolver: &GoalResolver,
     joints: Option<Vec<f64>>,
     constraints: MotionConstraints,
+    defaults: PlannerDefaults,
 ) -> Result<Trajectory, PlanningError> {
     let joints = joints.ok_or_else(|| {
         PlanningError::InvalidContext("resolved goal missing joint positions".into())
     })?;
     let goal: ValidatedGoal<JointGoal> = resolver.resolve_joint(ctx, &joints)?;
-    let profile = resolve_profile(constraints, MOVE_J_DEFAULTS);
+    let profile = resolve_profile(constraints, defaults);
     let planner = MoveJPlanner::new(MoveJConfig {
         max_velocity: profile.velocity,
         max_acceleration: profile.acceleration,
@@ -90,7 +105,7 @@ impl MotionPlannerDispatcher for DefaultPlannerDispatcher {
                 let resolver = GoalResolver::new(self.goal_resolver_config.clone());
                 let goal: ValidatedGoal<JointGoal> = resolver.resolve_joint(ctx, target)?;
 
-                let profile = resolve_profile(segment.constraints(), MOVE_J_DEFAULTS);
+                let profile = resolve_profile(segment.constraints(), self.motion_defaults.joint);
                 let planner = MoveJPlanner::new(MoveJConfig {
                     max_velocity: profile.velocity,
                     max_acceleration: profile.acceleration,
@@ -118,7 +133,7 @@ impl MotionPlannerDispatcher for DefaultPlannerDispatcher {
                     ),
                 )?;
                 let joints = goal.goal.state.positions();
-                plan_joint_to_config(ctx, &resolver, joints, segment.constraints())
+                plan_joint_to_config(ctx, &resolver, joints, segment.constraints(), self.motion_defaults.joint)
             }
 
             MotionSegment::MoveJPose {
@@ -142,7 +157,7 @@ impl MotionPlannerDispatcher for DefaultPlannerDispatcher {
                         .positions(),
                     Err(other) => return Err(other),
                 };
-                plan_joint_to_config(ctx, &resolver, joints, segment.constraints())
+                plan_joint_to_config(ctx, &resolver, joints, segment.constraints(), self.motion_defaults.joint)
             }
 
             MotionSegment::MoveL {
@@ -151,7 +166,7 @@ impl MotionPlannerDispatcher for DefaultPlannerDispatcher {
                 ..
             } => {
                 let resolver = GoalResolver::new(self.goal_resolver_config.clone());
-                let profile = resolve_profile(segment.constraints(), MOVE_CARTESIAN_DEFAULTS);
+                let profile = resolve_profile(segment.constraints(), self.motion_defaults.cartesian);
                 let planner = MoveLPlanner::new(MoveLConfig {
                     max_velocity: profile.velocity,
                     max_acceleration: profile.acceleration,
@@ -198,7 +213,7 @@ impl MotionPlannerDispatcher for DefaultPlannerDispatcher {
                     ),
                 )?;
 
-                let profile = resolve_profile(segment.constraints(), MOVE_CARTESIAN_DEFAULTS);
+                let profile = resolve_profile(segment.constraints(), self.motion_defaults.cartesian);
                 let planner = MoveLPlanner::new(MoveLConfig {
                     max_velocity: profile.velocity,
                     max_acceleration: profile.acceleration,
@@ -227,7 +242,7 @@ impl MotionPlannerDispatcher for DefaultPlannerDispatcher {
                 let goal: ValidatedGoal<ResolvedPositionGoal> =
                     resolver.resolve_position(ctx, target)?;
 
-                let profile = resolve_profile(segment.constraints(), MOVE_CARTESIAN_DEFAULTS);
+                let profile = resolve_profile(segment.constraints(), self.motion_defaults.cartesian);
                 let planner = MoveCPlanner::new(MoveCConfig {
                     max_velocity: profile.velocity,
                     max_acceleration: profile.acceleration,
@@ -1201,5 +1216,66 @@ mod tests {
             .joints()
             .to_vec();
         assert_eq!(last, vec![0.5, 0.5]);
+    }
+
+    fn movej_program(target: Vec<f64>) -> PlanningProgram {
+        PlanningProgram::new(vec![MotionSegment::MoveJ {
+            origin: OperationId("timing".into()),
+            target,
+            max_velocity: None,
+            max_acceleration: None,
+        }])
+    }
+
+    #[test]
+    fn custom_joint_defaults_change_movej_timing() {
+        let h = TestHarness::new();
+        let program = movej_program(vec![1.0, 1.0]);
+
+        let default_plan = PlanCompiler::new(Box::new(DefaultPlannerDispatcher::default()))
+            .compile(&program, &h.ctx())
+            .expect("default plan");
+
+        let faster = DefaultPlannerDispatcher::default().with_motion_defaults(
+            crate::motion::temporal::MotionDefaults::new(
+                crate::motion::temporal::PlannerDefaults::new(10.0, 10.0),
+                crate::motion::temporal::PlannerDefaults::new(0.25, 0.125),
+            ),
+        );
+        let faster_plan = PlanCompiler::new(Box::new(faster))
+            .compile(&program, &h.ctx())
+            .expect("custom-defaults plan");
+
+        assert!(
+            faster_plan.duration < default_plan.duration,
+            "higher joint defaults must shorten MoveJ: {} vs {}",
+            faster_plan.duration,
+            default_plan.duration
+        );
+    }
+
+    #[test]
+    fn custom_cartesian_defaults_do_not_change_movej_timing() {
+        let h = TestHarness::new();
+        let program = movej_program(vec![1.0, 1.0]);
+
+        let default_plan = PlanCompiler::new(Box::new(DefaultPlannerDispatcher::default()))
+            .compile(&program, &h.ctx())
+            .expect("default plan");
+
+        let cartesian_changed = DefaultPlannerDispatcher::default().with_motion_defaults(
+            crate::motion::temporal::MotionDefaults::new(
+                crate::motion::temporal::PlannerDefaults::new(1.0, 0.5),
+                crate::motion::temporal::PlannerDefaults::new(99.0, 99.0),
+            ),
+        );
+        let plan = PlanCompiler::new(Box::new(cartesian_changed))
+            .compile(&program, &h.ctx())
+            .expect("cartesian-changed plan");
+
+        assert_eq!(
+            plan.duration, default_plan.duration,
+            "cartesian defaults must not affect MoveJ"
+        );
     }
 }
