@@ -463,6 +463,12 @@ fn collect_expr(
             collect_expr(sl, l, checker, source, expressions);
             collect_expr(sr, r, checker, source, expressions);
         }
+        (
+            SpannedExprKind::Unary { operand: so, .. },
+            Expr::Unary { operand: o, .. },
+        ) => {
+            collect_expr(so, o, checker, source, expressions);
+        }
         _ => {}
     }
 }

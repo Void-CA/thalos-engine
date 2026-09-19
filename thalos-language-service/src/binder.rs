@@ -125,6 +125,10 @@ fn normalize_expr(expr: &Expr, errors: &mut Vec<String>) -> Expr {
             op: *op,
             right: Box::new(normalize_expr(right, errors)),
         },
+        Expr::Unary { op, operand } => Expr::Unary {
+            op: *op,
+            operand: Box::new(normalize_expr(operand, errors)),
+        },
         Expr::Call { callee, args } => {
             let normalized = normalize_args(args, errors);
             normalize_call(callee, normalized, errors)

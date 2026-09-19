@@ -529,6 +529,10 @@ fn lower_expr(
                     op: *op,
                     right: Box::new(lower_expr(right, evaluator, params, locals, consts)),
                 },
+                AstExpr::Unary { op, operand } => SemanticExpr::Unary {
+                    op: *op,
+                    operand: Box::new(lower_expr(operand, evaluator, params, locals, consts)),
+                },
                 AstExpr::Call { callee, args } => SemanticExpr::Call {
                     function: callee.clone(),
                     args: args

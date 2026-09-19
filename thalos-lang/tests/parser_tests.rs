@@ -357,3 +357,83 @@ fn test_parse_wait_and_set_output() {
         _ => panic!("expected FnDecl"),
     }
 }
+
+#[test]
+fn test_parse_unary_negation_preserves_signed_literals() {
+    let program = parse_source(
+        r#"
+        const NEG_LITERAL = -10mm
+        const NEG_VALUE = -side
+        const DOUBLE = --side
+        fn main() {}
+    "#,
+    )
+    .expect("must parse");
+
+    let consts: Vec<&Expr> = program
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Const(c) => Some(&c.value),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(consts.len(), 3);
+
+    // A leading `-` on a numeric literal stays inside the literal.
+    assert!(
+        matches!(consts[0], Expr::Length(LengthMeters(v)) if (*v - -0.010).abs() < 1e-12),
+        "expected a negative Length literal, got {:?}",
+        consts[0]
+    );
+
+    // `-side` becomes an explicit unary node.
+    match consts[1] {
+        Expr::Unary {
+            op: UnaryOp::Neg,
+            operand,
+        } => assert!(matches!(**operand, Expr::Identifier(ref id) if id == "side")),
+        other => panic!("expected unary negation, got {other:?}"),
+    }
+
+    // `--side` is a natural double negation.
+    match consts[2] {
+        Expr::Unary { operand, .. } => match &**operand {
+            Expr::Unary { operand: inner, .. } => {
+                assert!(matches!(**inner, Expr::Identifier(ref id) if id == "side"));
+            }
+            other => panic!("expected nested unary, got {other:?}"),
+        },
+        other => panic!("expected unary negation, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_parse_unary_binds_tighter_than_binary_subtraction() {
+    let program = parse_source("fn main() { movel(BASE - -LIFT) }").expect("must parse");
+
+    let Item::Function(f) = &program.items[0] else {
+        panic!("expected FnDecl");
+    };
+    let Statement::MoveL { target } = &f.body[0] else {
+        panic!("expected movel");
+    };
+
+    match target {
+        Expr::Binary {
+            left,
+            op: BinaryOp::Sub,
+            right,
+        } => {
+            assert!(matches!(**left, Expr::Identifier(ref id) if id == "BASE"));
+            assert!(matches!(
+                **right,
+                Expr::Unary {
+                    op: UnaryOp::Neg,
+                    ..
+                }
+            ));
+        }
+        other => panic!("expected subtraction with unary right operand, got {other:?}"),
+    }
+}

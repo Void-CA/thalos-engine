@@ -23,7 +23,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::ast::expression::{Arg, BinaryOp};
+use crate::ast::expression::{Arg, BinaryOp, UnaryOp};
 use crate::ast::item::{ConstDecl, FnDecl, Item, Param, UseDecl};
 use crate::ast::program::Program;
 use crate::ast::statement::Statement;
@@ -181,6 +181,10 @@ pub enum SpannedExprKind {
         op: BinaryOp,
         right: Box<SpannedExpr>,
     },
+    Unary {
+        op: UnaryOp,
+        operand: Box<SpannedExpr>,
+    },
 }
 
 impl SpannedProgram {
@@ -305,6 +309,10 @@ impl SpannedExpr {
                 left: Box::new(left.unspan()),
                 op,
                 right: Box::new(right.unspan()),
+            },
+            SpannedExprKind::Unary { op, operand } => Expr::Unary {
+                op,
+                operand: Box::new(operand.unspan()),
             },
         }
     }

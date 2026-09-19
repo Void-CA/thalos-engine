@@ -3,7 +3,7 @@ use crate::{
     traits::{Cross, Dot},
 };
 use serde::{Deserialize, Serialize};
-use std::ops::{Add, Mul, Sub};
+use std::ops::{Add, Mul, Neg, Sub};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Vector3 {
@@ -128,6 +128,18 @@ impl Sub for Vector3 {
     }
 }
 
+impl Neg for Vector3 {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        Self {
+            x: -self.x,
+            y: -self.y,
+            z: -self.z,
+        }
+    }
+}
+
 impl std::fmt::Display for Vector3 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "(x: {:.4}, y: {:.4}, z: {:.4})", self.x, self.y, self.z)
@@ -199,6 +211,15 @@ mod tests {
         assert!((r.x - 2.0).abs() < EPS);
         assert!((r.y - 4.0).abs() < EPS);
         assert!((r.z - 6.0).abs() < EPS);
+    }
+
+    #[test]
+    fn negate_vector() {
+        let v = Vector3::new(1.0, -2.0, 3.0);
+        let n = -v;
+        assert!((n.x - -1.0).abs() < EPS);
+        assert!((n.y - 2.0).abs() < EPS);
+        assert!((n.z - -3.0).abs() < EPS);
     }
 
     #[test]

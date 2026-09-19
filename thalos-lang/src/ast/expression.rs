@@ -61,6 +61,21 @@ pub enum Expr {
         op: BinaryOp,
         right: Box<Expr>,
     },
+    /// Prefix unary operation: `-expr`.
+    ///
+    /// Additive inversion, applicable to values with an additive inverse
+    /// (`Int`, `Float`, `Length`, `Angle`, `Duration`, `Vector3`). It is
+    /// deliberately distinct from the sign of a numeric literal: `-10mm` is
+    /// still [`Expr::Length`], while `-side` is `Unary { Neg, side }`.
+    Unary {
+        op: UnaryOp,
+        operand: Box<Expr>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UnaryOp {
+    Neg,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use thalos_lang::ast::{Expr, Statement};
+use thalos_lang::ast::{Expr, Statement, UnaryOp};
 use thalos_lang::span::Span;
 use crate::operators::BinaryOpRule;
 use crate::scope::SymbolTable;
@@ -150,6 +150,46 @@ impl<'a> TypeChecker<'a> {
                             span: None,
                         }
                     }
+                }
+            }
+            Expr::Unary {
+                op: UnaryOp::Neg,
+                operand,
+            } => {
+                let typed_operand = self.infer_expr(operand);
+                if typed_operand.ty.is_error() {
+                    return TypedExpr {
+                        expr: expr.clone(),
+                        ty: Type::Error,
+                        span: None,
+                    };
+                }
+                // Negation is additive inversion: it applies to values with an
+                // additive inverse, not to every numerically-representable type.
+                let negatable = matches!(
+                    &typed_operand.ty,
+                    Type::Int
+                        | Type::Float
+                        | Type::Length
+                        | Type::Angle
+                        | Type::Duration
+                        | Type::Vector3
+                );
+                if !negatable {
+                    self.push_diag(format!(
+                        "Cannot negate value of type {:?}",
+                        typed_operand.ty
+                    ));
+                    return TypedExpr {
+                        expr: expr.clone(),
+                        ty: Type::Error,
+                        span: None,
+                    };
+                }
+                TypedExpr {
+                    expr: expr.clone(),
+                    ty: typed_operand.ty,
+                    span: None,
                 }
             }
             Expr::Vector3([x, y, z]) => {

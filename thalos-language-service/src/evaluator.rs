@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use thalos_lang::ast::{BinaryOp, Expr};
+use thalos_lang::ast::{BinaryOp, Expr, UnaryOp};
 use thalos_math::{Quaternion, Transform3D, UnitQuaternion, Vector3};
 use crate::checker::SemanticDiagnostic;
 use crate::scope::SymbolTable;
@@ -344,6 +344,22 @@ impl<'a> Evaluator<'a> {
                     }),
                 }
             }
+            // Prefix negation is additive inversion. The single value-level
+            // implementation lives in `negate_value`, shared with the resolver
+            // so compile-time folding and deferred resolution cannot diverge.
+            Expr::Unary {
+                op: UnaryOp::Neg,
+                operand,
+            } => match self.eval_expr(operand) {
+                EvalResult::Value(value) => match negate_value(&value) {
+                    Some(negated) => EvalResult::Value(negated),
+                    None => EvalResult::Error(SemanticDiagnostic {
+                        message: format!("Cannot negate value of type {:?}", value.get_type()),
+                        span: None,
+                    }),
+                },
+                other => other,
+            },
             // Member access reads a component of a typed value. When the
             // receiver is a compile-time value (target/const) it folds here;
             // otherwise it stays symbolic and the resolver evaluates it.
@@ -358,6 +374,24 @@ impl<'a> Evaluator<'a> {
             }
             _ => EvalResult::NotConstant,
         }
+    }
+}
+
+/// Additive inversion for the value types that support it.
+///
+/// This is the **single** value-level implementation, shared by the compile-time
+/// evaluator and the resolver, so folding and deferred resolution cannot diverge.
+/// `Position`, `Pose`, `Joints`, `Bool`, ... have no additive inverse and yield
+/// `None` (the checker rejects those earlier with a typed diagnostic).
+pub fn negate_value(value: &CompileTimeValue) -> Option<CompileTimeValue> {
+    match value {
+        CompileTimeValue::Int(i) => Some(CompileTimeValue::Int(-i)),
+        CompileTimeValue::Float(f) => Some(CompileTimeValue::Float(-f)),
+        CompileTimeValue::Length(l) => Some(CompileTimeValue::Length(-l)),
+        CompileTimeValue::Angle(a) => Some(CompileTimeValue::Angle(-a)),
+        CompileTimeValue::Duration(d) => Some(CompileTimeValue::Duration(-d)),
+        CompileTimeValue::Vector3(v) => Some(CompileTimeValue::Vector3(-*v)),
+        _ => None,
     }
 }
 

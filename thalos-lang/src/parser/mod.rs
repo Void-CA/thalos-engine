@@ -243,8 +243,27 @@ pub fn parser() -> impl Parser<char, SpannedProgram, Error = Simple<char>> {
         ))
         .padded();
 
-        atom.clone()
-            .then(op.then(atom.clone()).repeated())
+        // Prefix negation: `-expr`. Numeric literals keep their sign inside the
+        // literal itself (`-10mm` parses as a negative `Length`), so the atom is
+        // tried first; only when it cannot start (e.g. `-side`, `-p.x`) is `-`
+        // read as the unary operator. Repetition makes `--side` a double
+        // negation for free.
+        let unary = recursive(|unary| {
+            atom.clone().or(just('-')
+                .padded()
+                .ignore_then(unary)
+                .map_with_span(|operand: SpannedExpr, span: Range<usize>| SpannedExpr {
+                    kind: SpannedExprKind::Unary {
+                        op: crate::ast::UnaryOp::Neg,
+                        operand: Box::new(operand),
+                    },
+                    span: char_span(span),
+                }))
+        });
+
+        unary
+            .clone()
+            .then(op.then(unary).repeated())
             .map(|(first, rest): (SpannedExpr, Vec<(crate::ast::BinaryOp, SpannedExpr)>)| {
                 rest.into_iter().fold(first, |acc, (op, val)| {
                     let span = Span::new(acc.span.start, val.span.end);

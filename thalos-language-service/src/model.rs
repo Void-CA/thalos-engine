@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use thalos_lang::ast::BinaryOp;
+use thalos_lang::ast::{BinaryOp, UnaryOp};
 use thalos_lang::span::Span;
 use crate::evaluator::{CompileTimeValue, Position, Pose};
 use crate::types::Type;
@@ -77,6 +77,13 @@ pub enum SemanticExpr {
         left: Box<SemanticExpr>,
         op: BinaryOp,
         right: Box<SemanticExpr>,
+    },
+    /// Prefix negation whose operand is only known at resolution time
+    /// (`-side` where `side` is a parameter/local). Constant operands fold to
+    /// `Constant` during lowering and never reach here.
+    Unary {
+        op: UnaryOp,
+        operand: Box<SemanticExpr>,
     },
     Call {
         function: String,

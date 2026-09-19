@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use thalos_lang::ast::BinaryOp;
+use thalos_lang::ast::{BinaryOp, UnaryOp};
 use crate::evaluator::{CompileTimeValue, Position};
 use crate::model::{
     CallSite, JointConfiguration, MotionTarget, ResolvedMotion, ResolvedProgram,
@@ -247,6 +247,16 @@ impl SemanticResolver {
                     }
                     _ => Err("Unsupported binary operation in evaluation".to_string()),
                 }
+            }
+            // Reuse the evaluator's single value-level negation so compile-time
+            // folding and deferred resolution agree by construction.
+            SemanticExpr::Unary {
+                op: UnaryOp::Neg,
+                operand,
+            } => {
+                let value = Self::eval_value(operand, env, targets, functions)?;
+                crate::evaluator::negate_value(&value)
+                    .ok_or_else(|| format!("Cannot negate value of type {:?}", value.get_type()))
             }
             SemanticExpr::Call { function, args } => {
                 if let Some(target_fn) = functions.get(function) {
