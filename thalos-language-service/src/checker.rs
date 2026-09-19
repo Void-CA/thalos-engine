@@ -173,6 +173,8 @@ impl<'a> TypeChecker<'a> {
                         | Type::Length
                         | Type::Angle
                         | Type::Duration
+                        | Type::Speed
+                        | Type::AngularSpeed
                         | Type::Vector3
                 );
                 if !negatable {
@@ -340,14 +342,22 @@ impl<'a> TypeChecker<'a> {
                         };
                     }
 
-                    // Overload matching
+                    // Overload matching, with numeric widening Int -> Float
+                    // (a `Float` parameter accepts an `Int` argument). This is
+                    // representation promotion, never dimensional coercion.
                     let mut matched_return = None;
                     for sym in symbols {
                         if let Type::Function(ref ft) = sym.ty
-                            && ft.params == param_types {
-                                matched_return = Some(*ft.return_type.clone());
-                                break;
-                            }
+                            && ft.params.len() == param_types.len()
+                            && ft
+                                .params
+                                .iter()
+                                .zip(&param_types)
+                                .all(|(param, actual)| param.accepts_numeric_widening(actual))
+                        {
+                            matched_return = Some(*ft.return_type.clone());
+                            break;
+                        }
                     }
 
                     if let Some(ret_ty) = matched_return {
@@ -456,7 +466,12 @@ impl<'a> TypeChecker<'a> {
                 let typed_val = self.infer_expr(value);
                 if let Some(ann) = type_ann {
                     if let Some(expected_ty) = Type::from_name(ann) {
-                        if !typed_val.ty.is_error() && expected_ty != typed_val.ty {
+                        // Numeric widening (Int -> Float) applies to annotations,
+                        // so `let n : Float = 1` is valid; physical dimensions
+                        // still require an exact match.
+                        if !typed_val.ty.is_error()
+                            && !expected_ty.accepts_numeric_widening(&typed_val.ty)
+                        {
                             self.diagnostics.push(SemanticDiagnostic {
                                 message: format!(
                                     "Type mismatch in let binding '{}': expected {:?}, got {:?}",

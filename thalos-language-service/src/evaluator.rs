@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use thalos_lang::ast::{BinaryOp, Expr, UnaryOp};
+use thalos_lang::ast::{Expr, UnaryOp};
 use thalos_math::{Quaternion, Transform3D, UnitQuaternion, Vector3};
 use crate::checker::SemanticDiagnostic;
 use crate::scope::SymbolTable;

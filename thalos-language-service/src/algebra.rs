@@ -15,9 +15,13 @@
 //! coercion: no physical dimension is ever satisfied by a bare `Number`.
 
 use thalos_lang::ast::BinaryOp;
-use thalos_math::{Transform3D, Vector3};
+use thalos_math::Transform3D;
 
 use crate::evaluator::{CompileTimeValue, Pose, Position};
+
+// Alias the enum so its variant names (`Transform3D`, `Position`, ...) do not
+// shadow the struct/type names imported above.
+use CompileTimeValue as V;
 
 /// Combine two compile-time values under a binary operator.
 pub fn binary_value(
@@ -25,100 +29,98 @@ pub fn binary_value(
     lhs: &CompileTimeValue,
     rhs: &CompileTimeValue,
 ) -> Result<CompileTimeValue, String> {
-    use CompileTimeValue::*;
-
     // Number arithmetic / comparisons (Int/Float with promotion).
     if let (Some(a), Some(b)) = (number_of(lhs), number_of(rhs)) {
-        let both_int = matches!(lhs, Int(_)) && matches!(rhs, Int(_));
+        let both_int = matches!(lhs, V::Int(_)) && matches!(rhs, V::Int(_));
         return number_op(op, a, b, both_int);
     }
 
     match (lhs, rhs) {
         // ── Length ──────────────────────────────────────────────────
-        (Length(a), Length(b)) => same_dimension(op, *a, *b, Length, true),
-        (Length(a), Duration(b)) if op == BinaryOp::Div => Ok(Speed(a / b)),
-        (Length(a), r) if number_of(r).is_some() => {
-            scale(op, *a, number_of(r).unwrap(), Length)
-        }
-        (l, Length(b)) if op == BinaryOp::Mul && number_of(l).is_some() => {
-            Ok(Length(number_of(l).unwrap() * b))
+        (V::Length(a), V::Length(b)) => same_dimension(op, *a, *b, V::Length, true),
+        (V::Length(a), V::Duration(b)) if op == BinaryOp::Div => Ok(V::Speed(a / b)),
+        (V::Length(a), r) if number_of(r).is_some() => scale(op, *a, number_of(r).unwrap(), V::Length),
+        (l, V::Length(b)) if op == BinaryOp::Mul && number_of(l).is_some() => {
+            Ok(V::Length(number_of(l).unwrap() * b))
         }
 
         // ── Angle ───────────────────────────────────────────────────
-        (Angle(a), Angle(b)) => same_dimension(op, *a, *b, Angle, true),
-        (Angle(a), Duration(b)) if op == BinaryOp::Div => Ok(AngularSpeed(a / b)),
-        (Angle(a), r) if number_of(r).is_some() => scale(op, *a, number_of(r).unwrap(), Angle),
-        (l, Angle(b)) if op == BinaryOp::Mul && number_of(l).is_some() => {
-            Ok(Angle(number_of(l).unwrap() * b))
+        (V::Angle(a), V::Angle(b)) => same_dimension(op, *a, *b, V::Angle, true),
+        (V::Angle(a), V::Duration(b)) if op == BinaryOp::Div => Ok(V::AngularSpeed(a / b)),
+        (V::Angle(a), r) if number_of(r).is_some() => scale(op, *a, number_of(r).unwrap(), V::Angle),
+        (l, V::Angle(b)) if op == BinaryOp::Mul && number_of(l).is_some() => {
+            Ok(V::Angle(number_of(l).unwrap() * b))
         }
 
         // ── Duration ────────────────────────────────────────────────
-        (Duration(a), Duration(b)) => same_dimension(op, *a, *b, Duration, true),
-        (Duration(a), r) if number_of(r).is_some() => {
-            scale(op, *a, number_of(r).unwrap(), Duration)
+        (V::Duration(a), V::Duration(b)) => same_dimension(op, *a, *b, V::Duration, true),
+        (V::Duration(a), r) if number_of(r).is_some() => {
+            scale(op, *a, number_of(r).unwrap(), V::Duration)
         }
-        (l, Duration(b)) if op == BinaryOp::Mul && number_of(l).is_some() => {
-            Ok(Duration(number_of(l).unwrap() * b))
+        (l, V::Duration(b)) if op == BinaryOp::Mul && number_of(l).is_some() => {
+            Ok(V::Duration(number_of(l).unwrap() * b))
         }
 
         // ── Speed (Length / Duration) ───────────────────────────────
-        (Speed(a), Speed(b)) => same_dimension(op, *a, *b, Speed, false),
-        (Speed(a), Duration(b)) if op == BinaryOp::Mul => Ok(Length(a * b)),
-        (Duration(a), Speed(b)) if op == BinaryOp::Mul => Ok(Length(a * b)),
-        (Speed(a), r) if number_of(r).is_some() => scale(op, *a, number_of(r).unwrap(), Speed),
-        (l, Speed(b)) if op == BinaryOp::Mul && number_of(l).is_some() => {
-            Ok(Speed(number_of(l).unwrap() * b))
+        (V::Speed(a), V::Speed(b)) => same_dimension(op, *a, *b, V::Speed, false),
+        (V::Speed(a), V::Duration(b)) if op == BinaryOp::Mul => Ok(V::Length(a * b)),
+        (V::Duration(a), V::Speed(b)) if op == BinaryOp::Mul => Ok(V::Length(a * b)),
+        (V::Speed(a), r) if number_of(r).is_some() => scale(op, *a, number_of(r).unwrap(), V::Speed),
+        (l, V::Speed(b)) if op == BinaryOp::Mul && number_of(l).is_some() => {
+            Ok(V::Speed(number_of(l).unwrap() * b))
         }
 
         // ── AngularSpeed (Angle / Duration) ─────────────────────────
-        (AngularSpeed(a), AngularSpeed(b)) => same_dimension(op, *a, *b, AngularSpeed, false),
-        (AngularSpeed(a), Duration(b)) if op == BinaryOp::Mul => Ok(Angle(a * b)),
-        (Duration(a), AngularSpeed(b)) if op == BinaryOp::Mul => Ok(Angle(a * b)),
-        (AngularSpeed(a), r) if number_of(r).is_some() => {
-            scale(op, *a, number_of(r).unwrap(), AngularSpeed)
+        (V::AngularSpeed(a), V::AngularSpeed(b)) => {
+            same_dimension(op, *a, *b, V::AngularSpeed, false)
         }
-        (l, AngularSpeed(b)) if op == BinaryOp::Mul && number_of(l).is_some() => {
-            Ok(AngularSpeed(number_of(l).unwrap() * b))
+        (V::AngularSpeed(a), V::Duration(b)) if op == BinaryOp::Mul => Ok(V::Angle(a * b)),
+        (V::Duration(a), V::AngularSpeed(b)) if op == BinaryOp::Mul => Ok(V::Angle(a * b)),
+        (V::AngularSpeed(a), r) if number_of(r).is_some() => {
+            scale(op, *a, number_of(r).unwrap(), V::AngularSpeed)
+        }
+        (l, V::AngularSpeed(b)) if op == BinaryOp::Mul && number_of(l).is_some() => {
+            Ok(V::AngularSpeed(number_of(l).unwrap() * b))
         }
 
         // ── Vector3 ─────────────────────────────────────────────────
-        (Vector3(a), Vector3(b)) => match op {
-            BinaryOp::Add => Ok(Vector3(*a + *b)),
-            BinaryOp::Sub => Ok(Vector3(*a - *b)),
+        (V::Vector3(a), V::Vector3(b)) => match op {
+            BinaryOp::Add => Ok(V::Vector3(*a + *b)),
+            BinaryOp::Sub => Ok(V::Vector3(*a - *b)),
             _ => Err(invalid(op, lhs, rhs)),
         },
-        (Vector3(a), r) if number_of(r).is_some() => {
+        (V::Vector3(a), r) if number_of(r).is_some() => {
             let f = number_of(r).unwrap();
             match op {
-                BinaryOp::Mul => Ok(Vector3(*a * f)),
+                BinaryOp::Mul => Ok(V::Vector3(*a * f)),
                 BinaryOp::Div => {
                     if f == 0.0 {
                         return Err("division by zero".to_string());
                     }
-                    Ok(Vector3(*a * (1.0 / f)))
+                    Ok(V::Vector3(*a * (1.0 / f)))
                 }
                 _ => Err(invalid(op, lhs, rhs)),
             }
         }
-        (l, Vector3(b)) if op == BinaryOp::Mul && number_of(l).is_some() => {
-            Ok(Vector3(number_of(l).unwrap() * *b))
+        (l, V::Vector3(b)) if op == BinaryOp::Mul && number_of(l).is_some() => {
+            Ok(V::Vector3(*b * number_of(l).unwrap()))
         }
 
         // ── Position / Pose / Transform ─────────────────────────────
-        (Position(p), Vector3(v)) => match op {
-            BinaryOp::Add => Ok(Position(Position { point: p.point + *v })),
-            BinaryOp::Sub => Ok(Position(Position { point: p.point - *v })),
+        (V::Position(p), V::Vector3(v)) => match op {
+            BinaryOp::Add => Ok(V::Position(Position { point: p.point + *v })),
+            BinaryOp::Sub => Ok(V::Position(Position { point: p.point - *v })),
             _ => Err(invalid(op, lhs, rhs)),
         },
-        (Position(p1), Position(p2)) if op == BinaryOp::Sub => Ok(Vector3(p1.point - p2.point)),
-        (Pose(p), Vector3(v)) => match op {
-            BinaryOp::Add => Ok(Pose(Pose {
+        (V::Position(p1), V::Position(p2)) if op == BinaryOp::Sub => Ok(V::Vector3(p1.point - p2.point)),
+        (V::Pose(p), V::Vector3(v)) => match op {
+            BinaryOp::Add => Ok(V::Pose(Pose {
                 transform: Transform3D::from_translation_rotation(
                     p.transform.translation + *v,
                     p.transform.rotation,
                 ),
             })),
-            BinaryOp::Sub => Ok(Pose(Pose {
+            BinaryOp::Sub => Ok(V::Pose(Pose {
                 transform: Transform3D::from_translation_rotation(
                     p.transform.translation - *v,
                     p.transform.rotation,
@@ -126,19 +128,19 @@ pub fn binary_value(
             })),
             _ => Err(invalid(op, lhs, rhs)),
         },
-        (Pose(p), Transform3D(t)) if op == BinaryOp::Mul => Ok(Pose(Pose {
+        (V::Pose(p), V::Transform3D(t)) if op == BinaryOp::Mul => Ok(V::Pose(Pose {
             transform: p.transform.compose(t),
         })),
-        (Transform3D(a), Transform3D(b)) if op == BinaryOp::Mul => Ok(Transform3D(a.compose(b))),
+        (V::Transform3D(a), V::Transform3D(b)) if op == BinaryOp::Mul => Ok(V::Transform3D(a.compose(b))),
 
         // ── Quaternion ──────────────────────────────────────────────
-        (Quaternion(a), Quaternion(b)) if op == BinaryOp::Mul => Ok(Quaternion(*a * *b)),
-        (Quaternion(q), Vector3(v)) if op == BinaryOp::Mul => Ok(Vector3(q.rotate_vector(*v))),
+        (V::Quaternion(a), V::Quaternion(b)) if op == BinaryOp::Mul => Ok(V::Quaternion(*a * *b)),
+        (V::Quaternion(q), V::Vector3(v)) if op == BinaryOp::Mul => Ok(V::Vector3(q.rotate_vector(*v))),
 
         // ── Bool ────────────────────────────────────────────────────
-        (Bool(a), Bool(b)) => match op {
-            BinaryOp::Eq => Ok(Bool(a == b)),
-            BinaryOp::Neq => Ok(Bool(a != b)),
+        (V::Bool(a), V::Bool(b)) => match op {
+            BinaryOp::Eq => Ok(V::Bool(a == b)),
+            BinaryOp::Neq => Ok(V::Bool(a != b)),
             _ => Err(invalid(op, lhs, rhs)),
         },
 
@@ -148,40 +150,38 @@ pub fn binary_value(
 
 fn number_of(value: &CompileTimeValue) -> Option<f64> {
     match value {
-        CompileTimeValue::Int(i) => Some(*i as f64),
-        CompileTimeValue::Float(f) => Some(*f),
+        V::Int(i) => Some(*i as f64),
+        V::Float(f) => Some(*f),
         _ => None,
     }
 }
 
 fn number_op(op: BinaryOp, a: f64, b: f64, both_int: bool) -> Result<CompileTimeValue, String> {
-    use CompileTimeValue::{Bool, Float, Int};
     match op {
-        BinaryOp::Add => Ok(arithmetic(a + b, op, both_int)),
-        BinaryOp::Sub => Ok(arithmetic(a - b, op, both_int)),
-        BinaryOp::Mul => Ok(arithmetic(a * b, op, both_int)),
+        BinaryOp::Add => Ok(arithmetic(a + b, both_int)),
+        BinaryOp::Sub => Ok(arithmetic(a - b, both_int)),
+        BinaryOp::Mul => Ok(arithmetic(a * b, both_int)),
         BinaryOp::Div => {
             if b == 0.0 {
                 return Err("division by zero".to_string());
             }
             // `/` always yields a Float: no integer division surprises.
-            Ok(Float(a / b))
+            Ok(V::Float(a / b))
         }
-        BinaryOp::Gt => Ok(Bool(a > b)),
-        BinaryOp::Lt => Ok(Bool(a < b)),
-        BinaryOp::Gte => Ok(Bool(a >= b)),
-        BinaryOp::Lte => Ok(Bool(a <= b)),
-        BinaryOp::Eq => Ok(Bool(a == b)),
-        BinaryOp::Neq => Ok(Bool(a != b)),
-        _ => Err(format!("Invalid numeric operation {op:?}")),
+        BinaryOp::Gt => Ok(V::Bool(a > b)),
+        BinaryOp::Lt => Ok(V::Bool(a < b)),
+        BinaryOp::Gte => Ok(V::Bool(a >= b)),
+        BinaryOp::Lte => Ok(V::Bool(a <= b)),
+        BinaryOp::Eq => Ok(V::Bool(a == b)),
+        BinaryOp::Neq => Ok(V::Bool(a != b)),
     }
 }
 
-fn arithmetic(value: f64, _op: BinaryOp, both_int: bool) -> CompileTimeValue {
+fn arithmetic(value: f64, both_int: bool) -> CompileTimeValue {
     if both_int {
-        CompileTimeValue::Int(value as i64)
+        V::Int(value as i64)
     } else {
-        CompileTimeValue::Float(value)
+        V::Float(value)
     }
 }
 
@@ -195,12 +195,12 @@ fn same_dimension(
     match op {
         BinaryOp::Add => Ok(make(a + b)),
         BinaryOp::Sub => Ok(make(a - b)),
-        BinaryOp::Eq => Ok(CompileTimeValue::Bool(a == b)),
-        BinaryOp::Neq => Ok(CompileTimeValue::Bool(a != b)),
-        BinaryOp::Gt if ordered => Ok(CompileTimeValue::Bool(a > b)),
-        BinaryOp::Lt if ordered => Ok(CompileTimeValue::Bool(a < b)),
-        BinaryOp::Gte if ordered => Ok(CompileTimeValue::Bool(a >= b)),
-        BinaryOp::Lte if ordered => Ok(CompileTimeValue::Bool(a <= b)),
+        BinaryOp::Eq => Ok(V::Bool(a == b)),
+        BinaryOp::Neq => Ok(V::Bool(a != b)),
+        BinaryOp::Gt if ordered => Ok(V::Bool(a > b)),
+        BinaryOp::Lt if ordered => Ok(V::Bool(a < b)),
+        BinaryOp::Gte if ordered => Ok(V::Bool(a >= b)),
+        BinaryOp::Lte if ordered => Ok(V::Bool(a <= b)),
         _ => Err(format!(
             "Invalid operation {op:?} between same-dimension quantities"
         )),

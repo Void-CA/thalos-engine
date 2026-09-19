@@ -64,7 +64,10 @@ impl SemanticCompiler {
                 }
                 if let Some(ref tail) = f.tail_expr {
                     let typed_tail = checker.infer_expr(tail);
-                    if !typed_tail.ty.is_error() && expected_ret != Type::Unit && expected_ret != typed_tail.ty {
+                    if !typed_tail.ty.is_error()
+                        && expected_ret != Type::Unit
+                        && !expected_ret.accepts_numeric_widening(&typed_tail.ty)
+                    {
                         checker.diagnostics.push(crate::checker::SemanticDiagnostic {
                             message: format!(
                                 "Function '{}' return type mismatch: expected {:?}, got {:?}",

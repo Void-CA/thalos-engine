@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use thalos_lang::ast::{BinaryOp, UnaryOp};
-use crate::evaluator::{CompileTimeValue, Position};
+use thalos_lang::ast::UnaryOp;
+use crate::evaluator::CompileTimeValue;
 use crate::model::{
     CallSite, JointConfiguration, MotionTarget, ResolvedMotion, ResolvedProgram,
     ResolvedStatement, SemanticExpr, SemanticFunction, SemanticMotion, SemanticProgram,
@@ -291,27 +291,6 @@ impl SemanticResolver {
                     .ok_or_else(|| format!("Unknown member '{}'", member))
             }
             _ => Err("Complex expression resolution not supported yet".to_string()),
-        }
-    }
-
-    fn eval_scalar(expr: &SemanticExpr, env: &HashMap<String, CompileTimeValue>) -> Result<f64, String> {
-        match expr {
-            SemanticExpr::Constant(CompileTimeValue::Duration(d)) => Ok(*d),
-            SemanticExpr::Constant(CompileTimeValue::Float(f)) => Ok(*f),
-            SemanticExpr::Constant(CompileTimeValue::Int(i)) => Ok(*i as f64),
-            SemanticExpr::ParameterRef(p) | SemanticExpr::LocalRef(p) | SemanticExpr::ConstRef(p) => {
-                if let Some(val) = env.get(p) {
-                    match val {
-                        CompileTimeValue::Duration(d) => Ok(*d),
-                        CompileTimeValue::Float(f) => Ok(*f),
-                        CompileTimeValue::Int(i) => Ok(*i as f64),
-                        _ => Err(format!("Variable/parameter '{}' is not a scalar number", p)),
-                    }
-                } else {
-                    Err(format!("Unbound variable/parameter '{}'", p))
-                }
-            }
-            _ => Err("Could not resolve scalar expression".to_string()),
         }
     }
 
