@@ -9,6 +9,20 @@ use crate::scene::*;
 
 // ── Helpers geométricos para construir primitives ──
 
+/// Stable visual id for a frame: `world` for the world frame, otherwise the
+/// registered frame name. Frames absent from the chain registry fall back to a
+/// `missing_<id>` marker so they can never silently collide with a real frame.
+pub fn frame_visual_id(chain: &SerialChain, id: &FrameId) -> VisualId {
+    match id {
+        FrameId::World => "world".into(),
+        id => chain
+            .frames
+            .get(id)
+            .map(|frame| frame.name().to_string())
+            .unwrap_or_else(|| format!("missing_{id}")),
+    }
+}
+
 /// Normaliza un vector 3D.
 fn normalize(v: [f64; 3]) -> [f64; 3] {
     let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
@@ -265,17 +279,7 @@ impl SceneBuilder {
     }
 
     fn resolve_visual_id(&self, id: &FrameId) -> VisualId {
-        match id {
-            FrameId::World => "world".into(),
-            id => {
-                if let Some(frame) = self.chain.frames.get(id) {
-                    frame.name().to_string()
-                } else {
-                    eprintln!("[SceneBuilder] WARNING: frame {:?} not found in registry, using fallback", id);
-                    format!("missing_{}", id)
-                }
-            }
-        }
+        frame_visual_id(&self.chain, id)
     }
 
     fn normalize_tx(&self, transform: &Transform3D) -> [f64; 3] {

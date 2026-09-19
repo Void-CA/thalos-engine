@@ -3,8 +3,10 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use crate::kinematics::forward::ForwardKinematics;
+use crate::kinematics::forward::result::FKResult;
 use crate::robot::serial_chain::SerialChain;
 use crate::robot::tool_frame::ToolFrame;
+use crate::spatial::pose::Pose;
 
 /// World-frame TCP pose produced by the shared forward-kinematics authority.
 ///
@@ -13,6 +15,34 @@ use crate::robot::tool_frame::ToolFrame;
 pub struct TcpPose {
     pub position: [f64; 3],
     pub orientation: [f64; 4],
+}
+
+impl TcpPose {
+    fn from_pose(pose: &Pose) -> Self {
+        let transform = pose.transform();
+        let q = transform.rotation.inner();
+        Self {
+            position: [
+                transform.translation.x,
+                transform.translation.y,
+                transform.translation.z,
+            ],
+            orientation: [q.w, q.x, q.y, q.z],
+        }
+    }
+}
+
+/// Result of a SINGLE kinematic evaluation: the full FK result plus the TCP
+/// pose derived from it.
+///
+/// Callers that need both the TCP and the neutral spatial state (the full set
+/// of frame poses) resolve once instead of evaluating FK twice. `tcp` is
+/// `None` when the tool frame cannot be resolved against the FK result, even
+/// though the frame poses are still valid.
+#[derive(Debug, Clone)]
+pub struct KinematicState {
+    pub fk: FKResult,
+    pub tcp: Option<TcpPose>,
 }
 
 /// The shared kinematic authority: `joints → TCP`.
@@ -52,21 +82,28 @@ impl KinematicContext {
     /// the TCP base frame is absent from the FK result — the caller renders `—`
     /// rather than inventing a pose.
     pub fn tcp_pose(&self, joints: &[f64]) -> Option<TcpPose> {
+        self.resolve(joints)?.tcp
+    }
+
+    /// Evaluate kinematics ONCE and return both the full FK result and the TCP
+    /// pose derived from it.
+    ///
+    /// Returns `None` when the configuration does not match the chain DOF; a
+    /// mismatched configuration has no meaningful spatial state either.
+    pub fn resolve(&self, joints: &[f64]) -> Option<KinematicState> {
         if joints.len() != self.fk.robot().dof_count() {
             return None;
         }
-        let result = self.fk.evaluate(joints);
-        let pose = result.tcp_pose(&self.tool)?;
-        let transform = pose.transform();
-        let q = transform.rotation.inner();
-        Some(TcpPose {
-            position: [
-                transform.translation.x,
-                transform.translation.y,
-                transform.translation.z,
-            ],
-            orientation: [q.w, q.x, q.y, q.z],
-        })
+        let fk = self.fk.evaluate(joints);
+        let tcp = fk
+            .tcp_pose(&self.tool)
+            .map(|pose| TcpPose::from_pose(&pose));
+        Some(KinematicState { fk, tcp })
+    }
+
+    /// The kinematic chain this authority evaluates.
+    pub fn chain(&self) -> &SerialChain {
+        self.fk.robot()
     }
 }
 
@@ -123,5 +160,38 @@ mod tests {
         let ctx = KinematicContext::at_end_effector(chain);
         let q = [0.1, 0.2];
         assert_eq!(ctx.tcp_pose(&q), ctx.tcp_pose(&q));
+    }
+
+    #[test]
+    fn resolve_returns_one_evaluation_with_fk_and_tcp() {
+        let chain = Planar2RSpec::ideal().build();
+        let q = [0.4, -0.3];
+        let ctx = KinematicContext::at_end_effector(chain.clone());
+
+        let state = ctx.resolve(&q).expect("DOF matches");
+
+        // The TCP comes from the SAME evaluation that produced `fk`: rebuild
+        // the expected FK from the same joints and compare the end-effector.
+        let expected_fk = ForwardKinematics::new(chain).evaluate(&q);
+        assert_eq!(state.fk.ee_position(), expected_fk.ee_position());
+
+        let tcp = state.tcp.expect("identity tool resolves");
+        assert_eq!(ctx.tcp_pose(&q), Some(tcp));
+    }
+
+    #[test]
+    fn resolve_is_none_on_dof_mismatch() {
+        let chain = Planar2RSpec::ideal().build();
+        let ctx = KinematicContext::at_end_effector(chain);
+        assert!(ctx.resolve(&[0.0]).is_none());
+        assert!(ctx.resolve(&[]).is_none());
+    }
+
+    #[test]
+    fn chain_is_exposed() {
+        let chain = Planar2RSpec::ideal().build();
+        let dof = chain.dof_count();
+        let ctx = KinematicContext::at_end_effector(chain);
+        assert_eq!(ctx.chain().dof_count(), dof);
     }
 }

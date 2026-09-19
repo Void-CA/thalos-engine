@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::device::{ChannelObservation, ChannelValue, DerivedSignal, SignalExpression};
 use crate::ids::ExecutionSessionId;
-use crate::kinematics::TcpPose;
+use crate::kinematics::{SpatialState, TcpPose};
 
 /// Formal operational state machine for active execution sessions.
 ///
@@ -113,12 +113,20 @@ pub struct ExpectedState {
 /// `robot` es el estado observado/actual, `expected` el modelo digital, y `tcp`
 /// la pose TCP derivada por la autoridad cinemática compartida (opcional: no
 /// toda ejecución tiene un modelo cinemático resoluble).
+///
+/// `spatial` es el estado espacial NEUTRAL del modelo cinemático, derivado de
+/// la MISMA evaluación FK que `tcp`. No contiene conceptos de rendering
+/// (ids visuales, links, escala, meshes); la proyección visual es
+/// responsabilidad de la capa visual. Ver
+/// `docs/system/architecture/spatial-state-contract.md`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct RuntimeState {
     pub robot: RobotSample,
     pub expected: ExpectedState,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tcp: Option<TcpPose>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spatial: Option<SpatialState>,
 }
 
 /// A collection of observations associated with a single execution sampling point.
@@ -174,6 +182,10 @@ pub struct ControlTick {
     /// available. Part of the tick's observable state — not computed by the UI.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tcp: Option<TcpPose>,
+    /// Neutral spatial state derived from the SAME FK evaluation that produces
+    /// `tcp`. Transient tick observation — not latched into `SessionState`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spatial: Option<SpatialState>,
 }
 
 /// Decisión semántica derivada de la evaluación del programa en el tick k.
@@ -446,8 +458,9 @@ impl ExecutionSession {
             observations: context.observations.clone(),
             robot: context.robot.clone(),
             expected: context.expected.clone(),
-            // TCP is produced AFTER `act` (see `tick_with_runner`).
+            // TCP and spatial are produced AFTER `act` (see `tick_with_runner`).
             tcp: None,
+            spatial: None,
         };
 
         // 1. Actualizar estado latched en la sesión
