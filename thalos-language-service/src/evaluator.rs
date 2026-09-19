@@ -317,41 +317,11 @@ impl<'a> Evaluator<'a> {
                     other => return other,
                 };
 
-                match (lhs, op, rhs) {
-                    // Position + Vector3 -> Position
-                    (CompileTimeValue::Position(p), BinaryOp::Add, CompileTimeValue::Vector3(v)) => {
-                        EvalResult::Value(CompileTimeValue::Position(Position { point: p.point + v }))
-                    }
-                    // Position - Vector3 -> Position
-                    (CompileTimeValue::Position(p), BinaryOp::Sub, CompileTimeValue::Vector3(v)) => {
-                        EvalResult::Value(CompileTimeValue::Position(Position { point: p.point - v }))
-                    }
-                    // Position - Position -> Vector3
-                    (CompileTimeValue::Position(p1), BinaryOp::Sub, CompileTimeValue::Position(p2)) => {
-                        EvalResult::Value(CompileTimeValue::Vector3(p1.point - p2.point))
-                    }
-                    // Pose + Vector3 -> Pose
-                    (CompileTimeValue::Pose(p), BinaryOp::Add, CompileTimeValue::Vector3(v)) => {
-                        let new_t = Transform3D::from_translation_rotation(
-                            p.transform.translation + v,
-                            p.transform.rotation,
-                        );
-                        EvalResult::Value(CompileTimeValue::Pose(Pose { transform: new_t }))
-                    }
-                    // Vector3 + Vector3 -> Vector3
-                    (CompileTimeValue::Vector3(v1), BinaryOp::Add, CompileTimeValue::Vector3(v2)) => {
-                        EvalResult::Value(CompileTimeValue::Vector3(v1 + v2))
-                    }
-                    // Vector3 - Vector3 -> Vector3
-                    (CompileTimeValue::Vector3(v1), BinaryOp::Sub, CompileTimeValue::Vector3(v2)) => {
-                        EvalResult::Value(CompileTimeValue::Vector3(v1 - v2))
-                    }
-                    // Quaternion * Vector3 -> Vector3
-                    (CompileTimeValue::Quaternion(q), BinaryOp::Mul, CompileTimeValue::Vector3(v)) => {
-                        EvalResult::Value(CompileTimeValue::Vector3(q.rotate_vector(v)))
-                    }
-                    _ => EvalResult::Error(SemanticDiagnostic {
-                        message: "Invalid binary operation during compile-time evaluation".to_string(),
+                // Single shared value algebra (also used by the resolver).
+                match crate::algebra::binary_value(*op, &lhs, &rhs) {
+                    Ok(value) => EvalResult::Value(value),
+                    Err(message) => EvalResult::Error(SemanticDiagnostic {
+                        message,
                         span: None,
                     }),
                 }

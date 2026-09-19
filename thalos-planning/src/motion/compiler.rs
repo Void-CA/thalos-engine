@@ -14,12 +14,12 @@ use crate::error::{CompileError, PlanningError};
 use crate::goal::{
     GoalResolver, GoalResolverConfig, JointGoal, ResolvedPositionGoal, ValidatedGoal,
 };
-use crate::motion::move_j::{MoveJConfig, MoveJPlanner};
 use crate::motion::move_c::{MoveCConfig, MoveCPlanner};
+use crate::motion::move_j::{MoveJConfig, MoveJPlanner};
 use crate::motion::move_l::{MoveLConfig, MoveLPlanner};
 use crate::motion::planner::{SegmentPlanner, SegmentPlanningContext};
 use crate::motion::program::{CompiledPlan, PlannedSegment, PlanningProgram};
-use crate::motion::temporal::{resolve_profile, MOVE_CARTESIAN_DEFAULTS, MOVE_J_DEFAULTS};
+use crate::motion::temporal::{MOVE_CARTESIAN_DEFAULTS, MOVE_J_DEFAULTS, resolve_profile};
 use thalos_core::motion::MotionConstraints;
 
 /// Dispatches a `MotionSegment` to the appropriate `MotionPlanner`.
@@ -54,7 +54,6 @@ impl DefaultPlannerDispatcher {
         }
     }
 }
-
 
 /// Resolve an IK-derived joint configuration into a validated joint goal and
 /// plan a JOINT-space trajectory to it.
@@ -216,11 +215,8 @@ impl MotionPlannerDispatcher for DefaultPlannerDispatcher {
                 ..
             } => {
                 let resolver = GoalResolver::new(self.goal_resolver_config.clone());
-                let via = thalos_math::Vector3::new(
-                    via_position[0],
-                    via_position[1],
-                    via_position[2],
-                );
+                let via =
+                    thalos_math::Vector3::new(via_position[0], via_position[1], via_position[2]);
                 let target = thalos_math::Vector3::new(
                     target_position[0],
                     target_position[1],
@@ -379,7 +375,11 @@ impl PlanCompiler {
 
             // Advance current state to end of this segment
             if let Some(last) = trajectory.waypoints().last() {
-                current_joints = last.joints().iter().map(|&q| thalos_core::prelude::JointState::position(q)).collect();
+                current_joints = last
+                    .joints()
+                    .iter()
+                    .map(|&q| thalos_core::prelude::JointState::position(q))
+                    .collect();
             }
 
             let meta = metadata.get(segment_index);
@@ -812,9 +812,7 @@ mod tests {
 
     // ── 3.6 Integration: Operation → expand → compile → constraint query ──
     use thalos_core::{
-        operation::{
-            ConstraintQuery, Operation as CoreOperation, OperationConstraints,
-        },
+        operation::{ConstraintQuery, Operation as CoreOperation, OperationConstraints},
         spatial::frame::FrameId,
         spatial::pose::Pose,
     };
@@ -993,7 +991,6 @@ mod tests {
         );
         assert!(seg.role.is_none(), "legacy compile() must leave role None");
     }
-
 
     // ── 3.7 Origin preservation (IR-2 → IR-3, invariant I2) ───────────────
 

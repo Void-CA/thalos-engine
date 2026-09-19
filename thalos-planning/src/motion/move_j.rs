@@ -44,7 +44,9 @@ impl SegmentPlanner for MoveJPlanner {
 
     fn plan(&self, ctx: &PlanningContext, goal: &ValidatedGoal<JointGoal>) -> PlanningResult {
         let q_start = ctx.current_state.positions().ok_or_else(|| {
-            crate::error::PlanningError::InvalidContext("Current state missing joint positions".into())
+            crate::error::PlanningError::InvalidContext(
+                "Current state missing joint positions".into(),
+            )
         })?;
         let target = &goal.goal.as_slice();
 

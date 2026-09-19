@@ -92,10 +92,7 @@ pub enum MotionSegment {
     ///
     /// Non-geometric but temporal — it MUST appear in the plan so the total
     /// duration and the timeline represent the program faithfully.
-    Delay {
-        origin: OperationId,
-        seconds: f64,
-    },
+    Delay { origin: OperationId, seconds: f64 },
     /// Operational step: set an output channel to a value.
     ///
     /// Non-geometric and non-temporal (zero duration) — it produces no

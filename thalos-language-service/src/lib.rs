@@ -11,6 +11,7 @@ pub mod checker;
 pub mod compiler;
 pub mod intelligence;
 pub mod evaluator;
+pub mod algebra;
 pub mod execution;
 pub mod ir;
 pub mod knowledge;

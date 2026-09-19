@@ -5,8 +5,8 @@ use thalos_core::{
     },
     trajectory::{Trajectory, TrajectoryPoint},
 };
-use thalos_math::traits::{Cross, Dot};
 use thalos_math::Vector3;
+use thalos_math::traits::{Cross, Dot};
 
 use crate::{
     error::PlanningError,
@@ -91,12 +91,12 @@ impl MoveCPlanner {
             ));
         }
 
-        let w = n.normalized().map_err(|_| {
-            PlanningError::InvalidGoal("movec: degenerate arc plane".into())
-        })?;
-        let u = (start - center).normalized().map_err(|_| {
-            PlanningError::InvalidGoal("movec: degenerate start radius".into())
-        })?;
+        let w = n
+            .normalized()
+            .map_err(|_| PlanningError::InvalidGoal("movec: degenerate arc plane".into()))?;
+        let u = (start - center)
+            .normalized()
+            .map_err(|_| PlanningError::InvalidGoal("movec: degenerate start radius".into()))?;
         let v = w.cross(u);
 
         let angle_of = |p: Vector3| -> f64 {
@@ -166,7 +166,9 @@ impl MoveCPlanner {
                 let angle = (travelled / radius) * sweep_sign;
                 let position = center + u * (radius * angle.cos()) + v * (radius * angle.sin());
 
-                let ik_result = ctx.ik_solver.solve(&q_current, IKGoal::Position(position))?;
+                let ik_result = ctx
+                    .ik_solver
+                    .solve(&q_current, IKGoal::Position(position))?;
                 match ik_result.status {
                     IKStatus::Converged => {
                         q_current = ik_result.q;

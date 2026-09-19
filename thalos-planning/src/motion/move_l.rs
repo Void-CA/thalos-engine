@@ -381,8 +381,7 @@ mod tests {
         let target = Vector3::new(0.62, 0.5, 0.25);
 
         let fk = ForwardKinematics::new(robot.clone());
-        let solver =
-            DampedLeastSquaresSolver::new(fk, *robot.end_effector(), 500, 1e-6, 0.1);
+        let solver = DampedLeastSquaresSolver::new(fk, *robot.end_effector(), 500, 1e-6, 0.1);
         let q_start = solver
             .solve(&[0.0, 0.0, 0.0, 0.0], IKGoal::Position(start))
             .expect("position IK must converge on SCARA")
@@ -553,8 +552,7 @@ mod tests {
     ) {
         let robot = RobotRegistry::create_default(RobotModel::Scara);
         let fk = ForwardKinematics::new(robot.clone());
-        let solver =
-            DampedLeastSquaresSolver::new(fk, *robot.end_effector(), 500, 1e-6, 0.1);
+        let solver = DampedLeastSquaresSolver::new(fk, *robot.end_effector(), 500, 1e-6, 0.1);
         (robot, solver)
     }
 

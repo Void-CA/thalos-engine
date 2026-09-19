@@ -114,15 +114,22 @@ impl SemanticResolver {
                 }
             }
             SemanticStatement::Wait { duration, provenance } => {
-                if let Ok(secs) = Self::eval_scalar(duration, local_env) {
-                    let mut merged_prov = provenance.clone();
-                    merged_prov.call_stack = call_stack.clone();
-                    out.push(ResolvedStatement::Wait {
-                        seconds: secs,
-                        provenance: merged_prov,
-                    });
-                } else {
-                    errors.push("Could not evaluate wait duration".to_string());
+                // `wait` accepts a Duration expression; evaluate it with the same
+                // shared value algebra used everywhere (fixes `wait(d1 + d2)`).
+                match Self::eval_value(duration, local_env, targets, functions) {
+                    Ok(CompileTimeValue::Duration(secs)) => {
+                        let mut merged_prov = provenance.clone();
+                        merged_prov.call_stack = call_stack.clone();
+                        out.push(ResolvedStatement::Wait {
+                            seconds: secs,
+                            provenance: merged_prov,
+                        });
+                    }
+                    Ok(other) => errors.push(format!(
+                        "wait expected Duration, got {:?}",
+                        other.get_type()
+                    )),
+                    Err(e) => errors.push(e),
                 }
             }
             SemanticStatement::SetOutput { name, value, provenance } => {
@@ -232,21 +239,8 @@ impl SemanticResolver {
             SemanticExpr::Binary { left, op, right } => {
                 let lhs = Self::eval_value(left, env, targets, functions)?;
                 let rhs = Self::eval_value(right, env, targets, functions)?;
-                match (lhs, op, rhs) {
-                    (CompileTimeValue::Position(p), BinaryOp::Add, CompileTimeValue::Vector3(v)) => {
-                        Ok(CompileTimeValue::Position(Position { point: p.point + v }))
-                    }
-                    (CompileTimeValue::Position(p), BinaryOp::Sub, CompileTimeValue::Vector3(v)) => {
-                        Ok(CompileTimeValue::Position(Position { point: p.point - v }))
-                    }
-                    (CompileTimeValue::Vector3(v1), BinaryOp::Add, CompileTimeValue::Vector3(v2)) => {
-                        Ok(CompileTimeValue::Vector3(v1 + v2))
-                    }
-                    (CompileTimeValue::Vector3(v1), BinaryOp::Sub, CompileTimeValue::Vector3(v2)) => {
-                        Ok(CompileTimeValue::Vector3(v1 - v2))
-                    }
-                    _ => Err("Unsupported binary operation in evaluation".to_string()),
-                }
+                // Single shared value algebra (also used by the evaluator).
+                crate::algebra::binary_value(*op, &lhs, &rhs)
             }
             // Reuse the evaluator's single value-level negation so compile-time
             // folding and deferred resolution agree by construction.
