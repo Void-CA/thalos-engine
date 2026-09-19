@@ -66,6 +66,15 @@ pub enum MotionKind {
     MoveC { via: MotionTarget },
 }
 
+/// A named or positional argument of a resolved-time operation (currently
+/// `offset`), preserving the source name so receiver-type-directed binding can
+/// happen once the receiver's value type is known.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SemanticArg {
+    pub name: Option<String>,
+    pub value: SemanticExpr,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SemanticExpr {
     Constant(CompileTimeValue),
@@ -84,6 +93,14 @@ pub enum SemanticExpr {
     Unary {
         op: UnaryOp,
         operand: Box<SemanticExpr>,
+    },
+    /// Receiver-type-directed `offset` whose receiver/deltas are only known at
+    /// resolution time (the receiver is a parameter/local). Constant calls fold
+    /// to `Constant` during lowering. Named delta components must survive
+    /// lowering, so they are carried here rather than flattened into `args`.
+    Offset {
+        receiver: Box<SemanticExpr>,
+        deltas: Vec<SemanticArg>,
     },
     Call {
         function: String,

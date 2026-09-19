@@ -21,6 +21,7 @@
 
 use thalos_lang::ast::{Arg, Expr};
 use thalos_lang::units::{AngleRadians, LengthMeters};
+use thalos_math::Vector3;
 
 use crate::evaluator::{CompileTimeValue, Position};
 use crate::types::Type;
@@ -195,6 +196,105 @@ pub fn apply(
             Ok(CompileTimeValue::Joints(out))
         }
         _ => Err("offset is not supported for this receiver type".to_string()),
+    }
+}
+
+/// Canonicalize an already-evaluated `offset` delta against the receiver's
+/// value type, then apply it.
+///
+/// This is the resolution-time counterpart of [`canonicalize_delta`] + [`apply`]:
+/// the resolver holds runtime values rather than AST nodes, so the argument
+/// carrier differs, but the component schema ([`crate::member_schema`]) and the
+/// arithmetic ([`apply`]) are the same ones. Keeps named-component semantics
+/// from drifting between compile-time folding and deferred resolution.
+pub fn apply_resolved_delta(
+    receiver: &CompileTimeValue,
+    delta: &[(Option<String>, CompileTimeValue)],
+) -> Result<CompileTimeValue, String> {
+    let any_named = delta.iter().any(|(name, _)| name.is_some());
+    let any_positional = delta.iter().any(|(name, _)| name.is_none());
+    if any_named && any_positional {
+        return Err("offset(...) cannot mix named and positional delta arguments".to_string());
+    }
+
+    match receiver {
+        CompileTimeValue::Position(_) | CompileTimeValue::Vector3(_) => {
+            let schema = Type::Vector3
+                .member_schema()
+                .expect("Vector3 has a member schema");
+            let vector = if any_positional {
+                if delta.len() != 1 {
+                    return Err(format!(
+                        "offset expected a single Vector3 delta, got {} arguments",
+                        delta.len()
+                    ));
+                }
+                match &delta[0].1 {
+                    CompileTimeValue::Vector3(v) => v.clone(),
+                    other => {
+                        return Err(format!(
+                            "offset delta expected Vector3, got {:?}",
+                            other.get_type()
+                        ));
+                    }
+                }
+            } else {
+                let mut components = [0.0_f64; 3];
+                for (name, value) in delta {
+                    let name = name.as_deref().unwrap_or_default();
+                    let index = schema.field_index_of(name).ok_or_else(|| {
+                        format!("Unknown offset component '{name}'; expected x, y, z")
+                    })?;
+                    components[index] = numeric_component(name, value)?;
+                }
+                Vector3::new(components[0], components[1], components[2])
+            };
+            apply(receiver, &[CompileTimeValue::Vector3(vector)])
+        }
+        CompileTimeValue::Joints(values) => {
+            let dimension = values.len();
+            let schema = Type::Joints {
+                dimension: Some(dimension),
+            }
+            .member_schema()
+            .expect("Joints has a member schema");
+            let canonical: Vec<CompileTimeValue> = if any_positional {
+                if delta.len() != dimension {
+                    return Err(format!(
+                        "offset expected {dimension} joint deltas, got {}",
+                        delta.len()
+                    ));
+                }
+                delta.iter().map(|(_, value)| value.clone()).collect()
+            } else {
+                let mut components = vec![CompileTimeValue::Angle(0.0); dimension];
+                for (name, value) in delta {
+                    let name = name.as_deref().unwrap_or_default();
+                    let index = schema.field_index_of(name).ok_or_else(|| {
+                        format!("Unknown offset component '{name}'; expected j1..j{dimension}")
+                    })?;
+                    components[index] = value.clone();
+                }
+                components
+            };
+            apply(receiver, &canonical)
+        }
+        other => Err(format!(
+            "offset expected a Position, Vector3, or Joints receiver, got {:?}",
+            other.get_type()
+        )),
+    }
+}
+
+fn numeric_component(name: &str, value: &CompileTimeValue) -> Result<f64, String> {
+    match value {
+        CompileTimeValue::Length(l) => Ok(*l),
+        CompileTimeValue::Float(f) => Ok(*f),
+        CompileTimeValue::Int(i) => Ok(*i as f64),
+        other => Err(format!(
+            "offset component '{name}' expected a Length or number, got {:?}",
+            other.get_type()
+        )),
     }
 }
 

@@ -4,8 +4,8 @@ use crate::builtins::register_builtins;
 use crate::checker::TypeChecker;
 use crate::evaluator::{CompileTimeValue, EvalResult, Evaluator, Position};
 use crate::model::{
-    JointConfiguration, MotionKind, MotionTarget, Provenance, ResolvedTarget, SemanticExpr,
-    SemanticFunction, SemanticMotion, SemanticProgram, SemanticStatement,
+    JointConfiguration, MotionKind, MotionTarget, Provenance, ResolvedTarget, SemanticArg,
+    SemanticExpr, SemanticFunction, SemanticMotion, SemanticProgram, SemanticStatement,
 };
 use crate::scope::SymbolTable;
 use crate::symbols::{Symbol, SymbolKind};
@@ -533,6 +533,40 @@ fn lower_expr(
                     op: *op,
                     operand: Box::new(lower_expr(operand, evaluator, params, locals, consts)),
                 },
+                AstExpr::Call { callee, args } if callee == "offset" => {
+                    // `offset` binding is receiver-type-directed and may only be
+                    // resolvable at runtime (`p.offset(x = side)`), so its named
+                    // delta components must survive lowering instead of being
+                    // flattened positionally.
+                    let mut iter = args.iter();
+                    match iter.next() {
+                        Some(receiver) => SemanticExpr::Offset {
+                            receiver: Box::new(lower_expr(
+                                &receiver.value,
+                                evaluator,
+                                params,
+                                locals,
+                                consts,
+                            )),
+                            deltas: iter
+                                .map(|arg| SemanticArg {
+                                    name: arg.name.clone(),
+                                    value: lower_expr(
+                                        &arg.value,
+                                        evaluator,
+                                        params,
+                                        locals,
+                                        consts,
+                                    ),
+                                })
+                                .collect(),
+                        },
+                        None => SemanticExpr::Call {
+                            function: callee.clone(),
+                            args: Vec::new(),
+                        },
+                    }
+                }
                 AstExpr::Call { callee, args } => SemanticExpr::Call {
                     function: callee.clone(),
                     args: args

@@ -258,6 +258,20 @@ impl SemanticResolver {
                 crate::evaluator::negate_value(&value)
                     .ok_or_else(|| format!("Cannot negate value of type {:?}", value.get_type()))
             }
+            // Receiver-type-directed `offset`: the receiver's value type decides
+            // how the named delta components bind. Shares `apply_resolved_delta`
+            // with the compile-time path so the two cannot drift.
+            SemanticExpr::Offset { receiver, deltas } => {
+                let receiver_value = Self::eval_value(receiver, env, targets, functions)?;
+                let mut resolved = Vec::with_capacity(deltas.len());
+                for delta in deltas {
+                    resolved.push((
+                        delta.name.clone(),
+                        Self::eval_value(&delta.value, env, targets, functions)?,
+                    ));
+                }
+                crate::offset::apply_resolved_delta(&receiver_value, &resolved)
+            }
             SemanticExpr::Call { function, args } => {
                 if let Some(target_fn) = functions.get(function) {
                     let mut arg_vals = Vec::new();
