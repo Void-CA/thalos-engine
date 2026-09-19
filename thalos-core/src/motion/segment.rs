@@ -26,6 +26,35 @@ pub enum MotionSegment {
         max_velocity: Option<f64>,
         max_acceleration: Option<f64>,
     },
+    /// Joint-space move to a target **position**.
+    ///
+    /// The position is resolved to a joint configuration via position-only IK,
+    /// then interpolated in JOINT space. This preserves a declared `movej` when
+    /// the program target is cartesian — the target type must NOT change the
+    /// motion modality (`movej(position)` stays articular, it does not become a
+    /// linear cartesian move).
+    MoveJPosition {
+        /// The IR-0 operation this segment was derived from.
+        origin: OperationId,
+        frame: FrameId,
+        target_position: [f64; 3],
+        max_velocity: Option<f64>,
+        max_acceleration: Option<f64>,
+    },
+    /// Joint-space move to a target **pose**.
+    ///
+    /// The pose is resolved to a joint configuration via pose IK (falling back
+    /// to position-only IK when the full pose is unreachable), then
+    /// interpolated in JOINT space. Preserves a declared `movej` for a pose
+    /// target.
+    MoveJPose {
+        /// The IR-0 operation this segment was derived from.
+        origin: OperationId,
+        frame: FrameId,
+        target_pose: Pose,
+        max_velocity: Option<f64>,
+        max_acceleration: Option<f64>,
+    },
     /// Cartesian linear move to a target pose.
     MoveL {
         /// The IR-0 operation this segment was derived from.
@@ -82,6 +111,8 @@ impl MotionSegment {
     pub fn origin(&self) -> &OperationId {
         match self {
             MotionSegment::MoveJ { origin, .. }
+            | MotionSegment::MoveJPosition { origin, .. }
+            | MotionSegment::MoveJPose { origin, .. }
             | MotionSegment::MoveL { origin, .. }
             | MotionSegment::MoveLPosition { origin, .. }
             | MotionSegment::MoveC { origin, .. }

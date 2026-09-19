@@ -54,6 +54,30 @@ impl DefaultPlannerDispatcher {
 }
 
 
+/// Resolve an IK-derived joint configuration into a validated joint goal and
+/// plan a JOINT-space trajectory to it.
+///
+/// Shared by the cartesian-target `MoveJ` variants so a declared `movej` never
+/// degrades into a linear cartesian move.
+fn plan_joint_to_config(
+    ctx: &SegmentPlanningContext,
+    resolver: &GoalResolver,
+    joints: Option<Vec<f64>>,
+    max_velocity: Option<f64>,
+    max_acceleration: Option<f64>,
+) -> Result<Trajectory, PlanningError> {
+    let joints = joints.ok_or_else(|| {
+        PlanningError::InvalidContext("resolved goal missing joint positions".into())
+    })?;
+    let goal: ValidatedGoal<JointGoal> = resolver.resolve_joint(ctx, &joints)?;
+    let planner = MoveJPlanner::new(MoveJConfig {
+        max_velocity: max_velocity.unwrap_or(1.0),
+        max_acceleration: max_acceleration.unwrap_or(0.5),
+        time_step: 0.01,
+    });
+    planner.plan(ctx, &goal)
+}
+
 impl MotionPlannerDispatcher for DefaultPlannerDispatcher {
     fn plan_segment(
         &self,
@@ -76,6 +100,56 @@ impl MotionPlannerDispatcher for DefaultPlannerDispatcher {
                     time_step: 0.01,
                 });
                 planner.plan(ctx, &goal)
+            }
+
+            // `movej` to a CARTESIAN target stays JOINT-space: resolve the
+            // target to a configuration via IK, then interpolate in joint
+            // space. The declared MotionKind is preserved — the target type
+            // does NOT turn a MoveJ into a linear cartesian move.
+            MotionSegment::MoveJPosition {
+                frame: _,
+                target_position,
+                max_velocity,
+                max_acceleration,
+                ..
+            } => {
+                let resolver = GoalResolver::new(self.goal_resolver_config.clone());
+                let goal: ValidatedGoal<ResolvedPositionGoal> = resolver.resolve_position(
+                    ctx,
+                    thalos_math::Vector3::new(
+                        target_position[0],
+                        target_position[1],
+                        target_position[2],
+                    ),
+                )?;
+                let joints = goal.goal.state.positions();
+                plan_joint_to_config(ctx, &resolver, joints, *max_velocity, *max_acceleration)
+            }
+
+            MotionSegment::MoveJPose {
+                frame: _,
+                target_pose,
+                max_velocity,
+                max_acceleration,
+                ..
+            } => {
+                let resolver = GoalResolver::new(self.goal_resolver_config.clone());
+                let joints = match resolver.resolve_pose(ctx, target_pose) {
+                    Ok(goal) => goal.goal.state.positions(),
+                    // Semantic fallback mirror of MoveL: an unreachable full
+                    // pose falls back to position-only IK — still JOINT-space.
+                    Err(
+                        PlanningError::IkFailed { .. }
+                        | PlanningError::IkFailedPosition { .. }
+                        | PlanningError::Ik(_),
+                    ) => resolver
+                        .resolve_position(ctx, target_pose.translation())?
+                        .goal
+                        .state
+                        .positions(),
+                    Err(other) => return Err(other),
+                };
+                plan_joint_to_config(ctx, &resolver, joints, *max_velocity, *max_acceleration)
             }
 
             MotionSegment::MoveL {

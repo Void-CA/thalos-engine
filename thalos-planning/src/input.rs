@@ -84,22 +84,34 @@ impl PlanningInput {
             .map(|step| match step {
                 PlanningStep::Motion(m) => {
                     let origin = plan_origin(&m.provenance);
-                    // `movec` is a circular move: it needs cartesian via + target
-                    // (validated upstream). For any non-cartesian shape, fall back
-                    // to the target-derived segment so this stays total.
-                    if let MotionKind::MoveC { via } = &m.kind
-                        && let (Some(via_position), Some(target_position)) =
-                            (target_position(via), target_position(&m.target))
-                        {
-                            return MotionSegment::MoveC {
-                                origin,
-                                frame: FrameId::World,
-                                via_position,
-                                target_position,
-                                max_velocity: None,
-                            };
+                    // The DECLARED MotionKind decides the motion modality; the
+                    // target type only selects the concrete segment shape. A
+                    // `movej` to a cartesian target must stay JOINT-space (not
+                    // become a linear cartesian move), and a `movel` must stay
+                    // cartesian.
+                    match &m.kind {
+                        MotionKind::MoveJ => joint_segment(origin, &m.target),
+                        MotionKind::MoveL => linear_segment(origin, &m.target),
+                        MotionKind::MoveC { via } => {
+                            // `movec` is a circular move: it needs a cartesian
+                            // via + target (validated upstream). For any
+                            // non-cartesian shape, fall back to the
+                            // target-derived linear segment so this stays total.
+                            if let (Some(via_position), Some(target_position)) =
+                                (target_position(via), target_position(&m.target))
+                            {
+                                MotionSegment::MoveC {
+                                    origin,
+                                    frame: FrameId::World,
+                                    via_position,
+                                    target_position,
+                                    max_velocity: None,
+                                }
+                            } else {
+                                linear_segment(origin, &m.target)
+                            }
                         }
-                    target_segment(origin, &m.target)
+                    }
                 }
                 PlanningStep::Wait { seconds, provenance } => MotionSegment::Delay {
                     origin: plan_origin(provenance),
@@ -142,8 +154,42 @@ fn target_position(target: &MotionTarget) -> Option<[f64; 3]> {
     }
 }
 
-/// Map a resolved target to its segment, independent of the motion kind.
-fn target_segment(origin: OperationId, target: &MotionTarget) -> MotionSegment {
+/// Map a target to a JOINT-space segment (`movej`). The target type picks the
+/// shape — joint configuration, position (IK-resolved), or pose (IK-resolved) —
+/// but the modality is always joint-space.
+fn joint_segment(origin: OperationId, target: &MotionTarget) -> MotionSegment {
+    match target {
+        MotionTarget::Joints(j) => MotionSegment::MoveJ {
+            origin,
+            target: j.values.clone(),
+            max_velocity: None,
+            max_acceleration: None,
+        },
+        MotionTarget::Position(p) => MotionSegment::MoveJPosition {
+            origin,
+            frame: FrameId::World,
+            target_position: [p.point.x, p.point.y, p.point.z],
+            max_velocity: None,
+            max_acceleration: None,
+        },
+        MotionTarget::Pose(pose) => MotionSegment::MoveJPose {
+            origin,
+            frame: FrameId::World,
+            target_pose: thalos_core::spatial::pose::Pose::new(
+                FrameId::World,
+                FrameId::World,
+                pose.transform.clone(),
+            ),
+            max_velocity: None,
+            max_acceleration: None,
+        },
+    }
+}
+
+/// Map a target to a CARTESIAN segment (`movel`). `movel(joints)` is invalid
+/// and rejected upstream; the joint fallback keeps this function total without
+/// affecting validated programs.
+fn linear_segment(origin: OperationId, target: &MotionTarget) -> MotionSegment {
     match target {
         MotionTarget::Joints(j) => MotionSegment::MoveJ {
             origin,

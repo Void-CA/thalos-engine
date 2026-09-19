@@ -22,7 +22,9 @@ impl ExecutionPlanBuilder {
                 index: idx,
                 planned_segment_index: idx,
                 instruction: match &seg.source {
-                    MotionSegment::MoveJ { .. } => PlanInstruction::MoveJ,
+                    MotionSegment::MoveJ { .. }
+                    | MotionSegment::MoveJPosition { .. }
+                    | MotionSegment::MoveJPose { .. } => PlanInstruction::MoveJ,
                     MotionSegment::MoveL { .. } => PlanInstruction::MoveL,
                     MotionSegment::MoveLPosition { .. } => PlanInstruction::MoveL,
                     MotionSegment::MoveC { .. } => PlanInstruction::MoveC,
