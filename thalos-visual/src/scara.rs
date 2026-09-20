@@ -45,7 +45,7 @@ impl ScaraVisualBuilder {
             link2_pose.transform().translation.z,
         ];
 
-        // ADR-0001: Z is vertical. Base height comes from Z component.
+        // Z is vertical. Base height comes from Z component.
         let base_height = (t_base[2] - 0.0).abs();
         if base_height > 1e-6 {
             scene.primitives.push(cylinder_between(

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use crate::ids::ResourceId;
 use crate::capability::CapabilityRequirement;
 
-/// ResourceKind (ADR-014)
+/// ResourceKind
 /// Categorizes resources in the inventory registry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -13,7 +13,7 @@ pub enum ResourceKind {
     Simulator,
 }
 
-/// ResourceRef (ADR-014)
+/// ResourceRef
 /// Light reference linking a Station to a Resource in the global registry.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ResourceRef {
@@ -30,7 +30,7 @@ impl ResourceRef {
     }
 }
 
-/// Resource (ADR-014)
+/// Resource
 /// Canonical inventory resource entity holding identity and provided capabilities.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Resource {

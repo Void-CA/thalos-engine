@@ -32,7 +32,7 @@ impl fmt::Display for TransportError {
 
 impl std::error::Error for TransportError {}
 
-/// Abstract RobotTransport Domain Port (ADR-014 / L1 Port)
+/// Abstract RobotTransport Domain Port (L1 port)
 pub trait RobotTransport: Send + Sync {
     fn state(&self) -> TransportState;
     fn send(&mut self, command: RobotCommand) -> Result<(), TransportError>;

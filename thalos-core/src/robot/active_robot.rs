@@ -9,7 +9,7 @@ use super::serial_chain::SerialChain;
 /// loaded" across all subsystems: planning, execution, visualisation,
 /// analysis, and runtime.
 ///
-/// `model` is a catalog-membership tag (ADR-003), not a kinematic identity:
+/// `model` is a catalog-membership tag, not a kinematic identity:
 /// `Some(RobotModel::X)` = internal catalog robot (UI presets, examples);
 /// `None` = robot loaded from an external URDF, whose identity is carried by
 /// `robot_name`/`robot_source`/`joints_meta`/`chain`.

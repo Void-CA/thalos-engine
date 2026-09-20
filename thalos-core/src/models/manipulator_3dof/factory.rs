@@ -15,7 +15,7 @@ pub fn create_manipulator_3dof(
     let link_2_frame = builder.create_frame("link_2");
     let link_3_frame = builder.create_frame("link_3");
 
-    // ADR-0001: Z-up canonical.
+    // Z-up canonical.
     // Joint 1 — yaw de base, eje Z (vertical)
     let joint1 = JointType::Revolute(RevoluteJoint::new(
         0,

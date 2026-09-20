@@ -17,7 +17,7 @@
 //!
 //! This module owns only the evidence representation. Building a sample from
 //! an observation + execution context (`from_observation`) is a runtime adapter
-//! (ADR-020), because the execution context is not part of the engine.
+//! because the execution context is not part of the engine.
 
 use std::time::Duration;
 

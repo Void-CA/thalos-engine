@@ -117,8 +117,8 @@ pub struct ExpectedState {
 /// `spatial` es el estado espacial NEUTRAL del modelo cinemático, derivado de
 /// la MISMA evaluación FK que `tcp`. No contiene conceptos de rendering
 /// (ids visuales, links, escala, meshes); la proyección visual es
-/// responsabilidad de la capa visual. Ver
-/// `docs/system/architecture/spatial-state-contract.md`.
+/// responsabilidad de la capa visual. El estado espacial de dominio nunca
+/// incluye la proyección visual.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct RuntimeState {
     pub robot: RobotSample,
@@ -146,7 +146,7 @@ pub struct TickContext {
     pub robot: RobotSample,
     pub expected: ExpectedState,
     /// Evaluation timestamp (nanoseconds) supplied by the caller. The engine
-    /// does **not** read a clock (ADR-020): the runtime stamps this before
+    /// does **not** read a clock: the runtime stamps this before
     /// dispatching the tick. `0` means "unstamped".
     #[serde(default)]
     pub timestamp_ns: u64,
@@ -448,7 +448,7 @@ impl ExecutionSession {
         self.advance_tick();
         let tick_index = self.state.cycle.tick_count;
 
-        // The clock is a runtime mechanism (ADR-020): the caller stamps the
+        // The clock is a runtime mechanism: the caller stamps the
         // context; the engine only reads it.
         let timestamp_ns = context.timestamp_ns;
 

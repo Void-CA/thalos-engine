@@ -11,7 +11,7 @@
 //!                                    Observation → Thalos
 //! ```
 //!
-//! ## Unit/type caveat (ADR-019 §4)
+//! ## Unit/type caveat
 //!
 //! `SetpointValue` currently carries raw numeric values without physical units.
 //! This is intentional for MVP — it validates the architecture without solving

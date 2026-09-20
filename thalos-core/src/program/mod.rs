@@ -7,7 +7,7 @@ pub use target::*;
 use serde::{Deserialize, Serialize};
 use crate::ids::{ProgramName, RobotId};
 
-/// Single Source of Truth for user robot operation logic (ADR-001).
+/// Single Source of Truth for user robot operation logic.
 ///
 /// Contains targets and body instructions without direct coupling to Scene,
 /// ExecutionPlan, or runtime state.

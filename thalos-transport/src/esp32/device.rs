@@ -16,7 +16,7 @@ pub struct ChannelBinding {
     pub unit: Option<String>,
 }
 
-/// Physical/Simulated ESP32 IIoT Telemetry Device Adapter (ADR-014).
+/// Physical/Simulated ESP32 IIoT Telemetry Device Adapter.
 ///
 /// Decodes raw ESP32 wire frames (`SAMPLE <ts_us> <v0> <v1>...`) into semantic `ChannelObservation`s.
 pub struct Esp32DeviceAdapter<T: DeviceTransport> {

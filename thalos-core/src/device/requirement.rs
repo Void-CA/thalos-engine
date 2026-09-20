@@ -20,7 +20,7 @@ pub enum SamplingPolicy {
 ///
 /// Note: `channel_id` references the observable endpoint known to the
 /// consumer. Migration from `ChannelId` to `SignalId` is deferred until
-/// Signal identity becomes operational (ADR-016).
+/// Signal identity becomes operational.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ObservationRequirement {
     pub channel_id: ChannelId,

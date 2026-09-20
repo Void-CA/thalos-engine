@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use crate::ids::StationId;
 use crate::resource::ResourceRef;
 
-/// Station (ADR-014)
+/// Station
 ///
 /// Engine-side, resource-binding station: an identity plus the resources
 /// participating in it. This is the lightweight domain concept used by the

@@ -87,6 +87,37 @@ impl<T: Transport> TerminalControllerAdapter<T> {
         self.command_seq += 1;
         format!("cmd-{}", self.command_seq)
     }
+
+    /// Send a `trajectory_batch` command (ordered joint samples with dt).
+    ///
+    /// This is the ROS 2 provider's dispatch path: Thalos plans, the resource
+    /// reproduces. It is deliberately NOT on the narrow `RobotTransport` port
+    /// (which carries `MoveJoints`/`Stop` only) — a `Ros2ControlController`
+    /// calls it directly.
+    pub async fn send_trajectory_batch(
+        &mut self,
+        samples: &[(u64, Vec<f64>)],
+    ) -> Result<(), TransportError> {
+        if self.state != TransportState::Connected {
+            return Err(TransportError::Disconnected);
+        }
+        let payload = format!("samples={}", encode_samples(samples));
+        let command_id = self.next_command_id();
+        let frame = codec::encode_command(&command_id, "trajectory_batch", &payload);
+        self.inner
+            .send(frame.as_bytes())
+            .await
+            .map_err(map_io)
+    }
+}
+
+/// Encode `[(dt_us, joints)]` as `dt:j0,j1,...|dt:j0,j1,...`.
+fn encode_samples(samples: &[(u64, Vec<f64>)]) -> String {
+    samples
+        .iter()
+        .map(|(dt_us, joints)| format!("{dt_us}:{}", join_f64(joints)))
+        .collect::<Vec<_>>()
+        .join("|")
 }
 
 fn map_io(error: crate::common::IoTransportError) -> TransportError {

@@ -67,7 +67,7 @@ impl ExecutionSessionId {
 }
 
 // ---------------------------------------------------------------------------
-// Robot Program & Skill domain identifiers (ADR-001)
+// Robot Program & Skill domain identifiers
 // ---------------------------------------------------------------------------
 
 id_newtype!(TargetId);
@@ -76,7 +76,7 @@ id_newtype!(ProgramName);
 id_newtype!(TargetName);
 
 // ---------------------------------------------------------------------------
-// Station Operational Model identifiers (ADR-014)
+// Station Operational Model identifiers
 // ---------------------------------------------------------------------------
 
 id_newtype!(StationId);

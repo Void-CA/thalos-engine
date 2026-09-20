@@ -187,7 +187,7 @@ impl MotionPlannerDispatcher for DefaultPlannerDispatcher {
                     cartesian_step: 0.01,
                 });
 
-                // Semantic fallback (design ADR-4, spec semantic-ik-fallback
+                // Semantic fallback (spec semantic-ik-fallback
                 // "MoveL pose unreachable but translation reachable"): a
                 // MoveL whose FINAL pose has no full-pose IK solution compiles
                 // through the translation-only path — gated by the operation
@@ -514,7 +514,7 @@ impl PlanCompiler {
     }
 }
 
-/// Deterministic initial joints of `segment_index` (design ADR-3, spec
+/// Deterministic initial joints of `segment_index`, spec
 /// semantic-ik-fallback "Segment-start context for materialization").
 ///
 /// - Segment 0 starts from the caller's `current_joints` (the plan's start
@@ -1095,7 +1095,7 @@ mod tests {
         assert_eq!(plan.segments[1].origin, OperationId("place-2".to_string()));
     }
 
-    // ── T8 (M2): deterministic segment-start joints (design ADR-3) ─────────
+    // ── T8 (M2): deterministic segment-start joints ─────────
     //
     // Spec semantic-ik-fallback "Same target from two contexts" + "Segment-
     // start context for materialization": the joints a materializer/verifier
@@ -1151,7 +1151,7 @@ mod tests {
         );
     }
 
-    // ── T9 (M2): dispatcher-level semantic fallback (design ADR-4) ──────────
+    // ── T9 (M2): dispatcher-level semantic fallback ──────────
     //
     // Spec semantic-ik-fallback "MoveL pose unreachable but translation
     // reachable": the FINAL pose of a user-authored MoveL is resolved by the

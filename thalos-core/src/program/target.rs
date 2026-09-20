@@ -15,7 +15,7 @@ impl JointPosition {
     }
 }
 
-/// Target spatial reference specification (ADR-001).
+/// Target spatial reference specification.
 /// Spatial resolution is deferred to the compilation context.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TargetReference {

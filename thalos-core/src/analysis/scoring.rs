@@ -9,7 +9,7 @@
 //!
 //! # Score semantics (spec `analysis-score-semantics` + `quality-scoring-contract`)
 //!
-//! - `quality_index` is a dual-component score (design ADR-1):
+//! - `quality_index` is a dual-component score:
 //!   `hard_safety × continuous_quality`, both in `[0, 1]`.
 //! - The **hard-safety component** is derived from the report's observations:
 //!   `max(0, 1 − Σ penalty_i)`, the discrete band 0E→1.0, 1E→0.70, 2E→0.40,
@@ -78,7 +78,7 @@ pub trait ScoringPolicy {
         self.raw_hard_safety(observations).max(0.0)
     }
 
-    /// The aggregate quality index of a set of observations (design ADR-1):
+    /// The aggregate quality index of a set of observations:
     /// `hard_safety × continuous_quality`, both components in `[0, 1]`.
     ///
     /// `metrics` is the report's `BTreeMap<String, f64>`; absent keys map to
@@ -159,7 +159,7 @@ mod tests {
     }
 
     /// A metrics map with every continuous slot at its ideal value → the
-    /// continuous component is exactly 1.0 (design ADR-1 harness preservation).
+    /// continuous component is exactly 1.0 (design harness preservation).
     fn good_metrics() -> BTreeMap<String, f64> {
         let mut metrics = BTreeMap::new();
         metrics.insert("avg_manipulability".to_string(), 0.5);
@@ -262,7 +262,7 @@ mod tests {
         assert!(info < warning && warning < error);
     }
 
-    // ─── Dual-component score (design ADR-1, spec quality-scoring-contract) ───
+    // ─── Dual-component score, spec quality-scoring-contract) ───
 
     #[test]
     fn zero_errors_with_good_metrics_score_exactly_one() {
@@ -276,7 +276,7 @@ mod tests {
 
     #[test]
     fn error_pins_with_good_metrics() {
-        // ADR-1 discrete pins × continuous(1.0): 0E→1.0, 1E→0.70, 2E→0.40,
+        // discrete pins × continuous(1.0): 0E→1.0, 1E→0.70, 2E→0.40,
         // 3E→0.10, 4E→0.0, 5E→0.0 (threshold-crossing contract).
         let policy = DefaultScoringPolicy;
         let cases = [
@@ -429,7 +429,7 @@ mod tests {
     }
 }
 
-/// Property tests for the dual-component scoring semantics (design ADR-6,
+/// Property tests for the dual-component scoring semantics,
 /// spec quality-scoring-contract "Score Domain" + "Monotonic Improvement").
 ///
 /// Properties:
@@ -508,7 +508,7 @@ mod property_tests {
             extra in prop::collection::vec(observation_strategy(), 0..20),
             metrics in metrics_strategy(),
         ) {
-            // D6 + ADR-1: quality(S ∪ Δ, M) ≤ quality(S, M) for any fixed M —
+            // D6: quality(S ∪ Δ, M) ≤ quality(S, M) for any fixed M —
             // penalties are additive non-negative, continuous is fixed.
             let policy = DefaultScoringPolicy;
             let base_quality = policy.quality_index(&base, &metrics);

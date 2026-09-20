@@ -43,7 +43,7 @@ pub enum ControlInstruction {
     SetSignal { signal_id: String, value: bool },
 }
 
-/// Top-level instruction in a RobotProgram (ADR-001).
+/// Top-level instruction in a RobotProgram.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Instruction {
     Motion(MotionInstruction),

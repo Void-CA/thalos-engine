@@ -150,7 +150,7 @@ impl SegmentPlanner for MoveLPlanner {
                         q_current = ik_result.q;
                     }
                     IKStatus::MaxIterations => {
-                        // Semantic fallback (design ADR-4, spec
+                        // Semantic fallback (spec
                         // semantic-ik-fallback "Position fallback when
                         // operation allows"): a MoveL intermediate whose FULL
                         // pose is unreachable retries translation-only IK —
@@ -430,7 +430,7 @@ mod tests {
         );
     }
 
-    // ── T9 (M2): semantic intermediate fallback (design ADR-4) ──────────────
+    // ── T9 (M2): semantic intermediate fallback ──────────────
     //
     // Spec semantic-ik-fallback "Position fallback when operation allows": a
     // MoveL intermediate whose full pose exhausts `MaxIterations` falls back

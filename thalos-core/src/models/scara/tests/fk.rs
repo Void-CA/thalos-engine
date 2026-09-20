@@ -2,11 +2,11 @@ use crate::models::scara::ScaraSpec;
 use crate::prelude::*;
 use thalos_math::constants::*;
 
-// ─── ADR-0001 Z-up regression tests ──────────────────────────
+// ─── Z-up regression tests ──────────────────────────
 
 #[test]
 fn zero_config_ee_in_z_up() {
-    // ADR-0001: Z is the canonical vertical axis.
+    // Z is the canonical vertical axis.
     // At q=[0,0,0,0] with ideal spec (base_height=0, a1=a2=1):
     //   ee = (a1+a2, 0, 0) = (2, 0, 0)
     // Both Y-up and Z-up agree at zero config with no base offset.
@@ -27,7 +27,7 @@ fn zero_config_ee_in_z_up() {
 
 #[test]
 fn prismatic_moves_ee_in_z() {
-    // ADR-0001: Prismatic joint moves EE along Z (vertical).
+    // Prismatic joint moves EE along Z (vertical).
     // At q=[0, 0, d3, 0]: ee = (a1+a2, 0, d3)
     let mut spec = ScaraSpec::ideal();
     spec.joint_limits[2] = JointLimits::new(-2.0, 2.0);
@@ -57,7 +57,7 @@ fn prismatic_moves_ee_in_z() {
 
 #[test]
 fn first_joint_90_deg_in_z_up() {
-    // ADR-0001: Rz(π/2) rotates +X to +Y in Z-up.
+    // Rz(π/2) rotates +X to +Y in Z-up.
     // ee at q=[π/2, 0, 0, 0] → (0, 2, 0)
     let robot = ScaraSpec::ideal().build();
     let fk = ForwardKinematics::new(robot);
@@ -75,7 +75,7 @@ fn first_joint_90_deg_in_z_up() {
 
 #[test]
 fn folded_configuration_in_z_up() {
-    // ADR-0001: Rz(π/2)·Rz(-π/2) = Rz(0).
+    // Rz(π/2)·Rz(-π/2) = Rz(0).
     // ee at q=[π/2, -π/2, 0, 0] → link1 in Y, link2 in X → (1, 1, 0)
     let robot = ScaraSpec::ideal().build();
     let fk = ForwardKinematics::new(robot);
@@ -93,7 +93,7 @@ fn folded_configuration_in_z_up() {
 
 #[test]
 fn wrist_rotation_in_z_up() {
-    // ADR-0001: Wrist Rz(π/2) does not change position.
+    // Wrist Rz(π/2) does not change position.
     let robot = ScaraSpec::ideal().build();
     let fk = ForwardKinematics::new(robot);
     let result = fk.evaluate(&[0.0, 0.0, 0.0, PI / 2.0]);
@@ -110,7 +110,7 @@ fn wrist_rotation_in_z_up() {
 
 #[test]
 fn combined_motion_accumulates_correctly_in_z_up() {
-    // ADR-0001: q1=45°, q2=45°, d3=0.3, q4=90°
+    // q1=45°, q2=45°, d3=0.3, q4=90°
     // ee = (cos45 + cos90, sin45 + sin90, 0.3) = (0.7071, 1.7071, 0.3)
     let robot = ScaraSpec::ideal().build();
     let fk = ForwardKinematics::new(robot);

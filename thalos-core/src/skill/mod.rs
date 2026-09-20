@@ -12,7 +12,7 @@ pub struct Parameter {
 use crate::ids::{ObjectId, TargetId};
 use crate::robot::state::RobotState;
 
-/// Pre/post condition specification for skill contracts (ADR-001 / Phase 2.5c).
+/// Pre/post condition specification for skill contracts (skill contract).
 ///
 /// Expresses declarative world expectations without coupling to specific hardware sensors.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -115,7 +115,7 @@ pub struct SkillPlanner {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct NativeSkillId(pub String);
 
-/// Implementation strategy for a RobotSkill (ADR-001).
+/// Implementation strategy for a RobotSkill.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SkillImplementation {
     Program(ProgramFragment),
@@ -135,7 +135,7 @@ impl SkillCapability {
     }
 }
 
-/// Declarative operational capability of a robot (ADR-001).
+/// Declarative operational capability of a robot.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RobotSkill {
     pub id: SkillId,

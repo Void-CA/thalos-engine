@@ -2,11 +2,11 @@ use crate::models::single_revolute::SingleRevoluteSpec;
 use crate::prelude::*;
 use thalos_math::constants::*;
 
-// ─── ADR-0001 Z-up regression tests ──────────────────────────
+// ─── Z-up regression tests ──────────────────────────
 
 #[test]
 fn zero_config_ee_in_z_up() {
-    // ADR-0001: Z is vertical. Single revolute spins around Z.
+    // Z is vertical. Single revolute spins around Z.
     // At q=0 with l=1: ee = (1, 0, 0) — arm in XY, Z=0.
     let robot = SingleRevoluteSpec::ideal().build();
     let fk = ForwardKinematics::new(robot);

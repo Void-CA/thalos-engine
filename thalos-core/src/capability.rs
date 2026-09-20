@@ -1,9 +1,9 @@
 //! Capability vocabulary.
 //!
-//! Two planes, deliberately distinct (ADR-022):
+//! Two planes, deliberately distinct:
 //!
 //! - **Plane A — semantic requirement** ([`CapabilityRequirement`]): what a
-//!   station/module/program needs. Domain-level (`requires / provides`, ADR-016).
+//!   station/module/program needs. Domain-level (`requires / provides`,.
 //! - **Plane B — execution provider contract** ([`CapabilityDescriptor`]): what a
 //!   concrete provider accepts and provides, and with what evidence. Mechanism-level.
 //!
@@ -16,10 +16,10 @@ use crate::robot::capability::{
 };
 
 // ---------------------------------------------------------------------------
-// Plane A — semantic capability requirements (domain, ADR-014 / ADR-016)
+// Plane A — semantic capability requirements (domain)
 // ---------------------------------------------------------------------------
 
-/// CapabilityRequirement (ADR-014)
+/// CapabilityRequirement
 /// Declares semantic capabilities required or provided by resources in the station.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "type")]
@@ -33,7 +33,7 @@ pub enum CapabilityRequirement {
     Custom { name: String },
 }
 
-/// ResourceRequirement (ADR-014)
+/// ResourceRequirement
 /// Maps a capability requirement to an optional resolution status.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResourceRequirement {
@@ -58,7 +58,7 @@ impl ResourceRequirement {
 }
 
 // ---------------------------------------------------------------------------
-// Plane B — execution provider capability contract (ADR-022, firmware-boundary.md)
+// Plane B — execution provider capability contract (`docs/reference/firmware-boundary.md`)
 //
 // Pure vocabulary. No I/O, no transport, no registry: a provider advertises a
 // descriptor, a request is matched against it before dispatch, and the provider's

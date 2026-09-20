@@ -193,7 +193,7 @@ fn error_history() {
 
 /// T6 (M2): the DLS solver exposes the robot chain it operates on, so the
 /// advisor can recompile/re-analyze edited programs with the SAME kinematic
-/// model (end-to-end availability verification, design ADR-2/ADR-3).
+/// model (end-to-end availability verification, end-to-end availability).
 #[test]
 fn exposes_the_robot_chain_it_was_built_with() {
     let (fk, ee) = build_2dof_planar_arm();

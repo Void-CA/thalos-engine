@@ -29,7 +29,7 @@ impl fmt::Display for DeviceTransportError {
 
 impl std::error::Error for DeviceTransportError {}
 
-/// Abstract DeviceTransport Domain Port (ADR-014 / L1 Port)
+/// Abstract DeviceTransport Domain Port (L1 port)
 pub trait DeviceTransport: Send + Sync {
     fn state(&self) -> TransportState;
     fn subscribe(&mut self, subscription: ChannelSubscription) -> Result<(), DeviceTransportError>;

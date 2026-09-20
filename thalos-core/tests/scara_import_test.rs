@@ -120,7 +120,7 @@ fn fk_at_zero_pose_succeeds() {
     assert!(t.y.is_finite());
     assert!(t.z.is_finite());
 
-    // ADR-0001: URDF import is passthrough Z-up. No conversion applied.
+    // URDF import is passthrough Z-up. No conversion applied.
     // At zero config, ee should be near (1.8, 0, 0.5) = a1 + a2 on X, base_height on Z
     assert!(
         (t.x - 1.8).abs() < 1e-3,

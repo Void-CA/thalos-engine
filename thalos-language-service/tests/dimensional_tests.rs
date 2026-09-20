@@ -1,7 +1,7 @@
 //! Dimensional strictness (Fase 1): no implicit `Number -> dimension`
 //! coercion, and geometric constructors demand their dimensional components.
 //!
-//! Normative source: `docs/language/thalos-dimensional-system.md`.
+//! Normative source: `thalos-industrial/docs/reference/thalos-dimensional-system.md`.
 
 use thalos_lang::parse_source;
 use thalos_language_service::compiler::SemanticCompiler;

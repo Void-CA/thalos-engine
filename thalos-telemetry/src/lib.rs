@@ -1,7 +1,7 @@
 //! # thalos-telemetry
 //!
 //! Execution evidence and observation semantics extracted from Thalos
-//! Industrial (ADR-020, F2.1b).
+//! Industrial (F2.1b).
 //!
 //! Owns what **represents/transforms evidence independently of how it is
 //! obtained**: execution traces and samples, motion traces, the trace analyzer,
@@ -9,7 +9,7 @@
 //! recording mechanisms, persistence, or the runtime live state.
 //!
 //! The acquisition→evidence boundary is `thalos_core::robot::RobotObservation`
-//! plus a runtime-provided execution context (ADR-020).
+//! plus a runtime-provided execution context.
 
 pub mod analyzer;
 pub mod event;

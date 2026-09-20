@@ -18,11 +18,11 @@ fn build() -> (ForwardKinematics, FrameId) {
     (fk, ee)
 }
 
-// ─── ADR-0001 Z-up regression tests ──────────────────────────
+// ─── Z-up regression tests ──────────────────────────
 
 #[test]
 fn zero_config_ee_in_z_up() {
-    // ADR-0001: Z is vertical. Link 1 translation → Z.
+    // Z is vertical. Link 1 translation → Z.
     // At q=[0,0,0]: ee = (l2+l3, 0, l1) = (2, 0, 1)
     let (fk, ee) = build();
     let t = ee_translation(&fk, &[0.0, 0.0, 0.0], &ee);

@@ -8,7 +8,7 @@
 //! Thalos → Trigger(camera, capture) → Camera → capture() → ACK
 //! ```
 //!
-//! ## Semantics (ADR-019 §3)
+//! ## Semantics
 //!
 //! `Trigger` is **not** a setpoint. The value represents an event payload,
 //! not a persistent operating value:

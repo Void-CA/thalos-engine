@@ -35,7 +35,7 @@ pub struct OperationConstraints {
 }
 
 
-/// A semantic work unit in the Operation IR (ADR-002).
+/// A semantic work unit in the Operation IR.
 ///
 /// Each operation carries a unique ID, a target pose, and a set of constraints.
 /// Operations are concrete enums (not a trait) — the model is still stabilizing.

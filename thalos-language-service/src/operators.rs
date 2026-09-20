@@ -2,7 +2,7 @@
 //! results from combining two types.
 //!
 //! The value-level counterpart is `algebra.rs`; both must agree. Normative
-//! rules: `docs/language/thalos-dimensional-system.md`.
+//! rules: `thalos-industrial/docs/reference/thalos-dimensional-system.md`.
 //!
 //! `Number` is the semantic category implemented by `Int`/`Float`. Arithmetic
 //! promotes to `Float` when either operand is a `Float`; `/` always yields a

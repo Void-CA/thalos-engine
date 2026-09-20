@@ -1,4 +1,4 @@
-//! Physical Command Semantics (ADR-019).
+//! Physical Command Semantics.
 //!
 //! `Command` is the semantic contract between Thalos's supervisory layer and
 //! the physical resources it coordinates. Each command carries explicit semantics
@@ -21,7 +21,7 @@
 //! - Each variant owns its typed contract. No `Box<dyn Any>` or type erasure.
 //! - `ResourceRef` is reused from `crate::resource`. No duplication.
 //! - `MotionPose` is reused from `crate::motion::target`. No second version.
-//! - `DirectActuation` is explicitly excluded from the default vocabulary (ADR-019 §11).
+//! - `DirectActuation` is explicitly excluded from the default vocabulary.
 //! - `Intent` is a planning-layer concern, not a `Command` variant.
 
 pub mod motion;
@@ -64,7 +64,7 @@ pub enum CommandSemantics {
 /// to the Interconnection transport layer. It carries *what* is being requested,
 /// not *how* the request is delivered.
 ///
-/// # Three cases (ADR-019 §15)
+/// # Three cases
 ///
 /// | Case | Variant | Resource assumes |
 /// |------|---------|------------------|

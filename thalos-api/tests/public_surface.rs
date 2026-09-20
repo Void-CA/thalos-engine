@@ -59,7 +59,7 @@ fn public_surface_is_self_contained() {
     let _ = std::any::type_name::<RobotModel>();
     let _ = std::any::type_name::<Robot>();
 
-    // Execution IR surface fixed for the ADR-020 extraction (Fase 2).
+    // Execution IR surface fixed for the Fase 2 engine extraction.
     let _ = std::any::type_name::<ExecutionSegment>();
     let _ = std::any::type_name::<ExecutionWaypoint>();
     let _ = std::any::type_name::<PlanInstruction>();

@@ -11,10 +11,10 @@
 //!
 //! [`DefaultAggregator`] is generic over [`ScoringPolicy`]: it composes a
 //! policy (penalties + continuous metrics → `quality_index` → `grade`, design
-//! ADR-1) but never owns weight values. Only the default policy exists today;
+//! but never owns weight values. Only the default policy exists today;
 //! the trait is the seam for future policies.
 //!
-//! # Metrics threading (design ADR-1)
+//! # Metrics threading
 //!
 //! [`Aggregator::aggregate_with_metrics`] is the production aggregation path:
 //! the metrics map populates `report.metrics` and feeds the summary's
@@ -61,7 +61,7 @@ pub trait Aggregator {
     /// Aggregates observations produced by any analyzer(s) into a canonical
     /// report with a derived summary (quality_index, counts, grade).
     ///
-    /// Observation-only path (design ADR-1): with no continuous-metric
+    /// Observation-only path: with no continuous-metric
     /// information available, every metric key is treated as ABSENT — the
     /// continuous component is NEUTRAL (1.0) and the score reduces to the
     /// hard-safety pins. Backward-compatible; `report.metrics` is empty.
@@ -69,7 +69,7 @@ pub trait Aggregator {
         self.aggregate_with_metrics(artifact, observations, BTreeMap::new())
     }
 
-    /// Full aggregation (design ADR-1): the metrics map populates
+    /// Full aggregation: the metrics map populates
     /// `report.metrics` AND feeds the summary's continuous-quality component
     /// in the same call. THE production path — `PlanAnalysisService` (and the
     /// usability harness that mirrors it) calls this with the technical
@@ -97,7 +97,7 @@ impl<P: ScoringPolicy> DefaultAggregator<P> {
 
     /// Builds the derived summary over the report's observations (I7): a small
     /// projection computed here, never hand-written by analyzers. The
-    /// continuous metrics feed the score (design ADR-1).
+    /// continuous metrics feed the score.
     fn build_summary(
         &self,
         observations: &[Observation],
@@ -348,7 +348,7 @@ mod tests {
         assert_eq!(report.validate(), Ok(()));
     }
 
-    // ─── Metrics threading (design ADR-1, T2) ───────────────────────────
+    // ─── Metrics threading, T2) ───────────────────────────
 
     #[test]
     fn aggregate_with_metrics_populates_report_metrics() {

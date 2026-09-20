@@ -13,8 +13,8 @@ use crate::builder::frame_visual_id;
 ///
 /// This is the VIEWPORT representation: frames keyed by visual id, links keyed
 /// by joint id, with the cylinder midpoint/orientation/scale already resolved.
-/// It is NOT the spatial state of the kinematic model — see
-/// `docs/system/architecture/spatial-state-contract.md`.
+/// It is NOT the spatial state of the kinematic model: the visual projection
+/// is a separate responsibility.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SpatialTransform {
     pub id: String,

@@ -2,7 +2,7 @@
 //! `Speed`/`AngularSpeed`, and the shared value algebra used by the evaluator
 //! and the resolver.
 //!
-//! Normative rules: `docs/language/thalos-dimensional-system.md`.
+//! Normative rules: `thalos-industrial/docs/reference/thalos-dimensional-system.md`.
 
 use thalos_lang::ast::BinaryOp;
 use thalos_lang::parse_source;

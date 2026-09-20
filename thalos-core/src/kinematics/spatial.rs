@@ -21,8 +21,8 @@ pub struct FramePose {
 /// (a control tick).
 ///
 /// Derived from the SAME [`FKResult`] that produces the tick's TCP: one
-/// kinematic evaluation produces both. See
-/// `docs/system/architecture/spatial-state-contract.md`.
+/// kinematic evaluation produces both. The domain spatial state is derived
+/// from the same FK evaluation as the tick's TCP.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SpatialState {
     pub frames: Vec<FramePose>,

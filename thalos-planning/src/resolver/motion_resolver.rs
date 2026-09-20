@@ -170,7 +170,7 @@ impl<'a> MotionResolver<'a> {
                     channel,
                     value,
                 } => {
-                    // ADR-019 Phase C: Lower ProgramInstruction::SetOutput to
+                    // Lower ProgramInstruction::SetOutput to
                     // RuntimeAction::ExecuteCommand(Command::Trigger). The DSL's
                     // set_output is a discrete event (trigger), not a setpoint.
                     let trigger_value = match value {
@@ -490,7 +490,7 @@ mod tests {
             result.runtime.events[0].action,
             RuntimeAction::Delay(_)
         ));
-        // ADR-019 Phase C: SetOutput lowers to ExecuteCommand(Trigger)
+        // SetOutput lowers to ExecuteCommand(Trigger)
         assert!(matches!(
             result.runtime.events[1].action,
             RuntimeAction::ExecuteCommand(_)

@@ -15,9 +15,9 @@
 //! - `thalos-api` **must not** depend on `thalos-runtime`: the application layer
 //!   depends on the API, never the other way around.
 //!
-//! ## Target surface — ADR-020
+//! ## Target surface
 //!
-//! Per ADR-020, the engine owns domain + supervision **semantics** (not its
+//! The engine owns domain + supervision **semantics** (not its
 //! execution mechanism). The following public namespaces are planned:
 //!
 //! - `execution::supervision` — execution semantics and supervision contracts
@@ -32,7 +32,7 @@
 /// Curated core domain surface.
 ///
 /// Only the fundamental domain modules are public here. Internal/stepping-stone
-/// modules (`analysis`, `models` catalog, and the legacy ADR-014 inventory types)
+/// modules (`analysis`, `models` catalog, and the legacy inventory types)
 /// are exposed through their own namespaces below or kept private.
 ///
 /// Note: `core::station::Station` (engine, resource-binding) is a different

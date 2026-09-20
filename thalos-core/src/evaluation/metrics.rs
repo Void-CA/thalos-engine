@@ -48,14 +48,14 @@ impl PlanMetrics {
     }
 
     /// Continuous-quality component of the dual-component score (design
-    /// ADR-1), computed from the typed metrics: projects this struct into the
+    ///, computed from the typed metrics: projects this struct into the
     /// `report.metrics` key space and applies the weighted norm. One formula
     /// with the map path used by [`DefaultScoringPolicy`](crate::analysis::scoring::DefaultScoringPolicy).
     pub fn continuous_quality_score(&self) -> f64 {
         continuous_quality_score(&self.to_metric_map())
     }
 
-    /// Projection into the stable `report.metrics` key space (design ADR-1).
+    /// Projection into the stable `report.metrics` key space.
     fn to_metric_map(&self) -> BTreeMap<String, f64> {
         let mut map = BTreeMap::new();
         map.insert(
@@ -76,7 +76,7 @@ impl PlanMetrics {
     }
 }
 
-/// A single slot of the continuous-quality component (design ADR-1): the
+/// A single slot of the continuous-quality component: the
 /// stable `report.metrics` key, the [`MetricKind`] whose default weight feeds
 /// the weighted norm, and the value normalization (always in [0, 1]).
 struct ContinuousMetric {
@@ -95,7 +95,7 @@ impl ContinuousMetric {
     }
 }
 
-/// The five continuous metrics of the quality score (design ADR-1 table):
+/// The five continuous metrics of the quality score (design table):
 /// manipulability, smoothness, collision clearance, joint margin, orientation
 /// change. `MetricKind::default_weight()` is the single source of weight
 /// truth.
@@ -127,7 +127,7 @@ const CONTINUOUS_METRICS: [ContinuousMetric; 5] = [
     },
 ];
 
-/// Continuous-quality component of the dual-component score (design ADR-1):
+/// Continuous-quality component of the dual-component score:
 /// `Σ(w_i × norm_i(metric_i)) / Σ(w_i)` over the five continuous metrics.
 ///
 /// Absent keys (and NaN values — never produced by the analyzers, guarded for
@@ -287,7 +287,7 @@ mod tests {
     }
 }
 
-/// Tests for the continuous-quality component (design ADR-1: the weighted,
+/// Tests for the continuous-quality component (design: the weighted,
 /// sum-normalized norm over the five continuous metrics, absent key → NEUTRAL).
 #[cfg(test)]
 mod continuous_quality_tests {
@@ -300,7 +300,7 @@ mod continuous_quality_tests {
 
     #[test]
     fn empty_metrics_are_neutral_one() {
-        // ADR-1: with NO metric keys present, every slot contributes its
+        // with NO metric keys present, every slot contributes its
         // NEUTRAL 1.0 → the weighted norm is exactly 1.0. This is what keeps
         // the 0E→1.0 pin when the test harness does not populate the map.
         assert_eq!(continuous_quality_score(&BTreeMap::new()), 1.0);
@@ -322,7 +322,7 @@ mod continuous_quality_tests {
 
     #[test]
     fn single_key_norms_follow_design_formulas() {
-        // Each norm formula from the ADR-1 table, isolated via single-key maps
+        // Each norm formula from the table, isolated via single-key maps
         // (all other slots absent → NEUTRAL 1.0). Expected values are the
         // weighted mean derived from the design formula:
         //   score = (w·norm + Σ(other w·1.0)) / Σ(w)

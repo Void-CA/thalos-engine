@@ -23,7 +23,7 @@ pub enum Esp32Frame {
     SampleFrame { timestamp_us: u64, values: Vec<f64> },
 }
 
-/// Pure parser and encoder for ESP32 text wire format (ADR-014).
+/// Pure parser and encoder for ESP32 text wire format.
 pub struct Esp32Codec;
 
 impl Esp32Codec {

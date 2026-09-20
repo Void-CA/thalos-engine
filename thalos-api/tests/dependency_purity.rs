@@ -1,4 +1,4 @@
-//! Dependency purity guard (ADR-020, Fase 1).
+//! Dependency purity guard (Fase 1).
 //!
 //! `thalos-engine` is not a uniformly pure workspace: some crates legitimately
 //! touch infrastructure today (`thalos-transport` serial/TCP IO, `thalos-visual`
@@ -18,7 +18,7 @@
 //! blacklist: adding `reqwest`, `tokio`, or `rusqlite` to `thalos-core` fails,
 //! and any exception has to be declared here on purpose.
 //!
-//! Concept owned by ADR-020: the engine owns domain + supervision **semantics**;
+//! Concept: the engine owns domain + supervision **semantics**;
 //! infrastructure and mechanism stay in the application.
 
 use std::collections::BTreeSet;
@@ -48,7 +48,7 @@ const EXCEPTED_CRATES: &[(&str, &str)] = &[
     ),
     (
         "thalos-transport",
-        "concrete serial/TCP/ESP32 IO (documented exception, ADR-018)",
+        "concrete serial/TCP/ESP32 IO (documented exception)",
     ),
     (
         "thalos-visual",
@@ -200,7 +200,7 @@ fn workspace_members_are_classified() {
         unclassified.is_empty(),
         "Workspace members are not classified for the dependency purity guard: {unclassified:?}.\n\
          Declare each new crate in PURE_DOMAIN_CRATES or in EXCEPTED_CRATES (with a reason) \
-         in thalos-api/tests/dependency_purity.rs — per ADR-020."
+         in thalos-api/tests/dependency_purity.rs."
     );
 
     // Stale entries: classifications that no longer match a workspace member.
@@ -242,7 +242,7 @@ fn pure_domain_crates_have_no_infrastructure_dependencies() {
     assert!(
         violations.is_empty(),
         "Pure-domain engine crates declare infrastructure/I-O dependencies:\n{}\n\
-         Per ADR-020, pure domain crates must not depend on infrastructure. Either remove the \
+         Pure domain crates must not depend on infrastructure. Either remove the \
          dependency, or move the crate to EXCEPTED_CRATES (with a reason).",
         violations.join("\n")
     );

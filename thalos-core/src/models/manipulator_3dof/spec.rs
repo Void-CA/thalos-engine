@@ -3,7 +3,7 @@ use thalos_math::constants::PI;
 
 /// Spec de un manipulador 3DOF estilo PUMA-base (columna vertical).
 ///
-/// ADR-0001 (Z-up): joint 1 (yaw, eje Z vertical), joint 2 (hombro, eje Y
+/// Z-up: joint 1 (yaw, eje Z vertical), joint 2 (hombro, eje Y
 /// horizontal), joint 3 (codo, eje Y, paralelo a joint 2). Los links se
 /// extienden en +X local.
 #[derive(Debug, Clone, Copy, PartialEq)]

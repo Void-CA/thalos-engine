@@ -5,7 +5,7 @@
 //! constant folding and deferred resolution cannot diverge. The *type* algebra
 //! lives in `operators.rs`; this module mirrors it exactly at the value level.
 //!
-//! Normative rules: `docs/language/thalos-dimensional-system.md`.
+//! Normative rules: `thalos-industrial/docs/reference/thalos-dimensional-system.md`.
 //!
 //! ## `Number` promotion
 //!

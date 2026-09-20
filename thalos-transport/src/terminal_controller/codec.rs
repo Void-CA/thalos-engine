@@ -6,7 +6,7 @@
 /// A negotiated capability descriptor as advertised by the endpoint.
 ///
 /// This mirrors the `CAPABILITIES` frame **exactly**: what the resource *can
-/// do*. It MUST NOT carry availability or mechanism (ADR-022 §4).
+/// do*. It MUST NOT carry availability or mechanism (capability contract).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RemoteCapabilities {
     pub accepted: Vec<String>,

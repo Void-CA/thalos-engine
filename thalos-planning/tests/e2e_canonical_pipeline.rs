@@ -243,7 +243,7 @@ fn timed_events_align_to_compiled_segment_timing() {
             RuntimeAction::ExecuteCommand(cmd0),
             RuntimeAction::ExecuteCommand(cmd1),
         ) => {
-            // ADR-019: both are Trigger commands with Bool values
+            // both are Trigger commands with Bool values
             assert_eq!(cmd0.semantics(), CommandSemantics::Trigger);
             assert_eq!(cmd1.semantics(), CommandSemantics::Trigger);
             // grip = true, ungrip = false
