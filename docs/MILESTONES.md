@@ -19,7 +19,7 @@
 | **`thalos-api` como frontera pública curada** — fachada por concepto, nunca alias de crates enteros; la superficie pública es exactamente la declarada | ✅ vigente | `thalos-api/tests/{public_surface,dependency_purity}.rs` |
 | **Cierre de API** — la aplicación construye solo sobre `thalos-api`; cada hueco de la API lo detectó el compilador, no una discusión | ✅ vigente | `thalos-api/tests/dependency_purity.rs` |
 | **Modelo temporal del movimiento** — Requested / Planned / Actual: el engine posee `Requested → Planned`, el ejecutor reporta `Actual` | ✅ vigente | `thalos-planning`, `thalos-core/src/execution` |
-| **Frontera de I/O físico** — el `RobotTransport` síncrono puentea transportes async vía Tokio; se documentó el costo (bloqueo de hilo, no cancelable) | 🟠 vigente con deuda | `thalos-transport/src/esp32/robot.rs` |
+| **Frontera de I/O físico** — el engine posee solo los puertos abstractos (`thalos-ports`); el I/O concreto (serial/TCP/ESP32) se movió a Thalos Industrial (F0, 2026-09-21) para no contaminar el workspace del engine | ✅ vigente | `thalos-ports/src/robot/transport.rs`; `thalos-industrial/backend/crates/thalos-transport` |
 | **Namespace numérico de ADRs** | 🔄 retirado | Los ADRs se eliminaron el 2026-09-20; las referencias en código se sustituyeron por nombres de contrato |
 
 ## Fases cerradas

@@ -45,14 +45,6 @@ Cadena: `.thls` → parse → compile → resolve → ir → validation → lowe
 | Analizador de trazas | ✅ | `thalos-telemetry/src/analyzer.rs` |
 | Vocabulario de eventos de ciclo de vida | ✅ | `thalos-telemetry/src/event.rs` |
 
-## Transporte (excepción de frontera)
-
-| Área | Estado | Dónde |
-|---|---|---|
-| Serial / TCP | ✅ | `thalos-transport/src/{serial,tcp}` |
-| Codec ESP32 | ✅ | `thalos-transport/src/esp32/codec.rs` |
-| Terminal controller (conformance) | ✅ | `thalos-transport/src/terminal_controller` |
-
 ## Frontera pública
 
 | Propiedad | Estado | Guarda |

@@ -1,8 +1,8 @@
 //! Dependency purity guard (Fase 1).
 //!
 //! `thalos-engine` is not a uniformly pure workspace: some crates legitimately
-//! touch infrastructure today (`thalos-transport` serial/TCP IO, `thalos-visual`
-//! mesh files, `thalos-language-service` profile files, `thalos-importer` asset
+//! touch infrastructure today (`thalos-visual` mesh files,
+//! `thalos-language-service` profile files, `thalos-importer` asset
 //! resolution). A blanket "the engine has no I/O" assertion would therefore be
 //! false and useless.
 //!
@@ -47,10 +47,6 @@ const EXCEPTED_CRATES: &[(&str, &str)] = &[
         "public boundary facade: re-exports engine crates, not classified as pure domain",
     ),
     (
-        "thalos-transport",
-        "concrete serial/TCP/ESP32 IO (documented exception)",
-    ),
-    (
         "thalos-visual",
         "mesh_loader reads mesh files from disk",
     ),
@@ -62,6 +58,16 @@ const EXCEPTED_CRATES: &[(&str, &str)] = &[
         "thalos-importer",
         "URDF asset resolution touches the filesystem",
     ),
+];
+
+/// Concrete physical-I/O crates that MUST NOT be declared by ANY engine
+/// workspace member (pure or excepted). The engine owns only the abstract ports
+/// (`thalos-ports`); concrete serial/TCP/ESP32 adapters live in Thalos
+/// Industrial (`backend/crates/thalos-transport`).
+const FORBIDDEN_CONCRETE_IO: &[&str] = &[
+    "thalos-transport",
+    "tokio-serial",
+    "serialport",
 ];
 
 /// Infrastructure / I/O crates forbidden in any pure-domain crate.
@@ -214,6 +220,35 @@ fn workspace_members_are_classified() {
     assert!(
         stale.is_empty(),
         "Stale purity classifications (crate no longer a workspace member): {stale:?}."
+    );
+}
+
+#[test]
+fn no_engine_crate_declares_concrete_physical_io() {
+    let root = workspace_root();
+    let members = workspace_members(&root);
+    let forbidden: BTreeSet<String> = FORBIDDEN_CONCRETE_IO
+        .iter()
+        .map(|c| normalize(c))
+        .collect();
+
+    let mut violations = Vec::new();
+    for member in &members {
+        let manifest = fs::read_to_string(root.join(member).join("Cargo.toml"))
+            .unwrap_or_else(|e| panic!("read {member}/Cargo.toml: {e}"));
+        for dep in declared_dependencies(&manifest) {
+            if forbidden.contains(&normalize(&dep)) {
+                violations.push(format!("{member} -> {dep}"));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Engine crates declare concrete physical I/O (moved to Thalos Industrial):\n{}\n\
+         The engine owns only the abstract ports in `thalos-ports`. Concrete serial/TCP/ESP32 \
+         adapters belong to `thalos-industrial/backend/crates/thalos-transport`.",
+        violations.join("\n")
     );
 }
 

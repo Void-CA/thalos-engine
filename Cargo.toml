@@ -6,7 +6,6 @@ members = [
     "thalos-api",
     "thalos-analysis",
     "thalos-ports",
-    "thalos-transport",
     "thalos-telemetry",
     "thalos-document",
     "thalos-visual",

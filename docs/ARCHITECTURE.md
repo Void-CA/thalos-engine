@@ -42,12 +42,6 @@ engine defina el significado de una sesión **no** significa que deba ejecutarla
 | Los crates de dominio puro no dependen de infraestructura | `dependency_purity.rs` |
 | La aplicación no vuelve a exportar conceptos del engine | `thalos-runtime/tests/no_engine_reexports.rs` (repo Industrial) |
 
-### Excepción documentada
-
-El I/O concreto (`thalos-transport`: serial, TCP, ESP32) cruza la frontera de
-`thalos-api` porque la aplicación necesita adaptadores. Sigue siendo I/O de
-infraestructura, no dominio.
-
 ## Retroalimentación con la aplicación
 
 ```text

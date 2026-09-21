@@ -51,8 +51,7 @@ re-exporta módulo a módulo. Su pureza la verifican
 | `thalos-importer` | Importación de modelos (URDF, assets, diagnóstico, normalización) |
 | `thalos-analysis` | Servicios de análisis (workspace, manipulabilidad, singularidad, comparación) |
 | `thalos-telemetry` | Semántica de evidencia: trazas, muestras, vocabulario de eventos. No adquiere ni persiste |
-| `thalos-ports` | Puertos de dominio (device, robot) |
-| `thalos-transport` | Adaptadores de I/O concretos (serial, TCP, ESP32, terminal controller) — excepción documentada |
+| `thalos-ports` | Puertos de dominio (device, robot). El I/O concreto vive en Thalos Industrial |
 | `thalos-document` | Modelo de documento de escena y programa |
 | `thalos-visual` | Construcción de escena y visualización (mallas, trayectoria, spatial) |
 
