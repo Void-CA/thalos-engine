@@ -28,6 +28,26 @@ pub trait ExecutionRunner: Send + Sync {
     }
 }
 
+/// A boxed runner is itself a runner.
+///
+/// This lets a consumer hold an execution capability chosen at runtime
+/// (`Box<dyn ExecutionRunner + Send + Sync>`) without naming any concrete
+/// runner — the mechanism of *how* the capability was built stays outside the
+/// consumer. Generic over `?Sized` so it applies to trait objects.
+impl<T: ExecutionRunner + ?Sized> ExecutionRunner for Box<T> {
+    fn acquire(&mut self) -> TickContext {
+        (**self).acquire()
+    }
+
+    fn act(&mut self, action: &Action) -> TickOutcome {
+        (**self).act(action)
+    }
+
+    fn runtime_state(&self) -> RuntimeState {
+        (**self).runtime_state()
+    }
+}
+
 /// Provides observation data to the execution domain.
 ///
 /// This trait is the contractual boundary between Interconnection (provider)
@@ -48,6 +68,31 @@ pub trait CommandProvider: Send + Sync {
 /// Provides observation of the robot state (joint positions, velocities).
 pub trait RobotObservationProvider: Send + Sync {
     fn observe(&self) -> RobotSample;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct DummyRunner;
+
+    impl ExecutionRunner for DummyRunner {
+        fn acquire(&mut self) -> TickContext {
+            TickContext::default()
+        }
+
+        fn act(&mut self, _action: &Action) -> TickOutcome {
+            TickOutcome::Success
+        }
+    }
+
+    #[test]
+    fn boxed_runner_is_a_runner_and_delegates() {
+        let mut runner: Box<dyn ExecutionRunner + Send + Sync> = Box::new(DummyRunner);
+        let _ = runner.acquire();
+        assert_eq!(runner.act(&Action::None), TickOutcome::Success);
+        let _ = runner.runtime_state();
+    }
 }
 
 /// Error produced when a command cannot be delivered.
