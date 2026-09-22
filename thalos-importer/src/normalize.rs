@@ -1,6 +1,6 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use thalos_math::{Transform3D, UnitQuaternion, UnitVector3, Vector3};
-use thalos_models::{Joint, JointKind, JointLimits, Link, Robot};
+use thalos_models::{Color, Joint, JointKind, JointLimits, Link, Robot};
 
 use crate::candidate::ImportedCandidate;
 use crate::diagnostic::{DiagnosticCode, ImportDiagnostic};
@@ -70,7 +70,10 @@ impl Normalizer for CandidateNormalizer {
         // 3. Add Materials
         robot.materials = candidate.materials.clone();
 
-        // 4. Add Joints
+        // 4. Resolve named material references on visuals.
+        resolve_visual_materials(&mut robot);
+
+        // 5. Add Joints
         for raw_joint in &candidate.raw_joints {
             let origin_translation = raw_joint
                 .origin_xyz
@@ -124,5 +127,53 @@ impl Normalizer for CandidateNormalizer {
         }
 
         Ok(NormalizedRobotResult { robot, diagnostics })
+    }
+}
+
+/// Resolve named `<material name="..."/>` references on a link's visuals.
+///
+/// URDF allows a visual to reference a material by name only. The definition
+/// usually lives in the robot-level table, but some exporters (the ABB IRB140
+/// xacro output) define the color inline on the first link and leave the rest
+/// as bare references — technically invalid, yet widespread. Without
+/// resolution the visual keeps `color: None` and the viewport falls back to a
+/// default grey.
+///
+/// Resolution order: robot-level definitions are authoritative, then the first
+/// inline visual definition seen wins. A visual that already carries its own
+/// color is never overwritten.
+fn resolve_visual_materials(robot: &mut Robot) {
+    let mut palette: HashMap<String, Color> = HashMap::new();
+
+    for material in robot.materials.values() {
+        if let Some(color) = material.color {
+            palette.insert(material.name.clone(), color);
+        }
+    }
+
+    for link in robot.links.values() {
+        for visual in &link.visual {
+            if let Some(material) = &visual.material {
+                if !material.name.is_empty()
+                    && let Some(color) = material.color
+                {
+                    palette.entry(material.name.clone()).or_insert(color);
+                }
+            }
+        }
+    }
+
+    for link in robot.links.values_mut() {
+        for visual in &mut link.visual {
+            let Some(material) = visual.material.as_mut() else {
+                continue;
+            };
+            if material.color.is_some() || material.name.is_empty() {
+                continue;
+            }
+            if let Some(color) = palette.get(&material.name) {
+                material.color = Some(*color);
+            }
+        }
     }
 }

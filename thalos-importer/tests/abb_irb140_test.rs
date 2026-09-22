@@ -114,3 +114,39 @@ fn abb_irb140_materials_preserved() {
     assert_eq!(mat.name, "abb_orange");
     assert!(mat.color.is_some(), "abb_orange should have color");
 }
+
+/// The ABB IRB140 declares `abb_orange` inline on `base_link` and references it
+/// by bare name on `link_1..6`. Those references must inherit the inline color;
+/// otherwise the viewport falls back to its default grey.
+#[test]
+fn abb_irb140_named_material_references_resolved() {
+    let robot = import_urdf(ABB_IRB140).expect("ABB IRB 140 should import");
+
+    assert!(
+        robot.materials.is_empty(),
+        "this URDF declares no robot-level materials; resolution must use inline definitions"
+    );
+
+    for name in ["base_link", "link_1", "link_2", "link_3", "link_4", "link_5", "link_6"] {
+        let link = robot
+            .links
+            .get(name)
+            .unwrap_or_else(|| panic!("missing link {}", name));
+        let visual = link
+            .visual
+            .first()
+            .unwrap_or_else(|| panic!("{} should have a visual", name));
+        let mat = visual
+            .material
+            .as_ref()
+            .unwrap_or_else(|| panic!("{} visual should have a material", name));
+        assert_eq!(mat.name, "abb_orange");
+        let rgba = mat.color.map(|c| [c.r, c.g, c.b, c.a]);
+        assert_eq!(
+            rgba,
+            Some([1.0, 0.43, 0.0, 1.0]),
+            "{} named reference 'abb_orange' should resolve to the inline color",
+            name
+        );
+    }
+}
