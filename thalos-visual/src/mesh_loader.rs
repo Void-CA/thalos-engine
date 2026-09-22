@@ -35,6 +35,34 @@ pub enum MeshLoaderError {
     UnsupportedFormat(String),
 }
 
+/// Squared length of a 3-vector.
+fn len_sq(v: &[f32; 3]) -> f32 {
+    v[0] * v[0] + v[1] * v[1] + v[2] * v[2]
+}
+
+/// Whether a stored facet normal is unusable (zero-length).
+fn normal_is_degenerate(n: &[f32; 3]) -> bool {
+    len_sq(n) <= 1e-12
+}
+
+/// Right-handed geometric normal of a triangle, normalized. Falls back to
+/// `[0, 0, 1]` for degenerate (zero-area) triangles.
+fn face_normal(v1: &[f32; 3], v2: &[f32; 3], v3: &[f32; 3]) -> [f32; 3] {
+    let u = [v2[0] - v1[0], v2[1] - v1[1], v2[2] - v1[2]];
+    let v = [v3[0] - v1[0], v3[1] - v1[1], v3[2] - v1[2]];
+    let n = [
+        u[1] * v[2] - u[2] * v[1],
+        u[2] * v[0] - u[0] * v[2],
+        u[0] * v[1] - u[1] * v[0],
+    ];
+    let len = len_sq(&n).sqrt();
+    if len > 1e-6 {
+        [n[0] / len, n[1] / len, n[2] / len]
+    } else {
+        [0.0, 0.0, 1.0]
+    }
+}
+
 /// Load an STL mesh from a file path.
 pub fn load_stl<P: AsRef<Path>>(path: P) -> Result<MeshGeometryData, MeshLoaderError> {
     let path = path.as_ref();
@@ -49,10 +77,19 @@ pub fn load_stl<P: AsRef<Path>>(path: P) -> Result<MeshGeometryData, MeshLoaderE
     let mut normals = Vec::with_capacity(stl_data.triangles.len() * 9);
 
     for tri in stl_data.triangles {
-        let n = tri.normal;
         let v1 = tri.v1;
         let v2 = tri.v2;
         let v3 = tri.v3;
+        // Some exporters (e.g. the ABB IRB140 visual meshes) write a zero
+        // normal on every facet. Copying those verbatim blackens the mesh in
+        // three.js: `meshStandardMaterial` computes `dot(N, L) = 0`, so
+        // directional/hemisphere lights contribute nothing. Fall back to the
+        // geometric face normal whenever the stored one is degenerate.
+        let n = if normal_is_degenerate(&tri.normal) {
+            face_normal(&v1, &v2, &v3)
+        } else {
+            tri.normal
+        };
 
         triangles.push(Triangle { normal: n, v1, v2, v3 });
 
@@ -327,30 +364,7 @@ pub fn parse_dae_xml(xml: &str) -> Result<MeshGeometryData, MeshLoaderError> {
                 }
 
                 if !has_norms {
-                    let u = [
-                        tri_verts[1][0] - tri_verts[0][0],
-                        tri_verts[1][1] - tri_verts[0][1],
-                        tri_verts[1][2] - tri_verts[0][2],
-                    ];
-                    let v = [
-                        tri_verts[2][0] - tri_verts[0][0],
-                        tri_verts[2][1] - tri_verts[0][1],
-                        tri_verts[2][2] - tri_verts[0][2],
-                    ];
-                    let face_normal = [
-                        u[1] * v[2] - u[2] * v[1],
-                        u[2] * v[0] - u[0] * v[2],
-                        u[0] * v[1] - u[1] * v[0],
-                    ];
-                    let len = (face_normal[0] * face_normal[0]
-                        + face_normal[1] * face_normal[1]
-                        + face_normal[2] * face_normal[2])
-                        .sqrt();
-                    let norm = if len > 1e-6 {
-                        [face_normal[0] / len, face_normal[1] / len, face_normal[2] / len]
-                    } else {
-                        [0.0, 0.0, 1.0]
-                    };
+                    let norm = face_normal(&tri_verts[0], &tri_verts[1], &tri_verts[2]);
                     tri_norms = [norm, norm, norm];
                 }
 
@@ -404,6 +418,36 @@ mod tests {
         assert_eq!(mesh.vertices.len(), 9);
         assert_eq!(mesh.normals.len(), 9);
         assert_eq!(mesh.triangles[0].normal, [0.0, 0.0, 1.0]);
+    }
+
+    /// ABB IRB140 visual STLs store a zero normal on every facet. Copying that
+    /// verbatim blackens the mesh under three.js lighting, so `load_stl` must
+    /// recompute the geometric face normal instead.
+    #[test]
+    fn load_stl_with_zero_normals_recomputes_face_normal() {
+        let mut tmp = NamedTempFile::new().unwrap();
+        tmp.write_all(&[0u8; 80]).unwrap();
+        tmp.write_all(&1u32.to_le_bytes()).unwrap();
+        let normal = [0.0f32, 0.0f32, 0.0f32];
+        let v1 = [0.0f32, 0.0f32, 0.0f32];
+        let v2 = [1.0f32, 0.0f32, 0.0f32];
+        let v3 = [0.0f32, 1.0f32, 0.0f32];
+
+        for val in normal.iter().chain(v1.iter()).chain(v2.iter()).chain(v3.iter()) {
+            tmp.write_all(&val.to_le_bytes()).unwrap();
+        }
+        tmp.write_all(&0u16.to_le_bytes()).unwrap();
+        tmp.flush().unwrap();
+
+        let mesh = load_stl(tmp.path()).unwrap();
+        assert_eq!(mesh.triangles[0].normal, [0.0, 0.0, 1.0]);
+        for n in mesh.normals.chunks_exact(3) {
+            assert!(
+                (n[0]).abs() < 1e-6 && (n[1]).abs() < 1e-6 && (n[2] - 1.0).abs() < 1e-6,
+                "recomputed normal should be +Z, got {:?}",
+                n
+            );
+        }
     }
 
     #[test]
