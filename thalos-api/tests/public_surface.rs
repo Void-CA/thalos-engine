@@ -37,9 +37,10 @@ fn public_surface_is_self_contained() {
     // Analysis, planning and language front-end.
     use thalos_api::analysis::workspace::WorkspaceConfig;
     use thalos_api::analysis::{
-        ComparisonMetrics, ConditionOutcome, ManipulabilityService, PlanExecutionComparison,
-        SignalComparison, SingularityService, TickComparison, TracePoint, WorkspaceService,
-        compare_tick,
+        ComparisonMetrics, ConditionOutcome, Deviation, KinematicViolation,
+        ManipulabilityService, PlanExecutionComparison, SignalComparison, SignalViolation,
+        SingularityService, TickComparison, TickDeviation, TracePoint, WorkspaceService,
+        compare_tick, detect_deviations,
     };
     use thalos_api::document::program_document::ProgramDocument;
     use thalos_api::importer::import_urdf;
@@ -89,6 +90,13 @@ fn public_surface_is_self_contained() {
     let _ = std::any::type_name::<SignalComparison>();
     let _ = std::any::type_name::<ConditionOutcome>();
     let _ = compare_tick;
+    // Deviation evidence (A5) + its declared kinematic expectation.
+    let _ = std::any::type_name::<TickDeviation>();
+    let _ = std::any::type_name::<Deviation>();
+    let _ = std::any::type_name::<SignalViolation>();
+    let _ = std::any::type_name::<KinematicViolation>();
+    let _ = detect_deviations::<thalos_api::core::deviation::StaticTolerancePolicy>;
+    let _ = std::any::type_name::<thalos_api::core::deviation::StaticTolerancePolicy>();
 
     // Declarative robot identity catalog entry (F2.5).
     use thalos_api::core::robot::catalog::{RobotCatalogEntry, RobotCatalogError};

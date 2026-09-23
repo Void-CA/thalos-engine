@@ -12,6 +12,7 @@ pub mod alignment;
 // would be a public API change, which is out of scope for this lint chore.
 #[allow(clippy::module_inception)]
 pub mod comparison;
+pub mod deviation;
 pub mod input;
 pub mod metrics;
 pub mod pipeline;
@@ -19,6 +20,7 @@ pub mod supervision;
 
 pub use alignment::{AlignedPair, Alignment};
 pub use comparison::{PlanExecutionComparison, compare_points};
+pub use deviation::{Deviation, KinematicViolation, SignalViolation, TickDeviation, detect_deviations};
 pub use input::TracePoint;
 pub use metrics::{ComparisonMetrics, JointErrorMetrics, compute_metrics};
 pub use pipeline::{ComparePipeline, ComparePipelineError, ComparePipelineOutput};

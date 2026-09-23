@@ -50,9 +50,10 @@ pub mod analysis {
     pub use thalos_core::analysis::*;
     pub use thalos_analysis::{
         AlignedPair, Alignment, ComparePipeline, ComparePipelineError, ComparePipelineOutput,
-        ComparisonMetrics, ConditionOutcome, JointErrorMetrics, ManipulabilityService,
-        PlanExecutionComparison, SignalComparison, SingularityService, TickComparison, TracePoint,
-        WorkspaceService, compare_points, compare_tick,
+        ComparisonMetrics, ConditionOutcome, Deviation, JointErrorMetrics, KinematicViolation,
+        ManipulabilityService, PlanExecutionComparison, SignalComparison, SignalViolation,
+        SingularityService, TickComparison, TickDeviation, TracePoint, WorkspaceService,
+        compare_points, compare_tick, detect_deviations,
     };
 }
 

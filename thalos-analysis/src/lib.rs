@@ -18,8 +18,9 @@ pub mod workspace;
 
 pub use comparison::{
     AlignedPair, Alignment, ComparePipeline, ComparePipelineError, ComparePipelineOutput,
-    ComparisonMetrics, ConditionOutcome, JointErrorMetrics, PlanExecutionComparison,
-    SignalComparison, TickComparison, TracePoint, compare_points, compare_tick,
+    ComparisonMetrics, ConditionOutcome, Deviation, JointErrorMetrics, KinematicViolation,
+    PlanExecutionComparison, SignalComparison, SignalViolation, TickComparison, TickDeviation,
+    TracePoint, compare_points, compare_tick, detect_deviations,
 };
 pub use manipulability::ManipulabilityService;
 pub use singularity::SingularityService;
