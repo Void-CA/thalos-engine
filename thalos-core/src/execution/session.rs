@@ -7,6 +7,8 @@ use crate::device::{ChannelObservation, ChannelValue, DerivedSignal, SignalExpre
 use crate::ids::ExecutionSessionId;
 use crate::kinematics::{SpatialState, TcpPose};
 
+use super::condition::SignalCondition;
+
 /// Formal operational state machine for active execution sessions.
 ///
 /// Lifecycle authority of the [`ExecutionSession`] aggregate. This is the
@@ -69,12 +71,19 @@ pub enum TerminationPolicy {
 }
 
 /// Configuración inmutable de las cuatro dimensiones ortogonales de la sesión.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExecutionConfiguration {
     pub environment: Environment,
     pub cardinality: Cardinality,
     pub reactivity: Reactivity,
     pub termination: TerminationPolicy,
+    /// Declared operational expectations over signals for THIS execution.
+    ///
+    /// Empty means "no declared signal conditions" (observation only). This is
+    /// the EXPECTATION side of signal comparison — the comparison itself never
+    /// invents it.
+    #[serde(default)]
+    pub conditions: Vec<SignalCondition>,
 }
 
 impl Default for ExecutionConfiguration {
@@ -84,6 +93,7 @@ impl Default for ExecutionConfiguration {
             cardinality: Cardinality::Once,
             reactivity: Reactivity::NonReactive,
             termination: TerminationPolicy::NaturalCompletion,
+            conditions: Vec::new(),
         }
     }
 }

@@ -53,8 +53,13 @@ impl<T: ExecutionRunner + ?Sized> ExecutionRunner for Box<T> {
 /// This trait is the contractual boundary between Interconnection (provider)
 /// and Execution (consumer). Execution defines WHAT it needs; Interconnection
 /// implements HOW to provide it.
+///
+/// `snapshot` takes `&mut self` because a real source is STATEFUL (it buffers
+/// transport readings and consumes them over successive ticks). A stateful
+/// boundary must not be forced behind interior mutability just to satisfy an
+/// immutable receiver.
 pub trait ObservationProvider: Send + Sync {
-    fn snapshot(&self) -> ObservationBundle;
+    fn snapshot(&mut self) -> ObservationBundle;
 }
 
 /// Issues commands through the interconnection layer.

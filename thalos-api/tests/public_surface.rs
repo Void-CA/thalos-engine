@@ -37,8 +37,9 @@ fn public_surface_is_self_contained() {
     // Analysis, planning and language front-end.
     use thalos_api::analysis::workspace::WorkspaceConfig;
     use thalos_api::analysis::{
-        ComparisonMetrics, ManipulabilityService, PlanExecutionComparison, SingularityService,
-        TracePoint, WorkspaceService,
+        ComparisonMetrics, ConditionOutcome, ManipulabilityService, PlanExecutionComparison,
+        SignalComparison, SingularityService, TickComparison, TracePoint, WorkspaceService,
+        compare_tick,
     };
     use thalos_api::document::program_document::ProgramDocument;
     use thalos_api::importer::import_urdf;
@@ -83,6 +84,11 @@ fn public_surface_is_self_contained() {
     let _ = std::any::type_name::<TracePoint>();
     let _ = std::any::type_name::<PlanExecutionComparison>();
     let _ = std::any::type_name::<ComparisonMetrics>();
+    // Expected-vs-observed tick comparison (A4).
+    let _ = std::any::type_name::<TickComparison>();
+    let _ = std::any::type_name::<SignalComparison>();
+    let _ = std::any::type_name::<ConditionOutcome>();
+    let _ = compare_tick;
 
     // Declarative robot identity catalog entry (F2.5).
     use thalos_api::core::robot::catalog::{RobotCatalogEntry, RobotCatalogError};
@@ -109,9 +115,12 @@ fn public_surface_is_self_contained() {
         ObservationBundle, TickContext, TickEvaluation, TickOutcome, TickResult,
     };
     use thalos_api::core::execution::{ExecutionEvent, ExecutionRunner, TemporalInvariants};
+    use thalos_api::core::execution::{ComparisonOp, SignalCondition};
     let _ = std::any::type_name::<ExecutionSession>();
     let _ = std::any::type_name::<ExecutionSessionState>();
     let _ = std::any::type_name::<ExecutionConfiguration>();
+    let _ = std::any::type_name::<SignalCondition>();
+    let _ = std::any::type_name::<ComparisonOp>();
     let _ = std::any::type_name::<Decision>();
     let _ = std::any::type_name::<Action>();
     let _ = std::any::type_name::<ObservationBundle>();

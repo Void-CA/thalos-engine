@@ -15,9 +15,11 @@ pub mod comparison;
 pub mod input;
 pub mod metrics;
 pub mod pipeline;
+pub mod supervision;
 
 pub use alignment::{AlignedPair, Alignment};
 pub use comparison::{PlanExecutionComparison, compare_points};
 pub use input::TracePoint;
 pub use metrics::{ComparisonMetrics, JointErrorMetrics, compute_metrics};
 pub use pipeline::{ComparePipeline, ComparePipelineError, ComparePipelineOutput};
+pub use supervision::{ConditionOutcome, SignalComparison, TickComparison, compare_tick};

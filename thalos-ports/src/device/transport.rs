@@ -36,3 +36,26 @@ pub trait DeviceTransport: Send + Sync {
     fn unsubscribe(&mut self, channel_id: &ChannelId) -> Result<(), DeviceTransportError>;
     fn try_receive(&mut self) -> Result<Option<ChannelObservation>, DeviceTransportError>;
 }
+
+/// A boxed transport is itself a transport.
+///
+/// Lets a consumer hold the transport chosen at runtime
+/// (`Box<dyn DeviceTransport>`) without naming a concrete mechanism, so a
+/// simulated and a physical device are interchangeable behind the same port.
+impl<T: DeviceTransport + ?Sized> DeviceTransport for Box<T> {
+    fn state(&self) -> TransportState {
+        (**self).state()
+    }
+
+    fn subscribe(&mut self, subscription: ChannelSubscription) -> Result<(), DeviceTransportError> {
+        (**self).subscribe(subscription)
+    }
+
+    fn unsubscribe(&mut self, channel_id: &ChannelId) -> Result<(), DeviceTransportError> {
+        (**self).unsubscribe(channel_id)
+    }
+
+    fn try_receive(&mut self) -> Result<Option<ChannelObservation>, DeviceTransportError> {
+        (**self).try_receive()
+    }
+}
