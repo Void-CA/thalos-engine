@@ -24,6 +24,10 @@ pub enum ChannelValue {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChannelObservation {
     pub channel_id: ChannelId,
+    /// Source-assigned, monotonic sample counter for this channel. It belongs
+    /// to the OBSERVATION (not the channel, not the tick): it distinguishes
+    /// consecutive samples of the same channel (ERS FR-OBS-02).
+    pub sequence: u64,
     pub sampled_at_ns: u64,
     pub received_at_ns: u64,
     pub value: ChannelValue,

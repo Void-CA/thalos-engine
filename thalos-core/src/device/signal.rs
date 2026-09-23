@@ -1,10 +1,11 @@
 use serde::{Deserialize, Serialize};
 
 /// Direction of signal flow relative to Thalos.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SignalDirection {
     /// Information flowing from physical world into Thalos.
+    #[default]
     Input,
     /// Information flowing from Thalos toward physical world.
     Output,
