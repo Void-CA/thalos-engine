@@ -100,13 +100,44 @@ impl ExecutionPlan {
     pub fn is_stale_for(&self, current_revision: u64, current_fingerprint: &str) -> bool {
         if let Some(rev) = self.program_revision
             && rev != current_revision {
-                return true;
-            }
+            return true;
+        }
         if let Some(ref fp) = self.source_fingerprint
             && fp != current_fingerprint {
-                return true;
-            }
+            return true;
+        }
         false
+    }
+
+    /// The plan's own end time (last waypoint timestamp). `0.0` if empty.
+    pub fn end_time(&self) -> f64 {
+        self.waypoints
+            .iter()
+            .map(|w| w.timestamp)
+            .fold(0.0_f64, f64::max)
+    }
+
+    /// Index of the waypoint the plan requires at `elapsed_secs`.
+    ///
+    /// This is the SINGLE plan-derived definition of "expected": both the
+    /// dispatch path and tick evaluation resolve the expected state through it.
+    ///
+    /// Returns `None` for an empty plan, or once `elapsed_secs` is strictly past
+    /// the plan end (the FINAL waypoint is still current AT the end).
+    pub fn expected_waypoint_index_at(&self, elapsed_secs: f64) -> Option<usize> {
+        if self.waypoints.is_empty() || elapsed_secs > self.end_time() {
+            return None;
+        }
+        let idx = self
+            .waypoints
+            .partition_point(|w| w.timestamp <= elapsed_secs);
+        Some(idx.saturating_sub(1).min(self.waypoints.len() - 1))
+    }
+
+    /// Expected joint configuration at `elapsed_secs`, derived from the plan.
+    pub fn expected_joints_at(&self, elapsed_secs: f64) -> Option<Vec<f64>> {
+        self.expected_waypoint_index_at(elapsed_secs)
+            .map(|i| self.waypoints[i].joints.clone())
     }
 }
 
@@ -174,5 +205,42 @@ mod tests {
         assert_send_sync::<ExecutionSegment>();
         assert_send_sync::<ExecutionWaypoint>();
         assert_send_sync::<PlanInstruction>();
+    }
+
+    /// The expected state is PLAN-DERIVED: it is a pure function of the plan and
+    /// the elapsed time, and it exists both when the plan still has work and at
+    /// its final waypoint — but not past the end.
+    #[test]
+    fn expected_state_is_derived_from_the_plan() {
+        let plan = ExecutionPlan {
+            waypoints: vec![
+                ExecutionWaypoint {
+                    joints: vec![0.0],
+                    timestamp: 0.0,
+                },
+                ExecutionWaypoint {
+                    joints: vec![2.0],
+                    timestamp: 2.0,
+                },
+            ],
+            segments: vec![ExecutionSegment {
+                index: 0,
+                planned_segment_index: 0,
+                instruction: PlanInstruction::MoveL,
+                waypoint_range: 0..2,
+            }],
+            duration: 2.0,
+            repeat_count: 1,
+            program_id: None,
+            program_revision: None,
+            source_fingerprint: None,
+            robot_id: None,
+        };
+
+        assert_eq!(plan.end_time(), 2.0);
+        assert_eq!(plan.expected_joints_at(1.5), Some(vec![0.0]));
+        // Final waypoint is current AT the end, and past the end there is none.
+        assert_eq!(plan.expected_joints_at(2.0), Some(vec![2.0]));
+        assert_eq!(plan.expected_joints_at(2.5), None);
     }
 }

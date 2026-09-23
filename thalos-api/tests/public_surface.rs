@@ -106,7 +106,7 @@ fn public_surface_is_self_contained() {
     // Supervision semantics + runner contracts (F2.3).
     use thalos_api::core::execution::session::{
         Action, Decision, ExecutionConfiguration, ExecutionSession, ExecutionSessionState,
-        ObservationBundle, TickContext, TickOutcome, TickResult,
+        ObservationBundle, TickContext, TickEvaluation, TickOutcome, TickResult,
     };
     use thalos_api::core::execution::{ExecutionEvent, ExecutionRunner, TemporalInvariants};
     let _ = std::any::type_name::<ExecutionSession>();
@@ -116,6 +116,7 @@ fn public_surface_is_self_contained() {
     let _ = std::any::type_name::<Action>();
     let _ = std::any::type_name::<ObservationBundle>();
     let _ = std::any::type_name::<TickContext>();
+    let _ = std::any::type_name::<TickEvaluation>();
     let _ = std::any::type_name::<TickOutcome>();
     let _ = std::any::type_name::<TickResult>();
     let _ = std::any::type_name::<ExecutionEvent>();

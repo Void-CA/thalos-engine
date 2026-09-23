@@ -235,6 +235,50 @@ pub struct TickResult {
     pub outcome: TickOutcome,
 }
 
+/// Explicit expected-vs-observed evaluation of a single tick.
+///
+/// This is the contract that comparison (A4) consumes. Every tick yields an
+/// evaluation — whether the two sides AGREE is a post-condition of comparison,
+/// never a precondition for evaluating. That is why this type does not mention
+/// `Deviation`: a deviation is a RESULT of comparing states, not the contract.
+///
+/// `expected` is derived from the plan; `observed`/`observations` come from the
+/// tick's acquisition. Evaluation itself introduces no policy, decision or
+/// action.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TickEvaluation {
+    /// Tick ordinal within the session.
+    pub index: u64,
+    /// Evaluation timestamp (nanoseconds) supplied by the runtime.
+    pub timestamp_ns: u64,
+    /// What the plan required at this tick.
+    pub expected: ExpectedState,
+    /// What the runtime observed for the robot.
+    pub observed: RobotSample,
+    /// The tick's observation set (operational signals), if any.
+    pub observations: ObservationBundle,
+}
+
+impl ControlTick {
+    /// Pair what was expected with what was observed for this tick.
+    pub fn evaluation(&self) -> TickEvaluation {
+        TickEvaluation {
+            index: self.index,
+            timestamp_ns: self.timestamp_ns,
+            expected: self.expected.clone(),
+            observed: self.robot.clone(),
+            observations: self.observations.clone(),
+        }
+    }
+}
+
+impl TickResult {
+    /// The tick's explicit expected-vs-observed evaluation.
+    pub fn evaluation(&self) -> TickEvaluation {
+        self.tick.evaluation()
+    }
+}
+
 /// Estado completo de runtime agrupado para la sesión.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SessionState {
