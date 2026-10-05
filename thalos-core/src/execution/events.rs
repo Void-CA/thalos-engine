@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::deviation::TickDeviation;
 use crate::execution::session::{ExecutionSessionState, TickResult};
 use crate::ids::ExecutionSessionId;
 
@@ -52,6 +53,16 @@ pub enum ExecutionEvent {
         session_id: ExecutionSessionId,
         result: TickResult,
         temporal: TemporalInvariants,
+    },
+    /// Evidencia de que una expectativa declarada NO se cumplió en el tick.
+    ///
+    /// Se emite sólo cuando la comparación expected↔observed (A4) produce al
+    /// menos una desviación (A5). `Unknown` nunca llega aquí: la ausencia de
+    /// evidencia no es una violación. Es evidencia, no una respuesta.
+    DeviationDetected {
+        session_id: ExecutionSessionId,
+        deviation: TickDeviation,
+        timestamp_us: u64,
     },
     /// Fallo crítico durante el ciclo de vida o la ejecución de una acción.
     SessionFaulted {

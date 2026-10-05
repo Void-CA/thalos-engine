@@ -19,60 +19,14 @@
 //! expectation that was not met* — while preserving the specific evidence that
 //! showed it (kinematic metrics vs the declared condition + observation).
 
-use serde::Serialize;
-
-use thalos_core::device::ChannelObservation;
 use thalos_core::deviation::{EnvelopeStatus, TolerancePolicy};
-use thalos_core::execution::SignalCondition;
 
 use super::supervision::{ConditionOutcome, TickComparison};
 
-/// A kinematic expectation not met, with the metrics that showed it.
-#[derive(Debug, Clone, Serialize)]
-pub struct KinematicViolation {
-    pub index: u64,
-    pub timestamp_ns: u64,
-    pub max_abs_error: f64,
-    pub rmse: f64,
-    /// Per-joint max absolute error (rad).
-    pub per_joint_max_error: Vec<f64>,
-    /// Per-joint tolerance used to declare the violation.
-    pub per_joint_tolerance: Vec<f64>,
-    pub envelope: EnvelopeStatus,
-}
-
-/// A DECLARED signal condition that was violated, with its observation.
-#[derive(Debug, Clone, Serialize)]
-pub struct SignalViolation {
-    pub index: u64,
-    pub timestamp_ns: u64,
-    pub condition: SignalCondition,
-    pub observation: ChannelObservation,
-}
-
-/// An expectation that was not met. The variant preserves the specific
-/// evidence; the two semantics are not artificially unified.
-#[derive(Debug, Clone, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum Deviation {
-    Kinematic(KinematicViolation),
-    Signal(SignalViolation),
-}
-
-/// Deviations detected for one tick.
-#[derive(Debug, Clone, Serialize)]
-pub struct TickDeviation {
-    pub index: u64,
-    pub timestamp_ns: u64,
-    pub deviations: Vec<Deviation>,
-}
-
-impl TickDeviation {
-    /// Whether the evidence demonstrated any unfulfilled expectation.
-    pub fn is_empty(&self) -> bool {
-        self.deviations.is_empty()
-    }
-}
+// The deviation vocabulary lives in `thalos-core` so the engine's execution
+// event can carry it (`ExecutionEvent::DeviationDetected`). Re-exported here to
+// preserve `thalos-analysis`'s public surface.
+pub use thalos_core::deviation::{Deviation, KinematicViolation, SignalViolation, TickDeviation};
 
 /// Detect deviations from a tick comparison.
 ///
@@ -138,7 +92,7 @@ pub fn detect_deviations<P: TolerancePolicy>(
 mod tests {
     use super::super::supervision::{TickComparison, compare_tick};
     use super::*;
-    use thalos_core::device::{ChannelValue, SignalQuality};
+    use thalos_core::device::{ChannelObservation, ChannelValue, SignalQuality};
     use thalos_core::deviation::StaticTolerancePolicy;
     use thalos_core::execution::{
         ComparisonOp, ExpectedState, ObservationBundle, RobotSample, SignalCondition,

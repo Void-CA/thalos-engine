@@ -4,6 +4,7 @@ pub mod event;
 pub mod expected;
 pub mod kinematic;
 pub mod policy;
+pub mod supervision;
 
 pub use analyzer::{DeviationAnalysisError, DeviationAnalyzer};
 pub use detector::{DetectionPolicy, DetectorError, DetectorOutput, DetectorStatus, KinematicDeviationDetector};
@@ -11,6 +12,7 @@ pub use event::{DeviationEvent, DeviationEventId, DeviationEventKind};
 pub use expected::{ExpectedState, ExpectedTrajectory, ObservedState};
 pub use kinematic::{DeviationSeverity, EnvelopeStatus, KinematicDeviation, KinematicError};
 pub use policy::{JointTolerance, StaticTolerancePolicy, TolerancePolicy};
+pub use supervision::{Deviation, KinematicViolation, SignalViolation, TickDeviation};
 
 use crate::trajectory::Trajectory;
 

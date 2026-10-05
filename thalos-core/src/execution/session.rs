@@ -205,6 +205,10 @@ pub enum Decision {
     BranchTaken { branch_name: String },
     MotionAction { motion_type: String, target_name: String },
     WaitAction { duration_secs: f64 },
+    /// The tick's evidence demonstrated a deviation and the execution's declared
+    /// policy chose a corrective response. This is the bridge from EVIDENCE
+    /// (A5) to RESPONSE (O3): it does not itself act, it selects the action.
+    CorrectiveAction { reason: String },
     TerminateSession { reason: String },
     NoOp,
 }
@@ -223,6 +227,9 @@ pub enum Action {
         joints: Vec<f64>,
     },
     SetOutput { name: String, value: bool },
+    /// Apply a corrective adjustment to a named operational parameter. The MVP
+    /// scenario runs it through the simulated runner (recorded, no physics).
+    Adjust { parameter: String, value: f64 },
     HoldPosition,
     None,
 }
