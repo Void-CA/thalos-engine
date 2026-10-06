@@ -62,6 +62,18 @@ pub trait ObservationProvider: Send + Sync {
     fn snapshot(&mut self) -> ObservationBundle;
 }
 
+/// A boxed observation provider is itself an observation provider.
+///
+/// Mirrors the [`ExecutionRunner for Box<T>`] blanket impl above: it lets a
+/// consumer hold a composed/selected source as `Box<dyn ObservationProvider>`
+/// without naming any concrete provider — the mechanism of *how* the source was
+/// built (one transport or several, simulated or MQTT) stays outside the engine.
+impl<T: ObservationProvider + ?Sized> ObservationProvider for Box<T> {
+    fn snapshot(&mut self) -> ObservationBundle {
+        (**self).snapshot()
+    }
+}
+
 /// Issues commands through the interconnection layer.
 ///
 /// Execution defines WHAT domain commands to issue; Interconnection implements
