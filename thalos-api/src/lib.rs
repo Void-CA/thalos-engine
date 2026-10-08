@@ -75,10 +75,18 @@ pub mod math {
     pub use thalos_math::*;
 }
 
-/// Motion planning and interpolation.
+/// Motion planning and interpolation (Tier 3 mechanism).
 pub mod planning {
     pub use thalos_planning::*;
 }
+
+/// Intention-oriented API (Tier 1): the consumer expresses *what* it wants
+/// without assembling the mechanism. See `docs/API-INTENT-SPEC.md`.
+///
+/// Unlike the namespaces above, this one is **implemented here**, not
+/// re-exported: the public boundary is where the consumer lives, so the
+/// Tier 1 / Tier 2 / Tier 3 separation is expressed inside `thalos-api` itself.
+pub mod intent;
 
 /// Raw Thalos language front-end (AST and parser).
 pub mod lang {

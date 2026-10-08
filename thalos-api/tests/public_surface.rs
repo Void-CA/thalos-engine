@@ -117,6 +117,30 @@ fn public_surface_is_self_contained() {
     let _ = std::any::type_name::<KinematicContext>();
     let _ = std::any::type_name::<TcpPose>();
 
+    // Pose convenience constructors (used by the Tier-1 intent layer).
+    let _ = thalos_api::core::spatial::pose::Pose::from_xyz(0.0, 0.0, 0.0);
+
+    // Intention-oriented Tier 1 API — slices D1/D2/D3/D4.
+    use thalos_api::intent::{
+        CartesianTarget, IkRequest, IkSolution, JointMove, LinearMove, Manipulator, MotionKind,
+        MotionPlan, MotionProfile, MotionRequest, PreparedPlan, RobotLoadError, prepare_execution,
+    };
+    let _ = std::any::type_name::<Manipulator>();
+    let _ = std::any::type_name::<RobotLoadError>();
+    let _ = std::any::type_name::<MotionRequest>();
+    let _ = std::any::type_name::<JointMove>();
+    let _ = std::any::type_name::<LinearMove>();
+    let _ = std::any::type_name::<CartesianTarget>();
+    let _ = std::any::type_name::<IkSolution>();
+    let _ = std::any::type_name::<IkRequest>();
+    let _ = std::any::type_name::<MotionProfile>();
+    let _ = std::any::type_name::<MotionPlan>();
+    let _ = std::any::type_name::<MotionKind>();
+    let _ = std::any::type_name::<PreparedPlan>();
+    let _: fn(&MotionPlan) -> PreparedPlan = prepare_execution;
+    // Forward-kinematics result re-exported under the intent namespace.
+    let _ = std::any::type_name::<thalos_api::intent::TcpPose>();
+
     // Supervision semantics + runner contracts (F2.3).
     use thalos_api::core::execution::session::{
         Action, Decision, ExecutionConfiguration, ExecutionSession, ExecutionSessionState,

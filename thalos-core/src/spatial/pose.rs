@@ -19,6 +19,30 @@ impl Pose {
         }
     }
 
+    /// World-referenced pose from a translation, identity rotation.
+    ///
+    /// Convenience for expressing an end-effector goal without constructing
+    /// [`FrameId`]s by hand; `reference` and `target` are both [`FrameId::World`].
+    pub fn from_xyz(x: f64, y: f64, z: f64) -> Self {
+        Self::new(
+            FrameId::World,
+            FrameId::World,
+            Transform3D::from_translation(Vector3::new(x, y, z)),
+        )
+    }
+
+    /// World-referenced pose from an explicit translation and rotation.
+    pub fn from_translation_rotation(
+        translation: Vector3,
+        rotation: thalos_math::UnitQuaternion,
+    ) -> Self {
+        Self::new(
+            FrameId::World,
+            FrameId::World,
+            Transform3D::from_translation_rotation(translation, rotation),
+        )
+    }
+
     pub fn reference_id(&self) -> FrameId {
         self.reference
     }

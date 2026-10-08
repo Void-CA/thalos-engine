@@ -19,6 +19,36 @@ cargo doc --workspace --no-deps
 Los consumidores externos importan **solo** desde `thalos-api`. Los crates
 internos no forman parte del contrato público.
 
+### Cinemática, movimiento y ejecución por intención
+
+El uso normal no necesita conocer el solver ni el pipeline: se pide una intención
+y el engine decide cómo conseguirla.
+
+```rust
+use thalos_api::intent::{CartesianTarget, Manipulator};
+
+let robot = Manipulator::from_urdf(urdf_source)?;   // engine is pure: URDF text, not a path
+
+let tcp = robot.forward(&[0.3, 0.4])?;
+let solution = robot.inverse(CartesianTarget::position(0.4, 0.2, 0.3))?;
+```
+
+Lo mismo para mover o preparar ejecución, sin ensamblar el mecanismo:
+
+```rust
+use thalos_api::intent::{JointMove, MotionRequest, prepare_execution};
+
+let plan = robot.plan_motion(
+    &[0.0, 0.0],
+    MotionRequest::Joint(JointMove::to(vec![0.3, 0.4])),
+)?;
+let prepared = prepare_execution(&plan);
+```
+
+Para control fino existe **Tier 2** (`IkRequest`, `MotionProfile`); el mecanismo
+(`SerialChain`, `DampedLeastSquaresSolver`, `MoveJPlanner`, …) sigue público como
+**Tier 3** para quien construye encima del engine. Ver `docs/API-INTENT-SPEC.md`.
+
 ## Frontera pública
 
 ```rust
