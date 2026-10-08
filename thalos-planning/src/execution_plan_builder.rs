@@ -2,6 +2,7 @@ use thalos_core::execution::plan::{
     BuilderError, ExecutionPlan, ExecutionSegment, ExecutionWaypoint, PlanInstruction,
 };
 use thalos_core::motion::segment::MotionSegment;
+use thalos_core::trajectory::Trajectory;
 
 use crate::motion::program::CompiledPlan;
 
@@ -60,6 +61,41 @@ impl ExecutionPlanBuilder {
             source_fingerprint: None,
             robot_id: None,
         })
+    }
+
+    /// Build an execution IR from an **already-computed** trajectory.
+    ///
+    /// Single-segment: one instruction covering all waypoints. This performs no
+    /// planning — callers that already hold a trajectory (e.g. the intent layer's
+    /// `MotionPlan`) use it to cross into execution without re-deriving anything.
+    /// Pure and infallible.
+    pub fn build_from_trajectory(trajectory: &Trajectory, instruction: PlanInstruction) -> ExecutionPlan {
+        let waypoints = trajectory
+            .waypoints()
+            .iter()
+            .map(|tp| ExecutionWaypoint {
+                joints: tp.joints().to_vec(),
+                timestamp: tp.timestamp(),
+            })
+            .collect();
+
+        let segments = vec![ExecutionSegment {
+            index: 0,
+            planned_segment_index: 0,
+            instruction,
+            waypoint_range: 0..trajectory.len(),
+        }];
+
+        ExecutionPlan {
+            waypoints,
+            segments,
+            duration: trajectory.duration(),
+            repeat_count: 1,
+            program_id: None,
+            program_revision: None,
+            source_fingerprint: None,
+            robot_id: None,
+        }
     }
 }
 

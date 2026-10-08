@@ -23,6 +23,17 @@ pub struct SegmentPlanningContext<'a> {
     pub tcp: Option<&'a ToolFrame>,
 }
 
+/// Context for **joint-space** planning only.
+///
+/// Unlike [`SegmentPlanningContext`], it does NOT carry an IK solver: a joint
+/// move already has its target in joint space, so there is no cartesian target
+/// to resolve. This keeps the joint path free of the cartesian machinery
+/// (spec C-1). `MoveJPlanner::plan_joint` consumes it directly.
+pub struct JointPlanningContext<'a> {
+    pub robot: &'a SerialChain,
+    pub current_state: &'a RobotState,
+}
+
 /// Legacy alias for backward compatibility with external consumers.
 #[allow(deprecated)]
 pub type PlanningContext<'a> = SegmentPlanningContext<'a>;

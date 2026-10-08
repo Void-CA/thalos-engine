@@ -1,9 +1,12 @@
 use thalos_core::trajectory::Trajectory;
 
 use crate::{
+    error::PlanningError,
     goal::{JointGoal, ValidatedGoal},
     interpolate::joint,
-    motion::planner::{PlanningContext, PlanningResult, SegmentPlanner},
+    motion::planner::{
+        JointPlanningContext, PlanningContext, PlanningResult, SegmentPlanner,
+    },
 };
 
 #[derive(Debug, Clone)]
@@ -31,6 +34,32 @@ impl MoveJPlanner {
     pub fn new(config: MoveJConfig) -> Self {
         Self { config }
     }
+
+    /// Plan a joint-space move from a joint-only context (no IK solver).
+    ///
+    /// This is the joint path's own entry point: it needs only the robot and
+    /// the current state. [`SegmentPlanner::plan`] delegates here, ignoring the
+    /// cartesian fields of [`SegmentPlanningContext`](crate::motion::planner::SegmentPlanningContext).
+    pub fn plan_joint(
+        &self,
+        ctx: &JointPlanningContext,
+        goal: &ValidatedGoal<JointGoal>,
+    ) -> PlanningResult {
+        let q_start = ctx.current_state.positions().ok_or_else(|| {
+            PlanningError::InvalidContext("Current state missing joint positions".into())
+        })?;
+        let target = goal.goal.as_slice();
+
+        let waypoints = joint::trapezoidal_profile(
+            &q_start,
+            target,
+            self.config.max_velocity,
+            self.config.max_acceleration,
+            self.config.time_step,
+        );
+
+        Ok(Trajectory::new(waypoints))
+    }
 }
 
 impl Default for MoveJPlanner {
@@ -43,22 +72,11 @@ impl SegmentPlanner for MoveJPlanner {
     type Goal = ValidatedGoal<JointGoal>;
 
     fn plan(&self, ctx: &PlanningContext, goal: &ValidatedGoal<JointGoal>) -> PlanningResult {
-        let q_start = ctx.current_state.positions().ok_or_else(|| {
-            crate::error::PlanningError::InvalidContext(
-                "Current state missing joint positions".into(),
-            )
-        })?;
-        let target = &goal.goal.as_slice();
-
-        let waypoints = joint::trapezoidal_profile(
-            &q_start,
-            target,
-            self.config.max_velocity,
-            self.config.max_acceleration,
-            self.config.time_step,
-        );
-
-        Ok(Trajectory::new(waypoints))
+        let joint_ctx = JointPlanningContext {
+            robot: ctx.robot,
+            current_state: ctx.current_state,
+        };
+        self.plan_joint(&joint_ctx, goal)
     }
 }
 
