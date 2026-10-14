@@ -47,7 +47,7 @@ let prepared = prepare_execution(&plan);
 
 Para control fino existe **Tier 2** (`IkRequest`, `MotionProfile`); el mecanismo
 (`SerialChain`, `DampedLeastSquaresSolver`, `MoveJPlanner`, …) sigue público como
-**Tier 3** para quien construye encima del engine. Ver `docs/API-INTENT-SPEC.md`.
+**Tier 3** para quien construye encima del engine. Ver `docs/API.md`.
 
 ## Frontera pública
 
@@ -90,6 +90,7 @@ re-exporta módulo a módulo. Su pureza la verifican
 | Documento | Para qué |
 |---|---|
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Qué posee el engine y qué está prohibido |
+| [`docs/API.md`](docs/API.md) | Contrato público (`thalos-api`) y ejemplos ejecutables |
 | [`docs/STATUS.md`](docs/STATUS.md) | Qué funciona hoy y qué no |
 | [`docs/MILESTONES.md`](docs/MILESTONES.md) | Decisiones cerradas y su vigencia |
 | [`../thalos-industrial/docs/`](../thalos-industrial/docs/README.md) | Documentación de la capa de aplicación |

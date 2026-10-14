@@ -8,7 +8,7 @@
 //! Unlike B1–B5/B7, this scenario has **no intent API yet**. Program-level
 //! planning (`robot.plan_source`) was scoped as **D3-bis** and deliberately
 //! **deferred — no evidence** that programs need it (see
-//! `docs/API-INTENT-AUDIT.md`). This file is therefore an honest picture of the
+//! `docs/API.md` §8). This file is therefore an honest picture of the
 //! current mechanism, not a silent leak: it exists to keep the gap visible.
 //!
 //! # What the consumer must know today

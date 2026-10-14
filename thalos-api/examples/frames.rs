@@ -15,8 +15,9 @@
 //! "in world coordinates".
 //!
 //! # Verdict
-//! Tier 3 **mixta** (see `docs/API-ERGONOMICS.md` §1): the transform vocabulary
-//! is domain; `FrameId` in pose construction is accidental.
+//! Tier 3 **mixta**: the transform vocabulary is domain; `FrameId` in pose
+//! construction is accidental. The common case avoids it via
+//! `CartesianTarget`; this example shows the explicit Tier 3 path.
 //!
 //! ```ignore
 //! // Does not exist today:

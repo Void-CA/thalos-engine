@@ -81,7 +81,7 @@ pub mod planning {
 }
 
 /// Intention-oriented API (Tier 1): the consumer expresses *what* it wants
-/// without assembling the mechanism. See `docs/API-INTENT-SPEC.md`.
+/// without assembling the mechanism. See `docs/API.md`.
 ///
 /// Unlike the namespaces above, this one is **implemented here**, not
 /// re-exported: the public boundary is where the consumer lives, so the

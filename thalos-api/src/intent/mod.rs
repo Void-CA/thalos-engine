@@ -1,4 +1,4 @@
-//! **Tier 1 — intention-oriented API** (spec `docs/API-INTENT-SPEC.md`).
+//! **Tier 1 — intention-oriented API** (contract `docs/API.md`).
 //!
 //! The consumer expresses *what* it wants without assembling the mechanism.
 //! The Tier 3 types (`SerialChain`, `DampedLeastSquaresSolver`, `MoveJPlanner`,
