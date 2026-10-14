@@ -173,12 +173,12 @@ pub fn apply(
     match receiver {
         CompileTimeValue::Position(p) => match delta.first() {
             Some(CompileTimeValue::Vector3(v)) => Ok(CompileTimeValue::Position(Position {
-                point: p.point + v.clone(),
+                point: p.point + *v,
             })),
             _ => Err("offset on Position expected a Vector3 delta".to_string()),
         },
         CompileTimeValue::Vector3(base) => match delta.first() {
-            Some(CompileTimeValue::Vector3(v)) => Ok(CompileTimeValue::Vector3(base.clone() + v.clone())),
+            Some(CompileTimeValue::Vector3(v)) => Ok(CompileTimeValue::Vector3(*base + *v)),
             _ => Err("offset on Vector3 expected a Vector3 delta".to_string()),
         },
         CompileTimeValue::Joints(values) => {
@@ -230,7 +230,7 @@ pub fn apply_resolved_delta(
                     ));
                 }
                 match &delta[0].1 {
-                    CompileTimeValue::Vector3(v) => v.clone(),
+                    CompileTimeValue::Vector3(v) => *v,
                     other => {
                         return Err(format!(
                             "offset delta expected Vector3, got {:?}",

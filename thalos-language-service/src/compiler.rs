@@ -136,36 +136,6 @@ impl SemanticCompiler {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use thalos_lang::parse_source;
-
-    #[test]
-    fn undeclared_identifier_reports_a_single_root_cause() {
-        let source = r#"
-target jtt = joints(20deg, 30deg, 0deg, 0deg, 0deg, 0deg)
-target ptt = position([2.152m, 0.783m, 1.882m])
-
-fn main() {
-    movej(jtt)
-    movel(ptt)
-
-    let offset1 = [1m, 0m, 0m]
-    movel(ptt2 - offset1)
-}
-"#;
-        let program = parse_source(source).expect("source must parse as syntactically valid");
-        let errors = SemanticCompiler::compile(&program).expect_err("compile must fail");
-
-        assert_eq!(
-            errors,
-            vec!["Unknown identifier 'ptt2'".to_string()],
-            "only the root cause must be reported, got: {errors:?}"
-        );
-    }
-}
-
 /// Symbols resolved from the top-level declarations of a program.
 ///
 /// Shared by the semantic compiler (which lowers to a `SemanticProgram`) and by
@@ -600,5 +570,35 @@ fn lower_expr(
                 _ => SemanticExpr::ParameterRef(format!("{:?}", expr)),
             },
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use thalos_lang::parse_source;
+
+    #[test]
+    fn undeclared_identifier_reports_a_single_root_cause() {
+        let source = r#"
+target jtt = joints(20deg, 30deg, 0deg, 0deg, 0deg, 0deg)
+target ptt = position([2.152m, 0.783m, 1.882m])
+
+fn main() {
+    movej(jtt)
+    movel(ptt)
+
+    let offset1 = [1m, 0m, 0m]
+    movel(ptt2 - offset1)
+}
+"#;
+        let program = parse_source(source).expect("source must parse as syntactically valid");
+        let errors = SemanticCompiler::compile(&program).expect_err("compile must fail");
+
+        assert_eq!(
+            errors,
+            vec!["Unknown identifier 'ptt2'".to_string()],
+            "only the root cause must be reported, got: {errors:?}"
+        );
     }
 }

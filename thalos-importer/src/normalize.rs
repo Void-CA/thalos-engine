@@ -153,12 +153,11 @@ fn resolve_visual_materials(robot: &mut Robot) {
 
     for link in robot.links.values() {
         for visual in &link.visual {
-            if let Some(material) = &visual.material {
-                if !material.name.is_empty()
-                    && let Some(color) = material.color
-                {
-                    palette.entry(material.name.clone()).or_insert(color);
-                }
+            if let Some(material) = &visual.material
+                && !material.name.is_empty()
+                && let Some(color) = material.color
+            {
+                palette.entry(material.name.clone()).or_insert(color);
             }
         }
     }

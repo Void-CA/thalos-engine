@@ -14,6 +14,21 @@ use crate::units::{AngleRadians, DurationSeconds, LengthMeters};
 
 pub type ParseError = Simple<char>;
 
+/// A parsed name paired with the span of its token.
+type NameSpan = (String, Span);
+
+/// `name [: type]` — a name and its optional spanned type annotation.
+type AnnotatedName = (NameSpan, Option<NameSpan>);
+
+/// Destructured shape of a member access/call: receiver, member, optional args.
+type MemberArgs = ((NameSpan, NameSpan), Option<Vec<SpannedArg>>);
+
+/// Destructured shape of a function declaration.
+type FnDeclShape = (
+    ((NameSpan, Vec<SpannedParam>), Option<NameSpan>),
+    (Vec<SpannedStatement>, Option<SpannedExpr>),
+);
+
 /// Convert a chumsky char-index span into the language [`Span`].
 ///
 /// Spans stay in **character offsets** throughout the parser/spanned tree; the
@@ -26,7 +41,6 @@ pub fn parser() -> impl Parser<char, SpannedProgram, Error = Simple<char>> {
     let ident = text::ident();
 
     let ident_spanned = ident
-        .clone()
         .map_with_span(|name: String, span: Range<usize>| (name, char_span(span)));
 
     let digits = filter(|c: &char| c.is_ascii_digit() || *c == '.')
@@ -113,10 +127,9 @@ pub fn parser() -> impl Parser<char, SpannedProgram, Error = Simple<char>> {
         // committing: when no assignment follows the identifier, the positional
         // branch parses the full expression instead (e.g. `PICK + LIFT`).
         let arg = ident_spanned
-            .clone()
             .then_ignore(assign.clone().padded())
             .rewind()
-            .then_ignore(ident_spanned.clone())
+            .then_ignore(ident_spanned)
             .then_ignore(assign.clone().padded())
             .then(expr.clone())
             .map(|((name, name_span), value): ((String, Span), SpannedExpr)| SpannedArg {
@@ -131,7 +144,6 @@ pub fn parser() -> impl Parser<char, SpannedProgram, Error = Simple<char>> {
             }));
 
         let call_expr = ident_spanned
-            .clone()
             .then(
                 arg.clone()
                     .separated_by(just(',').padded())
@@ -163,9 +175,8 @@ pub fn parser() -> impl Parser<char, SpannedProgram, Error = Simple<char>> {
         // member call. Both share one rule so the optional argument list never
         // forces backtracking.
         let member_expr = ident_spanned
-            .clone()
             .then_ignore(just('.'))
-            .then(ident_spanned.clone())
+            .then(ident_spanned)
             .then(
                 arg.clone()
                     .separated_by(just(',').padded())
@@ -174,10 +185,7 @@ pub fn parser() -> impl Parser<char, SpannedProgram, Error = Simple<char>> {
                     .or_not(),
             )
             .map_with_span(
-                |(((object, object_span), (method, method_span)), args): (
-                    ((String, Span), (String, Span)),
-                    Option<Vec<SpannedArg>>,
-                ),
+                |(((object, object_span), (method, method_span)), args): MemberArgs,
                  span: Range<usize>| SpannedExpr {
                     kind: match args {
                         Some(args) => SpannedExprKind::MemberCall {
@@ -208,14 +216,12 @@ pub fn parser() -> impl Parser<char, SpannedProgram, Error = Simple<char>> {
         });
 
         let number_expr = number
-            .clone()
             .map_with_span(|value: f64, span: Range<usize>| SpannedExpr {
                 kind: SpannedExprKind::Number(value),
                 span: char_span(span),
             });
 
         let identifier_expr = ident_spanned
-            .clone()
             .map_with_span(|(name, _): (String, Span), span: Range<usize>| SpannedExpr {
                 kind: SpannedExprKind::Identifier(name),
                 span: char_span(span),
@@ -288,23 +294,19 @@ pub fn parser() -> impl Parser<char, SpannedProgram, Error = Simple<char>> {
     // span of the type token so tooling can classify it without re-parsing.
     let type_ann = just(':').padded().ignore_then(
         ident
-            .clone()
             .map_with_span(|name: String, span: Range<usize>| (name, char_span(span)))
             .padded(),
     );
 
     let stmt_parser = recursive(|stmt| {
         let let_stmt = just("let")
-            .ignore_then(ident_spanned.clone().padded())
+            .ignore_then(ident_spanned.padded())
             .then(type_ann.or_not())
             .then_ignore(just('=').padded())
             .then(expr.clone())
             .then_ignore(just(';').or_not())
             .map_with_span(
-                |(((name, name_span), type_ann), value): (
-                    ((String, Span), Option<(String, Span)>),
-                    SpannedExpr,
-                ),
+                |(((name, name_span), type_ann), value): (AnnotatedName, SpannedExpr),
                  span: Range<usize>| {
                     let (type_ann, type_span) = match type_ann {
                         Some((ann, ann_span)) => (Some(ann), Some(ann_span)),
@@ -369,8 +371,6 @@ pub fn parser() -> impl Parser<char, SpannedProgram, Error = Simple<char>> {
         let set_output_stmt = just("set_output")
             .ignore_then(
                 ident_spanned
-                    .clone()
-                    .padded()
                     .then_ignore(just(',').padded())
                     .then(expr.clone())
                     .delimited_by(just('(').padded(), just(')').padded()),
@@ -445,7 +445,6 @@ pub fn parser() -> impl Parser<char, SpannedProgram, Error = Simple<char>> {
         .delimited_by(just('{').padded(), just('}').padded());
 
     let param = ident_spanned
-        .clone()
         .padded()
         .then(type_ann.or_not())
         .map_with_span(
@@ -466,7 +465,7 @@ pub fn parser() -> impl Parser<char, SpannedProgram, Error = Simple<char>> {
         );
 
     let fn_decl = just("fn")
-        .ignore_then(ident_spanned.clone().padded())
+        .ignore_then(ident_spanned.padded())
         .then(
             param
                 .separated_by(just(',').padded())
@@ -478,7 +477,6 @@ pub fn parser() -> impl Parser<char, SpannedProgram, Error = Simple<char>> {
                 .padded()
                 .ignore_then(
                     ident
-                        .clone()
                         .map_with_span(|name: String, span: Range<usize>| {
                             (name, char_span(span))
                         })
@@ -488,10 +486,7 @@ pub fn parser() -> impl Parser<char, SpannedProgram, Error = Simple<char>> {
         )
         .then(fn_body)
         .map_with_span(
-            |((((name, name_span), params), return_type), (body, tail_expr)): (
-                (((String, Span), Vec<SpannedParam>), Option<(String, Span)>),
-                (Vec<SpannedStatement>, Option<SpannedExpr>),
-            ),
+            |((((name, name_span), params), return_type), (body, tail_expr)): FnDeclShape,
              span: Range<usize>| {
                 let (return_type, return_type_span) = match return_type {
                     Some((ty, ty_span)) => (Some(ty), Some(ty_span)),
@@ -511,16 +506,13 @@ pub fn parser() -> impl Parser<char, SpannedProgram, Error = Simple<char>> {
         );
 
     let const_decl = just("const")
-        .ignore_then(ident_spanned.clone().padded())
+        .ignore_then(ident_spanned.padded())
         .then(type_ann.or_not())
         .then_ignore(just('=').padded())
         .then(expr.clone().padded())
         .then_ignore(just(';').or_not())
         .map_with_span(
-            |(((name, name_span), type_ann), value): (
-                ((String, Span), Option<(String, Span)>),
-                SpannedExpr,
-            ),
+            |(((name, name_span), type_ann), value): (AnnotatedName, SpannedExpr),
              span: Range<usize>| {
                 let (type_ann, type_span) = match type_ann {
                     Some((ann, ann_span)) => (Some(ann), Some(ann_span)),
@@ -538,7 +530,7 @@ pub fn parser() -> impl Parser<char, SpannedProgram, Error = Simple<char>> {
         );
 
     let target_decl = just("target")
-        .ignore_then(ident_spanned.clone().padded())
+        .ignore_then(ident_spanned.padded())
         .then_ignore(just('='))
         .then(expr.clone().padded())
         .then_ignore(just(';').or_not())

@@ -301,7 +301,7 @@ pub fn analyze_intelligence(source: &str, revision: u64) -> DocumentIntelligence
                     diag.span = Some(span);
                 }
             }
-            collect_tokens_statement(spanned_stmt, &checker.symbol_table, source, &mut tokens);
+            collect_tokens_statement(spanned_stmt, checker.symbol_table, source, &mut tokens);
             collect_statement(
                 spanned_stmt,
                 stmt,
@@ -316,7 +316,7 @@ pub fn analyze_intelligence(source: &str, revision: u64) -> DocumentIntelligence
         if let (Some(spanned_tail), Some(tail)) =
             (spanned_fn.tail_expr.as_ref(), fn_decl.tail_expr.as_ref())
         {
-            collect_tokens_expr(spanned_tail, &checker.symbol_table, source, &mut tokens);
+            collect_tokens_expr(spanned_tail, checker.symbol_table, source, &mut tokens);
             collect_expr(spanned_tail, tail, &mut checker, source, &mut expressions);
         }
 
