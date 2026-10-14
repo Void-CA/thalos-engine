@@ -97,4 +97,9 @@ re-exporta módulo a módulo. Su pureza la verifican
 | [`docs/MILESTONES.md`](docs/MILESTONES.md) | Decisiones cerradas y su vigencia |
 | [`../thalos-industrial/docs/`](../thalos-industrial/docs/README.md) | Documentación de la capa de aplicación |
 
-No hay ADRs: una decisión se registra como una fila en `MILESTONES.md`.
+**Contrato documental.** `docs/` es dirección, no historial: un documento se
+mantiene si y solo si un recién llegado lo necesita para operar el engine hoy. Si
+un documento exige inspeccionar todo el código para mantenerse correcto, vive en
+el código y en los tests, no en `docs/`. No hay ADRs: una decisión se registra
+como una fila en [`docs/MILESTONES.md`](docs/MILESTONES.md), y el razonamiento de
+fondo queda en el historial de Git.
