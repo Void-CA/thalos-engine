@@ -1,6 +1,6 @@
 //! SceneFile v1 — the persistent, versioned, file-level description of a robot
 //! workspace, SEPARATE from `SceneContent` (the in-memory projection used by the
-//! semantic pipeline). See `openspec/.../scene-file-artifact/spec.md`.
+//! semantic pipeline).
 //!
 //! **Design rule (D4)**: v1 geometry is VISUALIZATION-ONLY. `geometry` on
 //! objects and fixtures is OPTIONAL and is DROPPED by `into_scene_content()` —

@@ -42,6 +42,23 @@ engine defina el significado de una sesión **no** significa que deba ejecutarla
 | Los crates de dominio puro no dependen de infraestructura | `dependency_purity.rs` |
 | La aplicación no vuelve a exportar conceptos del engine | `thalos-runtime/tests/no_engine_reexports.rs` (repo Industrial) |
 
+## Fronteras internas por crate
+
+Ningún crate interno posee **estado mutable** ni I/O (red, HTTP, persistencia): el
+estado vivo y el transporte viven en la aplicación. Además, cada crate tiene su
+límite propio:
+
+| Crate | No contiene |
+|---|---|
+| `thalos-math` | conceptos robóticos, visualización |
+| `thalos-models` | cinemática, visualización, planificación |
+| `thalos-core` | escenas visuales, lógica de ejecución |
+| `thalos-planning` | representaciones visuales |
+| `thalos-visual` | comandos de ejecución, solvers de IK |
+
+La responsabilidad de cada crate está en la tabla de crates del
+[`README`](../README.md); su API pública, en rustdoc (`cargo doc`).
+
 ## Retroalimentación con la aplicación
 
 ```text

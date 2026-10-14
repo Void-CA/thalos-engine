@@ -5,7 +5,7 @@
 //!
 //! - **Observation model** ([`attribute_value`], [`location`],
 //!   [`observation`]): the machine-readable, artifact-anchored vocabulary every
-//!   analyzer emits (see [`crate::analysis::observation`] and `README.md`).
+//!   analyzer emits (see [`crate::analysis::observation`]).
 //! - **Report container** ([`report`], [`action`], [`summary`]): the canonical
 //!   [`AnalysisReport`] aggregating observations, actions, metrics and a summary,
 //!   with structural validation (DAG over `causes[]`, spec I4/I5/I8).
@@ -19,6 +19,18 @@
 //!
 //! Each submodule consumes the fundamental [`Workspace`](workspace::Workspace)
 //! dataset and produces a derived analysis (singularity, manipulability, …).
+//!
+//! # Invariants
+//!
+//! - Facts are separate from presentation: an [`Observation`] carries no message,
+//!   icon or UI directive; rendering is the consumer's job.
+//! - Observations are machine-readable: `kind` + `artifact` + `location` identify
+//!   a phenomenon without parsing text. Attribute values are typed
+//!   ([`AttributeValue`]) — never display strings, never `Box<dyn Any>`.
+//! - `ObservationKind`, [`Location`] and [`ArtifactRef`] are `#[non_exhaustive]`:
+//!   variants are added without breaking matches and without an `Other` catch-all.
+//! - This module imports nothing from planning, runtime, visual or api: those
+//!   crates depend on `thalos-core`, never the reverse.
 
 pub mod action;
 pub mod aggregator;
