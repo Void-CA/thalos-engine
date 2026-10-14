@@ -28,4 +28,12 @@
 |---|---|---|
 | **1 — Extracción del engine** | El engine se separó de la aplicación; `thalos-runtime` dejó de estar en este repositorio | ✅ |
 | **2 — Cierre de frontera** | `thalos-runtime` consume el engine solo por `thalos-api`; superficie pública verificada por tests | ✅ |
-| **3 — Revisión de lanzamiento y congelación `v0.1.0`** | Revisión apta para consumo por Git: `check`/`test` (1384) / `examples` / `clippy -D warnings` / `doc` verdes; frontera probada con consumidor externo. Correcciones I1/I3/I4 aplicadas; `core → importer` (I2) aplazada como deuda arquitectónica. Ver `docs/RELEASE-REVIEW.md` | ✅ |
+| **3 — Revisión de lanzamiento y congelación `v0.1.0`** | Revisión apta para consumo por Git: `check`/`test` (1384) / `examples` / `clippy -D warnings` / `doc` verdes; frontera probada con consumidor externo. Correcciones I1 (clippy), I3 (`test-support` fuera de producción) e I4 (Industrial importa la fachada, no el crate interno) aplicadas | ✅ (tag `v0.1.0`) |
+
+## Deuda conocida
+
+| Deuda | Estado | Nota |
+|---|---|---|
+| `thalos-core` depende de `thalos-importer` (arrastra `quick-xml` transitivamente) | 🟠 aplazada | Retirarla exige cambiar la API pública (`thalos_api::core::robot::adapter::from_urdf`) y migrar consumidores y sus pruebas. Criterio para reabrir: diseñar y validar esa migración |
+| Superficies solapadas (`core::analysis` convive con `thalos-analysis`; `core::models` con `thalos-models`; `core::prelude` es interno) | 🟠 sin problema de consumibilidad demostrado | Revisar solo si un consumidor tropieza |
+| `cargo fmt --check` no es puerta de CI; rustdoc con warnings; `unwrap`/`expect` en rutas de producción | 🟠 deuda menor | No bloqueante. El conjunto de comandos de CI vive en [`DEVELOPMENT.md`](DEVELOPMENT.md) |
