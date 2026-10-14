@@ -95,7 +95,7 @@ re-exporta módulo a módulo. Su pureza la verifican
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Flujo de contribución, CI y frontera pública |
 | [`docs/STATUS.md`](docs/STATUS.md) | Qué funciona hoy y qué no |
 | [`docs/MILESTONES.md`](docs/MILESTONES.md) | Decisiones cerradas y su vigencia |
-| [`../thalos-industrial/docs/`](../thalos-industrial/docs/README.md) | Documentación de la capa de aplicación |
+| [`../thalos-industrial/`](../thalos-industrial/README.md) | Documentación de la capa de aplicación |
 
 **Contrato documental.** `docs/` es dirección, no historial: un documento se
 mantiene si y solo si un recién llegado lo necesita para operar el engine hoy. Si
