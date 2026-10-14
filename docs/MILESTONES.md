@@ -28,3 +28,4 @@
 |---|---|---|
 | **1 — Extracción del engine** | El engine se separó de la aplicación; `thalos-runtime` dejó de estar en este repositorio | ✅ |
 | **2 — Cierre de frontera** | `thalos-runtime` consume el engine solo por `thalos-api`; superficie pública verificada por tests | ✅ |
+| **3 — Revisión de lanzamiento y congelación `v0.1.0`** | Revisión apta para consumo por Git: `check`/`test` (1384) / `examples` / `clippy -D warnings` / `doc` verdes; frontera probada con consumidor externo. Correcciones I1/I3/I4 aplicadas; `core → importer` (I2) aplazada como deuda arquitectónica. Ver `docs/RELEASE-REVIEW.md` | ✅ |
