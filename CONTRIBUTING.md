@@ -52,7 +52,7 @@ historial de Git. Si el cambio mueve una frontera, actualiza
 ## Distribución
 
 El engine se consume desde Thalos Industrial como **dependencia Git fijada a una
-revisión** (hoy, por ruta hermana `../thalos-engine`). La publicación en crates.io
-está **diferida**: los crates están marcados `publish = false` hasta que exista
-una API estable y una política de versionado. Hasta entonces, consumir una
-revisión concreta —no `main`— es lo que hace reproducible la integración.
+revisión exacta** (p. ej. `thalos-api = { git = "…", rev = "…" }`); consumir una
+revisión concreta —no `main`— es lo que hace reproducible la integración. La
+publicación en crates.io está **diferida**: los crates están marcados
+`publish = false` hasta que exista una API estable y una política de versionado.
