@@ -91,6 +91,8 @@ re-exporta módulo a módulo. Su pureza la verifican
 |---|---|
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Qué posee el engine y qué está prohibido |
 | [`docs/API.md`](docs/API.md) | Contrato público (`thalos-api`) y ejemplos ejecutables |
+| [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Preparar el entorno, construir, probar y depurar |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Flujo de contribución, CI y frontera pública |
 | [`docs/STATUS.md`](docs/STATUS.md) | Qué funciona hoy y qué no |
 | [`docs/MILESTONES.md`](docs/MILESTONES.md) | Decisiones cerradas y su vigencia |
 | [`../thalos-industrial/docs/`](../thalos-industrial/docs/README.md) | Documentación de la capa de aplicación |
