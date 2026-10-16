@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use thalos_lang::ast::{ConstDecl, Expr as AstExpr, Item, Program, Statement as AstStatement, TargetDecl};
+use thalos_lang::ast::{ConstDecl, Expr as AstExpr, Item, Program, Statement as AstStatement, TargetDecl, UseTree};
 use crate::builtins::register_builtins;
 use crate::checker::TypeChecker;
 use crate::evaluator::{CompileTimeValue, EvalResult, Evaluator, Position};
@@ -33,6 +33,10 @@ impl SemanticCompiler {
             return Err(bind_errors);
         }
 
+        // `use` aliases: a local name maps to the real signal module. Shared by
+        // the checker (signal typing) and the rewrite pass (ChannelAccess).
+        let signal_aliases = build_signal_aliases(&ast);
+
         let PreparedSymbols {
             mut table,
             target_values,
@@ -42,7 +46,9 @@ impl SemanticCompiler {
         } = prepare_symbols(&ast);
 
         // 3. Type check AST functions and statements in isolated parameter scope
-        let mut checker = TypeChecker::new(&mut table).with_signals(signals);
+        let mut checker = TypeChecker::new(&mut table)
+            .with_signals(signals)
+            .with_signal_aliases(&signal_aliases);
         for item in &ast.items {
             if let Item::Function(f) = item {
                 let expected_ret = f
@@ -143,7 +149,7 @@ impl SemanticCompiler {
             functions: semantic_functions,
             entry_point: "main".to_string(),
         };
-        rewrite_signal_access(&mut program, signals);
+        rewrite_signal_access(&mut program, signals, &signal_aliases);
         Ok(program)
     }
 
@@ -620,77 +626,119 @@ fn lower_expr(
 
 /// Rewrite `module.channel` member accesses into first-class
 /// [`SemanticExpr::ChannelAccess`] reads, for channels declared in the schema.
-fn rewrite_signal_access(program: &mut SemanticProgram, signals: &SignalSchema) {
+/// Build the `use` alias map (local name → real signal module).
+fn build_signal_aliases(program: &Program) -> std::collections::HashMap<String, String> {
+    let mut aliases = std::collections::HashMap::new();
+    for item in &program.items {
+        if let Item::Use(u) = item {
+            collect_alias_map(&u.tree, &mut aliases);
+        }
+    }
+    aliases
+}
+
+fn collect_alias_map(tree: &UseTree, out: &mut std::collections::HashMap<String, String>) {
+    if tree.is_group() {
+        for child in &tree.group {
+            collect_alias_map(child, out);
+        }
+        return;
+    }
+    if let Some(node) = tree.prefix.last() {
+        let local = tree.alias.clone().unwrap_or_else(|| node.clone());
+        out.insert(local, node.clone());
+    }
+}
+
+/// Rewrite `module.channel` member accesses into first-class
+/// [`SemanticExpr::ChannelAccess`] reads, for channels declared in the schema.
+/// `aliases` resolves a local `use` name to the real module.
+fn rewrite_signal_access(
+    program: &mut SemanticProgram,
+    signals: &SignalSchema,
+    aliases: &std::collections::HashMap<String, String>,
+) {
     for func in &mut program.functions {
-        rewrite_statements(&mut func.body, signals);
+        rewrite_statements(&mut func.body, signals, aliases);
         if let Some(tail) = func.tail_expr.as_mut() {
-            rewrite_expr(tail, signals);
+            rewrite_expr(tail, signals, aliases);
         }
     }
 }
 
-fn rewrite_statements(statements: &mut [SemanticStatement], signals: &SignalSchema) {
+fn rewrite_statements(
+    statements: &mut [SemanticStatement],
+    signals: &SignalSchema,
+    aliases: &std::collections::HashMap<String, String>,
+) {
     for statement in statements {
         match statement {
-            SemanticStatement::Let { value, .. } => rewrite_expr(value, signals),
-            SemanticStatement::Motion(SemanticMotion { target, .. }) => rewrite_expr(target, signals),
-            SemanticStatement::Wait { duration, .. } => rewrite_expr(duration, signals),
+            SemanticStatement::Let { value, .. } => rewrite_expr(value, signals, aliases),
+            SemanticStatement::Motion(SemanticMotion { target, .. }) => {
+                rewrite_expr(target, signals, aliases)
+            }
+            SemanticStatement::Wait { duration, .. } => rewrite_expr(duration, signals, aliases),
             SemanticStatement::If {
                 condition,
                 then_branch,
                 else_branch,
                 ..
             } => {
-                rewrite_expr(condition, signals);
-                rewrite_statements(then_branch, signals);
+                rewrite_expr(condition, signals, aliases);
+                rewrite_statements(then_branch, signals, aliases);
                 if let Some(else_body) = else_branch {
-                    rewrite_statements(else_body, signals);
+                    rewrite_statements(else_body, signals, aliases);
                 }
             }
             SemanticStatement::Call { args, .. } => {
                 for arg in args {
-                    rewrite_expr(arg, signals);
+                    rewrite_expr(arg, signals, aliases);
                 }
             }
-            SemanticStatement::Expr(expr) => rewrite_expr(expr, signals),
+            SemanticStatement::Expr(expr) => rewrite_expr(expr, signals, aliases),
             SemanticStatement::SetOutput { .. } => {}
         }
     }
 }
 
-fn rewrite_expr(expr: &mut SemanticExpr, signals: &SignalSchema) {
+fn rewrite_expr(
+    expr: &mut SemanticExpr,
+    signals: &SignalSchema,
+    aliases: &std::collections::HashMap<String, String>,
+) {
     match expr {
         SemanticExpr::MemberAccess { object, member } => {
-            rewrite_expr(object, signals);
-            if let SemanticExpr::TargetRef(module) = object.as_ref()
-                && signals.type_of(module, member).is_some()
-            {
-                *expr = SemanticExpr::ChannelAccess {
-                    module: module.clone(),
-                    channel: member.clone(),
-                };
+            rewrite_expr(object, signals, aliases);
+            if let SemanticExpr::TargetRef(name) = object.as_ref() {
+                let module = aliases.get(name).map(String::as_str).unwrap_or(name.as_str());
+                if signals.type_of(module, member).is_some() {
+                    *expr = SemanticExpr::ChannelAccess {
+                        module: module.to_string(),
+                        channel: member.clone(),
+                    };
+                }
             }
         }
         SemanticExpr::Binary { left, right, .. } => {
-            rewrite_expr(left, signals);
-            rewrite_expr(right, signals);
+            rewrite_expr(left, signals, aliases);
+            rewrite_expr(right, signals, aliases);
         }
-        SemanticExpr::Unary { operand, .. } => rewrite_expr(operand, signals),
+        SemanticExpr::Unary { operand, .. } => rewrite_expr(operand, signals, aliases),
         SemanticExpr::Offset { receiver, deltas } => {
-            rewrite_expr(receiver, signals);
+            rewrite_expr(receiver, signals, aliases);
             for delta in deltas {
-                rewrite_expr(&mut delta.value, signals);
+                rewrite_expr(&mut delta.value, signals, aliases);
             }
         }
         SemanticExpr::Call { args, .. } => {
             for arg in args {
-                rewrite_expr(arg, signals);
+                rewrite_expr(arg, signals, aliases);
             }
         }
         SemanticExpr::MemberCall { object, args, .. } => {
-            rewrite_expr(object, signals);
+            rewrite_expr(object, signals, aliases);
             for arg in args {
-                rewrite_expr(arg, signals);
+                rewrite_expr(arg, signals, aliases);
             }
         }
         SemanticExpr::Constant(_)

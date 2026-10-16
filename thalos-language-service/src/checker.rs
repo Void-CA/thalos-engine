@@ -27,6 +27,8 @@ pub struct TypeChecker<'a> {
     pub current_fn_return_type: Option<Type>,
     /// Declared signals: `module.channel` reads are typed against this.
     signals: Option<&'a SignalSchema>,
+    /// `use` aliases: a local name maps to the real signal module.
+    signal_aliases: Option<&'a std::collections::HashMap<String, String>>,
     silent: bool,
 }
 
@@ -38,6 +40,7 @@ impl<'a> TypeChecker<'a> {
             current_fn_name: None,
             current_fn_return_type: None,
             signals: None,
+            signal_aliases: None,
             silent: false,
         }
     }
@@ -45,6 +48,15 @@ impl<'a> TypeChecker<'a> {
     /// Attach a signal schema so `module.channel` reads type-check as signals.
     pub fn with_signals(mut self, signals: &'a SignalSchema) -> Self {
         self.signals = Some(signals);
+        self
+    }
+
+    /// Attach `use` aliases so an aliased module resolves to the real one.
+    pub fn with_signal_aliases(
+        mut self,
+        aliases: &'a std::collections::HashMap<String, String>,
+    ) -> Self {
+        self.signal_aliases = Some(aliases);
         self
     }
 
@@ -398,11 +410,16 @@ impl<'a> TypeChecker<'a> {
             }
             Expr::MemberAccess { object, member } => {
                 // A declared signal module: `module.channel` is a signal read,
-                // typed by the schema.
+                // typed by the schema. An alias resolves to the real module.
+                let module = self
+                    .signal_aliases
+                    .and_then(|aliases| aliases.get(object))
+                    .map(String::as_str)
+                    .unwrap_or(object);
                 if let Some(signals) = self.signals
-                    && signals.knows_module(object)
+                    && signals.knows_module(module)
                 {
-                    return match signals.type_of(object, member) {
+                    return match signals.type_of(module, member) {
                         Some(ty) => TypedExpr {
                             expr: expr.clone(),
                             ty: ty.as_type(),
@@ -411,7 +428,7 @@ impl<'a> TypeChecker<'a> {
                         None => {
                             self.push_diag(format!(
                                 "Module '{}' has no signal '{}'",
-                                object, member
+                                module, member
                             ));
                             TypedExpr {
                                 expr: expr.clone(),
