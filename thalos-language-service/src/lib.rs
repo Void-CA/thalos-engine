@@ -24,6 +24,7 @@ pub mod operators;
 pub mod profile;
 pub mod program;
 pub mod reactive;
+pub mod reactive_eval;
 pub mod resource;
 pub mod resolver;
 pub mod scope;
