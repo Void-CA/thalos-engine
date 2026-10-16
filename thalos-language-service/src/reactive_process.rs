@@ -518,6 +518,23 @@ impl ProcessRuntime {
         effects
     }
 
+    /// True when the process declares a `cycle` body.
+    pub fn has_cycle(&self) -> bool {
+        !self.program.cycle.is_empty()
+    }
+
+    /// Run one iteration of the `cycle` body, returning its effects.
+    ///
+    /// The cycle is a **background** admission unit: the runtime drives it only
+    /// when the arbiter is idle (see the process model in
+    /// `docs/design/modelo-reactivo.md`).
+    pub fn run_cycle(&mut self, observations: &ObservationBundle) -> Vec<Effect> {
+        let cycle = self.program.cycle.clone();
+        let mut effects = Vec::new();
+        self.exec(&cycle, observations, &mut effects);
+        effects
+    }
+
     fn event_fires(&self, event: &PEvent, observations: &ObservationBundle) -> bool {
         match event {
             PEvent::Rising(sig) => {
