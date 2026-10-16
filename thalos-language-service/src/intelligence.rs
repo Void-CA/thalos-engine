@@ -235,6 +235,9 @@ pub fn analyze_intelligence(source: &str, revision: u64) -> DocumentIntelligence
                 }
             }
             SpannedItem::Use { .. } => {}
+            SpannedItem::Process { .. } | SpannedItem::Work { .. } => {
+                // Reactive declarations carry no tooling projection yet.
+            }
         }
     }
 
@@ -640,6 +643,12 @@ fn collect_tokens_statement(
                 }
             }
         }
+        SpannedStatementKind::Request { args, .. } => {
+            for arg in args {
+                collect_tokens_expr(&arg.value, symbols, source, tokens);
+            }
+        }
+        SpannedStatementKind::Start { .. } => {}
         SpannedStatementKind::Expr(expr) => {
             collect_tokens_expr(expr, symbols, source, tokens);
         }
@@ -730,6 +739,7 @@ fn diagnostic_span(spanned: &SpannedStatement) -> Span {
         // Diagnostics from nested `if` branches share the `if` node until the
         // checker itself carries spans; better than a fabricated location.
         SpannedStatementKind::If { .. } => spanned.span,
+        SpannedStatementKind::Request { .. } | SpannedStatementKind::Start { .. } => spanned.span,
         SpannedStatementKind::Expr(expr) => expr.span,
     }
 }

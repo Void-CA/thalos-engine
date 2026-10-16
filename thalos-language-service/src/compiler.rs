@@ -421,6 +421,25 @@ fn lower_statement(
                 provenance: Provenance::new(None, None),
             }
         }
+        // Reactive statements are parsed (task 1) but their semantics are not
+        // lowered here yet; they lower to an inert marker so the run-once
+        // pipeline keeps compiling.
+        AstStatement::Request { name, args } => {
+            let sem_args = args
+                .iter()
+                .map(|arg| lower_expr(&arg.value, evaluator, params, locals, consts))
+                .collect();
+            SemanticStatement::Call {
+                function: format!("request::{name}"),
+                args: sem_args,
+                provenance: Provenance::new(Some(name.clone()), None),
+            }
+        }
+        AstStatement::Start { process } => SemanticStatement::Call {
+            function: format!("start::{process}"),
+            args: Vec::new(),
+            provenance: Provenance::new(Some(process.clone()), None),
+        },
         AstStatement::Expr(AstExpr::Call { callee, args }) => {
             match callee.as_str() {
                 "set_output" => {

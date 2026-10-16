@@ -270,6 +270,46 @@ fn extract_analysis_from_program(
                     kind: ProvenanceKind::Declaration,
                 });
             }
+            Item::Process(decl) => {
+                let span = find_identifier_span(source, &decl.name);
+                let id = symbol_id_counter;
+                symbol_id_counter += 1;
+                symbols.push(Symbol {
+                    id,
+                    name: decl.name.clone(),
+                    kind: SymbolKind::Function,
+                    span,
+                    selection_span: span,
+                    detail: Some("Process declaration".to_string()),
+                });
+                let prov_id = provenance_id_counter;
+                provenance_id_counter += 1;
+                provenance.push(ProvenanceEntry {
+                    id: prov_id,
+                    span,
+                    kind: ProvenanceKind::Declaration,
+                });
+            }
+            Item::Work(decl) => {
+                let span = find_identifier_span(source, &decl.name);
+                let id = symbol_id_counter;
+                symbol_id_counter += 1;
+                symbols.push(Symbol {
+                    id,
+                    name: decl.name.clone(),
+                    kind: SymbolKind::Function,
+                    span,
+                    selection_span: span,
+                    detail: Some("Work declaration".to_string()),
+                });
+                let prov_id = provenance_id_counter;
+                provenance_id_counter += 1;
+                provenance.push(ProvenanceEntry {
+                    id: prov_id,
+                    span,
+                    kind: ProvenanceKind::Declaration,
+                });
+            }
         }
     }
 }
@@ -347,6 +387,22 @@ fn extract_statement_provenance(
                     extract_statement_provenance(source, s, provenance_id_counter, provenance);
                 }
             }
+        }
+        Statement::Request { name, .. } => {
+            let span = find_identifier_span(source, name);
+            provenance.push(ProvenanceEntry {
+                id: prov_id,
+                span,
+                kind: ProvenanceKind::Instruction,
+            });
+        }
+        Statement::Start { process } => {
+            let span = find_identifier_span(source, process);
+            provenance.push(ProvenanceEntry {
+                id: prov_id,
+                span,
+                kind: ProvenanceKind::Instruction,
+            });
         }
         Statement::Expr(_) => {
             let span = SourceSpan::new(0, 0);

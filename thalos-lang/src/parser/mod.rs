@@ -7,7 +7,10 @@ use crate::ast::spanned::{
     SpannedItem, SpannedParam, SpannedProgram, SpannedStatement, SpannedStatementKind,
     SpannedTargetDecl,
 };
-use crate::ast::item::UseDecl;
+use crate::ast::item::{
+    CycleDecl, Event, OnDecl, Param, ProcessDecl, ProcessItem, StateDecl, UseDecl, UseTree,
+    WorkDecl,
+};
 use crate::ast::program::Program;
 use crate::span::Span;
 use crate::units::{AngleRadians, DurationSeconds, LengthMeters};
@@ -28,6 +31,9 @@ type FnDeclShape = (
     ((NameSpan, Vec<SpannedParam>), Option<NameSpan>),
     (Vec<SpannedStatement>, Option<SpannedExpr>),
 );
+
+/// Destructured shape of a work declaration: `(name, params), body`.
+type WorkDeclShape = (((String, Span), Vec<SpannedParam>), Vec<SpannedStatement>);
 
 /// Convert a chumsky char-index span into the language [`Span`].
 ///
@@ -290,6 +296,26 @@ pub fn parser() -> impl Parser<char, SpannedProgram, Error = Simple<char>> {
             })
     });
 
+    // Request-argument parser: mirrors the call-argument shape so `request` can
+    // be parsed outside the expression recursive closure.
+    let assign = just('=').then_ignore(none_of('=').rewind());
+    let request_arg = ident_spanned
+        .then_ignore(assign.clone().padded())
+        .rewind()
+        .then_ignore(ident_spanned)
+        .then_ignore(assign.clone().padded())
+        .then(expr.clone())
+        .map(|((name, name_span), value): ((String, Span), SpannedExpr)| SpannedArg {
+            name: Some(name),
+            name_span: Some(name_span),
+            value,
+        })
+        .or(expr.clone().map(|value: SpannedExpr| SpannedArg {
+            name: None,
+            name_span: None,
+            value,
+        }));
+
     // Explicit type annotation `: Type`, preserving both the type name and the
     // span of the type token so tooling can classify it without re-parsing.
     let type_ann = just(':').padded().ignore_then(
@@ -388,6 +414,37 @@ pub fn parser() -> impl Parser<char, SpannedProgram, Error = Simple<char>> {
                 },
             );
 
+        let request_stmt = just("request")
+            .padded()
+            .ignore_then(ident_spanned.padded())
+            .then(
+                request_arg
+                    .clone()
+                    .separated_by(just(',').padded())
+                    .allow_trailing()
+                    .delimited_by(just('(').padded(), just(')').padded()),
+            )
+            .then_ignore(just(';').or_not())
+            .map_with_span(
+                |((name, _), args): ((String, Span), Vec<SpannedArg>), span: Range<usize>| {
+                    SpannedStatement {
+                        kind: SpannedStatementKind::Request { name, args },
+                        span: char_span(span),
+                    }
+                },
+            );
+
+        let start_stmt = just("start")
+            .padded()
+            .ignore_then(ident_spanned.padded())
+            .then_ignore(just(';').or_not())
+            .map_with_span(
+                |(process, _): (String, Span), span: Range<usize>| SpannedStatement {
+                    kind: SpannedStatementKind::Start { process },
+                    span: char_span(span),
+                },
+            );
+
         let block = stmt
             .clone()
             .repeated()
@@ -433,10 +490,18 @@ pub fn parser() -> impl Parser<char, SpannedProgram, Error = Simple<char>> {
             movec_stmt,
             wait_stmt,
             set_output_stmt,
+            request_stmt,
+            start_stmt,
             expr_stmt,
         ))
         .padded()
     });
+
+    // Block used by process declarations (`on`/`cycle`); shares the statement set.
+    let top_block = stmt_parser
+        .clone()
+        .repeated()
+        .delimited_by(just('{').padded(), just('}').padded());
 
     let fn_body = stmt_parser
         .clone()
@@ -545,15 +610,152 @@ pub fn parser() -> impl Parser<char, SpannedProgram, Error = Simple<char>> {
             },
         );
 
+    // `use`: recursive import tree (see docs/design/interfaz-senales.md).
+    let use_tree = recursive(|use_tree| {
+        let path = ident
+            .separated_by(just("::").padded())
+            .at_least(1)
+            .collect::<Vec<String>>();
+        let group = use_tree
+            .separated_by(just(',').padded())
+            .allow_trailing()
+            .delimited_by(just('{').padded(), just('}').padded());
+        path.then(just("as").padded().ignore_then(ident).or_not())
+            .then(just("::").padded().ignore_then(group).or_not())
+            .map(|((path, alias), group)| match group {
+                Some(trees) => UseTree {
+                    prefix: path,
+                    alias: None,
+                    group: trees,
+                },
+                None => UseTree {
+                    prefix: path,
+                    alias,
+                    group: Vec::new(),
+                },
+            })
+    });
+
     let use_decl = just("use")
-        .ignore_then(ident.padded())
+        .padded()
+        .ignore_then(use_tree)
         .then_ignore(just(';').or_not())
-        .map_with_span(|path: String, span: Range<usize>| SpannedItem::Use {
-            decl: UseDecl { path },
-            span: char_span(span),
+        .map_with_span(|tree: UseTree, span: Range<usize>| {
+            let path = if tree.is_group() {
+                String::new()
+            } else {
+                tree.prefix.join("::")
+            };
+            SpannedItem::Use {
+                decl: UseDecl { path, tree },
+                span: char_span(span),
+            }
         });
 
-    let item = choice((const_decl, fn_decl, target_decl, use_decl)).padded();
+    // Event trigger: rising/falling edge, or a level condition.
+    let event = choice((
+        just("rising")
+            .padded()
+            .ignore_then(expr.clone().delimited_by(just('('), just(')')))
+            .map(|e: SpannedExpr| Event::Rising(e.unspan())),
+        just("falling")
+            .padded()
+            .ignore_then(expr.clone().delimited_by(just('('), just(')')))
+            .map(|e: SpannedExpr| Event::Falling(e.unspan())),
+        expr.clone().map(|e: SpannedExpr| Event::Level(e.unspan())),
+    ));
+
+    let state_decl = just("state")
+        .padded()
+        .ignore_then(ident_spanned.padded())
+        .then(type_ann.or_not())
+        .then_ignore(just('=').padded())
+        .then(expr.clone())
+        .map(
+            |(((name, _), type_ann), value): ((NameSpan, Option<NameSpan>), SpannedExpr)| {
+                ProcessItem::State(StateDecl {
+                    name,
+                    type_ann: type_ann.map(|(t, _)| t),
+                    value: value.unspan(),
+                })
+            },
+        );
+
+    let on_decl = just("on")
+        .padded()
+        .ignore_then(event)
+        .then(top_block.clone())
+        .map(|(event, body): (Event, Vec<SpannedStatement>)| {
+            ProcessItem::On(OnDecl {
+                event,
+                body: body.into_iter().map(SpannedStatement::unspan).collect(),
+            })
+        });
+
+    let cycle_decl = just("cycle")
+        .padded()
+        .ignore_then(top_block.clone())
+        .map(|body: Vec<SpannedStatement>| {
+            ProcessItem::Cycle(CycleDecl {
+                body: body.into_iter().map(SpannedStatement::unspan).collect(),
+            })
+        });
+
+    let process_item = choice((state_decl, on_decl, cycle_decl)).padded();
+
+    let process_decl = just("process")
+        .padded()
+        .ignore_then(ident_spanned.padded())
+        .then(
+            process_item
+                .repeated()
+                .delimited_by(just('{').padded(), just('}').padded()),
+        )
+        .map_with_span(
+            |((name, _), items): ((String, Span), Vec<ProcessItem>), span: Range<usize>| {
+                SpannedItem::Process {
+                    decl: ProcessDecl { name, items },
+                    span: char_span(span),
+                }
+            },
+        );
+
+    let work_decl = just("work")
+        .padded()
+        .ignore_then(ident_spanned.padded())
+        .then(
+            param
+                .separated_by(just(',').padded())
+                .allow_trailing()
+                .delimited_by(just('('), just(')')),
+        )
+        .then(top_block.clone())
+        .map_with_span(
+            |(((name, _), params), body): WorkDeclShape, span: Range<usize>| SpannedItem::Work {
+                decl: WorkDecl {
+                    name,
+                    params: params
+                        .into_iter()
+                        .map(|p| Param {
+                            name: p.name,
+                            type_ann: p.type_ann,
+                        })
+                        .collect(),
+                    body: body.into_iter().map(SpannedStatement::unspan).collect(),
+                },
+                span: char_span(span),
+            },
+        );
+
+    let item = choice((
+        const_decl,
+        fn_decl,
+        target_decl,
+        use_decl,
+        process_decl,
+        work_decl,
+    ))
+    .padded();
 
     item.repeated()
         .then_ignore(end())

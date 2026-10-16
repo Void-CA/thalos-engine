@@ -15,7 +15,10 @@
 //! receiver-type-driven `MemberSchema` binding (`offset(receiver, x = ...)`,
 //! member calls) extends this pass in a later increment.
 
-use thalos_lang::ast::{Arg, ConstDecl, Expr, FnDecl, Item, Program, Statement, TargetDecl};
+use thalos_lang::ast::{
+    Arg, ConstDecl, CycleDecl, Event, Expr, FnDecl, Item, OnDecl, ProcessDecl, ProcessItem, Program,
+    StateDecl, Statement, TargetDecl, WorkDecl,
+};
 use thalos_lang::units::AngleRadians;
 
 /// Rewrite every named-argument call in `program` into canonical positional
@@ -56,6 +59,56 @@ fn normalize_item(item: &Item, errors: &mut Vec<String>) -> Item {
                 .as_ref()
                 .map(|expr| Box::new(normalize_expr(expr, errors))),
         }),
+        Item::Process(p) => Item::Process(ProcessDecl {
+            name: p.name.clone(),
+            items: p
+                .items
+                .iter()
+                .map(|item| normalize_process_item(item, errors))
+                .collect(),
+        }),
+        Item::Work(w) => Item::Work(WorkDecl {
+            name: w.name.clone(),
+            params: w.params.clone(),
+            body: w
+                .body
+                .iter()
+                .map(|stmt| normalize_statement(stmt, errors))
+                .collect(),
+        }),
+    }
+}
+
+fn normalize_process_item(item: &ProcessItem, errors: &mut Vec<String>) -> ProcessItem {
+    match item {
+        ProcessItem::State(s) => ProcessItem::State(StateDecl {
+            name: s.name.clone(),
+            type_ann: s.type_ann.clone(),
+            value: normalize_expr(&s.value, errors),
+        }),
+        ProcessItem::On(on) => ProcessItem::On(OnDecl {
+            event: normalize_event(&on.event, errors),
+            body: on
+                .body
+                .iter()
+                .map(|stmt| normalize_statement(stmt, errors))
+                .collect(),
+        }),
+        ProcessItem::Cycle(c) => ProcessItem::Cycle(CycleDecl {
+            body: c
+                .body
+                .iter()
+                .map(|stmt| normalize_statement(stmt, errors))
+                .collect(),
+        }),
+    }
+}
+
+fn normalize_event(event: &Event, errors: &mut Vec<String>) -> Event {
+    match event {
+        Event::Rising(e) => Event::Rising(normalize_expr(e, errors)),
+        Event::Falling(e) => Event::Falling(normalize_expr(e, errors)),
+        Event::Level(e) => Event::Level(normalize_expr(e, errors)),
     }
 }
 
@@ -103,6 +156,19 @@ fn normalize_statement(stmt: &Statement, errors: &mut Vec<String>) -> Statement 
             }),
         },
         Statement::Expr(expr) => Statement::Expr(normalize_expr(expr, errors)),
+        Statement::Request { name, args } => Statement::Request {
+            name: name.clone(),
+            args: args
+                .iter()
+                .map(|arg| Arg {
+                    name: arg.name.clone(),
+                    value: normalize_expr(&arg.value, errors),
+                })
+                .collect(),
+        },
+        Statement::Start { process } => Statement::Start {
+            process: process.clone(),
+        },
     }
 }
 

@@ -24,7 +24,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::ast::expression::{Arg, BinaryOp, UnaryOp};
-use crate::ast::item::{ConstDecl, FnDecl, Item, Param, UseDecl};
+use crate::ast::item::{ConstDecl, FnDecl, Item, Param, ProcessDecl, UseDecl, WorkDecl};
 use crate::ast::program::Program;
 use crate::ast::statement::Statement;
 use crate::ast::target::TargetDecl;
@@ -52,6 +52,8 @@ pub enum SpannedItem {
     Const(SpannedConstDecl),
     Target(SpannedTargetDecl),
     Function(SpannedFnDecl),
+    Process { decl: ProcessDecl, span: Span },
+    Work { decl: WorkDecl, span: Span },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -133,6 +135,13 @@ pub enum SpannedStatementKind {
         condition: SpannedExpr,
         then_branch: Vec<SpannedStatement>,
         else_branch: Option<Vec<SpannedStatement>>,
+    },
+    Request {
+        name: String,
+        args: Vec<SpannedArg>,
+    },
+    Start {
+        process: String,
     },
     Expr(SpannedExpr),
 }
@@ -246,6 +255,8 @@ impl SpannedItem {
                 body: f.body.into_iter().map(SpannedStatement::unspan).collect(),
                 tail_expr: f.tail_expr.map(|e| Box::new(e.unspan())),
             }),
+            SpannedItem::Process { decl, .. } => Item::Process(decl),
+            SpannedItem::Work { decl, .. } => Item::Work(decl),
         }
     }
 }
@@ -289,11 +300,15 @@ impl SpannedStatement {
                     branch.into_iter().map(SpannedStatement::unspan).collect()
                 }),
             },
+            SpannedStatementKind::Request { name, args } => Statement::Request {
+                name,
+                args: args.into_iter().map(SpannedArg::unspan).collect(),
+            },
+            SpannedStatementKind::Start { process } => Statement::Start { process },
             SpannedStatementKind::Expr(expr) => Statement::Expr(expr.unspan()),
         }
     }
 }
-
 impl SpannedExpr {
     pub fn unspan(self) -> Expr {
         match self.kind {

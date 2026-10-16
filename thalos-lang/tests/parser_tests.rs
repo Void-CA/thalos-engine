@@ -476,3 +476,82 @@ fn test_parse_unary_binds_tighter_than_binary_subtraction() {
         other => panic!("expected subtraction with unary right operand, got {other:?}"),
     }
 }
+
+#[test]
+fn test_parse_reactive_constructs() {
+    let source = r#"
+use station::{ box_sensor as box, pallet }
+
+process palletizing {
+    state admitting : Bool = true
+    on rising(box.present) {
+        request place_box(box_id = box.id)
+    }
+    cycle {
+        request maintain_station()
+    }
+}
+
+work place_box(box_id : Int) {
+    pick(box_id);
+}
+
+fn main() {
+    start palletizing
+}
+"#;
+
+    let program = parse_source(source).expect("reactive program must parse");
+    assert_eq!(program.items.len(), 4);
+
+    // use with a group tree of two node aliases.
+    let Item::Use(u) = &program.items[0] else {
+        panic!("expected use");
+    };
+    assert!(u.tree.is_group(), "use must be a group");
+    assert_eq!(u.tree.prefix, vec!["station".to_string()]);
+    assert_eq!(u.tree.group.len(), 2);
+    assert_eq!(u.tree.group[0].prefix, vec!["box_sensor".to_string()]);
+    assert_eq!(u.tree.group[0].alias.as_deref(), Some("box"));
+    assert_eq!(u.tree.group[1].prefix, vec!["pallet".to_string()]);
+    assert_eq!(u.tree.group[1].alias, None);
+
+    // process with state + on(rising) + cycle.
+    let Item::Process(p) = &program.items[1] else {
+        panic!("expected process");
+    };
+    assert_eq!(p.name, "palletizing");
+    assert_eq!(p.items.len(), 3);
+    assert!(matches!(p.items[0], ProcessItem::State(_)));
+    match &p.items[1] {
+        ProcessItem::On(on) => {
+            assert!(matches!(on.event, Event::Rising(_)));
+            assert_eq!(on.body.len(), 1);
+            assert!(matches!(on.body[0], Statement::Request { .. }));
+        }
+        other => panic!("expected on, got {other:?}"),
+    }
+    match &p.items[2] {
+        ProcessItem::Cycle(c) => assert_eq!(c.body.len(), 1),
+        other => panic!("expected cycle, got {other:?}"),
+    }
+
+    // work declaration.
+    let Item::Work(w) = &program.items[2] else {
+        panic!("expected work");
+    };
+    assert_eq!(w.name, "place_box");
+    assert_eq!(w.params.len(), 1);
+    assert_eq!(w.params[0].name, "box_id");
+
+    // main starts the process.
+    let Item::Function(f) = &program.items[3] else {
+        panic!("expected fn");
+    };
+    assert_eq!(
+        f.body[0],
+        Statement::Start {
+            process: "palletizing".to_string()
+        }
+    );
+}

@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use crate::ast::expression::Expr;
+use crate::ast::expression::{Arg, Expr};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Statement {
@@ -27,6 +27,17 @@ pub enum Statement {
         condition: Expr,
         then_branch: Vec<Statement>,
         else_branch: Option<Vec<Statement>>,
+    },
+    /// `request name(args)`: emit a work request. Does not admit it; the runtime
+    /// arbitrates (see `docs/design/lenguaje-reactivo.md`).
+    Request {
+        name: String,
+        args: Vec<Arg>,
+    },
+    /// `start name`: start a persistent process. Valid only in the contexts
+    /// defined for starting processes (e.g. `main`), never inside a `work`.
+    Start {
+        process: String,
     },
     Expr(Expr),
 }
