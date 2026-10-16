@@ -39,5 +39,10 @@ pub enum Statement {
     Start {
         process: String,
     },
+    /// `name = value`: write a process `state`. Valid only inside a `process`.
+    Assign {
+        name: String,
+        value: Expr,
+    },
     Expr(Expr),
 }

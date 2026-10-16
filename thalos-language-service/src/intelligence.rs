@@ -649,6 +649,9 @@ fn collect_tokens_statement(
             }
         }
         SpannedStatementKind::Start { .. } => {}
+        SpannedStatementKind::Assign { value, .. } => {
+            collect_tokens_expr(value, symbols, source, tokens);
+        }
         SpannedStatementKind::Expr(expr) => {
             collect_tokens_expr(expr, symbols, source, tokens);
         }
@@ -740,6 +743,7 @@ fn diagnostic_span(spanned: &SpannedStatement) -> Span {
         // checker itself carries spans; better than a fabricated location.
         SpannedStatementKind::If { .. } => spanned.span,
         SpannedStatementKind::Request { .. } | SpannedStatementKind::Start { .. } => spanned.span,
+        SpannedStatementKind::Assign { value, .. } => value.span,
         SpannedStatementKind::Expr(expr) => expr.span,
     }
 }

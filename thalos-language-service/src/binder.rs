@@ -169,6 +169,10 @@ fn normalize_statement(stmt: &Statement, errors: &mut Vec<String>) -> Statement 
         Statement::Start { process } => Statement::Start {
             process: process.clone(),
         },
+        Statement::Assign { name, value } => Statement::Assign {
+            name: name.clone(),
+            value: normalize_expr(value, errors),
+        },
     }
 }
 

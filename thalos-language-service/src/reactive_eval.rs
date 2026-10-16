@@ -43,7 +43,7 @@ impl RuntimeValue {
         }
     }
 
-    fn as_f64(&self) -> Option<f64> {
+    pub(crate) fn as_f64(&self) -> Option<f64> {
         match self {
             RuntimeValue::Bool(b) => Some(if *b { 1.0 } else { 0.0 }),
             RuntimeValue::Int(i) => Some(*i as f64),
@@ -52,7 +52,7 @@ impl RuntimeValue {
         }
     }
 
-    fn from_constant(value: CompileTimeValue) -> Self {
+    pub(crate) fn from_constant(value: CompileTimeValue) -> Self {
         match value {
             CompileTimeValue::Bool(b) => RuntimeValue::Bool(b),
             CompileTimeValue::Int(i) => RuntimeValue::Int(i),

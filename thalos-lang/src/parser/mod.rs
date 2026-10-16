@@ -445,6 +445,24 @@ pub fn parser() -> impl Parser<char, SpannedProgram, Error = Simple<char>> {
                 },
             );
 
+        let assign_stmt = ident_spanned
+            .padded()
+            .then_ignore(assign.clone().padded())
+            .then(expr.clone())
+            .then_ignore(just(';').or_not())
+            .map_with_span(
+                |((name, name_span), value): ((String, Span), SpannedExpr), span: Range<usize>| {
+                    SpannedStatement {
+                        kind: SpannedStatementKind::Assign {
+                            name,
+                            name_span,
+                            value,
+                        },
+                        span: char_span(span),
+                    }
+                },
+            );
+
         let block = stmt
             .clone()
             .repeated()
@@ -492,6 +510,7 @@ pub fn parser() -> impl Parser<char, SpannedProgram, Error = Simple<char>> {
             set_output_stmt,
             request_stmt,
             start_stmt,
+            assign_stmt,
             expr_stmt,
         ))
         .padded()

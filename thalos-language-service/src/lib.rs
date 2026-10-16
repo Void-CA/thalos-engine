@@ -25,6 +25,7 @@ pub mod profile;
 pub mod program;
 pub mod reactive;
 pub mod reactive_eval;
+pub mod reactive_process;
 pub mod resource;
 pub mod resolver;
 pub mod scope;
@@ -398,6 +399,14 @@ fn extract_statement_provenance(
         }
         Statement::Start { process } => {
             let span = find_identifier_span(source, process);
+            provenance.push(ProvenanceEntry {
+                id: prov_id,
+                span,
+                kind: ProvenanceKind::Instruction,
+            });
+        }
+        Statement::Assign { name, .. } => {
+            let span = find_identifier_span(source, name);
             provenance.push(ProvenanceEntry {
                 id: prov_id,
                 span,

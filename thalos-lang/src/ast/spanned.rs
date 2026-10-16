@@ -143,6 +143,11 @@ pub enum SpannedStatementKind {
     Start {
         process: String,
     },
+    Assign {
+        name: String,
+        name_span: Span,
+        value: SpannedExpr,
+    },
     Expr(SpannedExpr),
 }
 
@@ -305,6 +310,10 @@ impl SpannedStatement {
                 args: args.into_iter().map(SpannedArg::unspan).collect(),
             },
             SpannedStatementKind::Start { process } => Statement::Start { process },
+            SpannedStatementKind::Assign { name, value, .. } => Statement::Assign {
+                name,
+                value: value.unspan(),
+            },
             SpannedStatementKind::Expr(expr) => Statement::Expr(expr.unspan()),
         }
     }

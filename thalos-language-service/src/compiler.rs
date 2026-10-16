@@ -440,6 +440,11 @@ fn lower_statement(
             args: Vec::new(),
             provenance: Provenance::new(Some(process.clone()), None),
         },
+        AstStatement::Assign { name, value } => SemanticStatement::Call {
+            function: format!("assign::{name}"),
+            args: vec![lower_expr(value, evaluator, params, locals, consts)],
+            provenance: Provenance::new(Some(name.clone()), None),
+        },
         AstStatement::Expr(AstExpr::Call { callee, args }) => {
             match callee.as_str() {
                 "set_output" => {
