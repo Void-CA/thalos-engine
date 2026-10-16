@@ -21,7 +21,8 @@ use serde::{Deserialize, Serialize};
 
 use thalos_core::execution::session::{ObservationBundle, eval_channel_access};
 use thalos_lang::ast::{
-    BinaryOp, Expr as AstExpr, Item, Program, Statement as AstStatement, UnaryOp, UseTree,
+    Arg, BinaryOp, Expr as AstExpr, FnDecl, Item, Program, Statement as AstStatement, UnaryOp,
+    UseTree,
 };
 
 use crate::compiler::prepare_symbols;
@@ -453,6 +454,226 @@ pub fn compile_process(ast: &Program, schema: &SignalSchema) -> Result<ProcessPr
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// Work specialization (compile boundary: AST → Program)
+// ───────────────────────────────────────────────────────────────────────────
+
+/// Build a runnable [`Program`] for a concrete work request: a copy of `program`
+/// whose entry (`main`) is the **work body** with its parameters substituted by
+/// the concrete `args`.
+///
+/// This reuses the compiler's semantic rules end to end — no `.thls` text is
+/// generated or interpolated: the caller compiles the returned AST through the
+/// canonical `compile` → `resolve` pipeline and then plans it.
+///
+/// Parameters are bound **by name** (the request carries named args). Every
+/// declared parameter must be provided.
+pub fn specialize_work(
+    program: &Program,
+    work_name: &str,
+    args: &[(String, CompileTimeValue)],
+) -> Result<Program, Vec<String>> {
+    let work = program.items.iter().find_map(|item| match item {
+        Item::Work(w) if w.name == work_name => Some(w),
+        _ => None,
+    });
+    let Some(work) = work else {
+        return Err(vec![format!("work '{work_name}' not found")]);
+    };
+
+    let mut bindings: std::collections::HashMap<&str, AstExpr> = std::collections::HashMap::new();
+    for (name, value) in args {
+        match value_to_expr(value) {
+            Ok(expr) => {
+                bindings.insert(name.as_str(), expr);
+            }
+            Err(e) => return Err(vec![format!("arg '{name}': {e}")]),
+        }
+    }
+    for param in &work.params {
+        if !bindings.contains_key(param.name.as_str()) {
+            return Err(vec![format!(
+                "work '{work_name}' missing argument '{}'",
+                param.name
+            )]);
+        }
+    }
+
+    let mut body = Vec::with_capacity(work.body.len());
+    for stmt in &work.body {
+        match substitute_statement(stmt, &bindings) {
+            Ok(s) => body.push(s),
+            Err(e) => return Err(vec![e]),
+        }
+    }
+
+    let entry = FnDecl {
+        name: "main".to_string(),
+        params: Vec::new(),
+        return_type: None,
+        body,
+        tail_expr: None,
+    };
+
+    let mut items: Vec<Item> = program
+        .items
+        .iter()
+        .filter(|item| !matches!(item, Item::Function(f) if f.name == "main"))
+        .cloned()
+        .collect();
+    items.push(Item::Function(entry));
+
+    Ok(Program { items })
+}
+
+fn value_to_expr(value: &CompileTimeValue) -> Result<AstExpr, String> {
+    match value {
+        CompileTimeValue::Bool(b) => Ok(AstExpr::Boolean(*b)),
+        CompileTimeValue::Int(i) => Ok(AstExpr::Number(*i as f64)),
+        CompileTimeValue::Float(f) => Ok(AstExpr::Number(*f)),
+        other => Err(format!("unsupported work argument value: {other:?}")),
+    }
+}
+
+fn substitute_statement(
+    stmt: &AstStatement,
+    bindings: &std::collections::HashMap<&str, AstExpr>,
+) -> Result<AstStatement, String> {
+    Ok(match stmt {
+        AstStatement::Let {
+            name,
+            type_ann,
+            value,
+        } => AstStatement::Let {
+            name: name.clone(),
+            type_ann: type_ann.clone(),
+            value: substitute_expr(value, bindings)?,
+        },
+        AstStatement::MoveJ { target } => AstStatement::MoveJ {
+            target: substitute_expr(target, bindings)?,
+        },
+        AstStatement::MoveL { target } => AstStatement::MoveL {
+            target: substitute_expr(target, bindings)?,
+        },
+        AstStatement::MoveC { via, target } => AstStatement::MoveC {
+            via: substitute_expr(via, bindings)?,
+            target: substitute_expr(target, bindings)?,
+        },
+        AstStatement::Wait(expr) => AstStatement::Wait(substitute_expr(expr, bindings)?),
+        AstStatement::SetOutput { output, value } => AstStatement::SetOutput {
+            output: output.clone(),
+            value: substitute_expr(value, bindings)?,
+        },
+        AstStatement::If {
+            condition,
+            then_branch,
+            else_branch,
+        } => AstStatement::If {
+            condition: substitute_expr(condition, bindings)?,
+            then_branch: then_branch
+                .iter()
+                .map(|s| substitute_statement(s, bindings))
+                .collect::<Result<_, _>>()?,
+            else_branch: match else_branch {
+                Some(branch) => Some(
+                    branch
+                        .iter()
+                        .map(|s| substitute_statement(s, bindings))
+                        .collect::<Result<_, _>>()?,
+                ),
+                None => None,
+            },
+        },
+        AstStatement::Request { name, args } => AstStatement::Request {
+            name: name.clone(),
+            args: args
+                .iter()
+                .map(|a| substitute_arg(a, bindings))
+                .collect::<Result<_, _>>()?,
+        },
+        AstStatement::Start { process } => AstStatement::Start {
+            process: process.clone(),
+        },
+        AstStatement::Assign { name, value } => AstStatement::Assign {
+            name: name.clone(),
+            value: substitute_expr(value, bindings)?,
+        },
+        AstStatement::Expr(expr) => AstStatement::Expr(substitute_expr(expr, bindings)?),
+    })
+}
+
+fn substitute_arg(
+    arg: &Arg,
+    bindings: &std::collections::HashMap<&str, AstExpr>,
+) -> Result<Arg, String> {
+    Ok(Arg {
+        name: arg.name.clone(),
+        value: substitute_expr(&arg.value, bindings)?,
+    })
+}
+
+fn substitute_expr(
+    expr: &AstExpr,
+    bindings: &std::collections::HashMap<&str, AstExpr>,
+) -> Result<AstExpr, String> {
+    Ok(match expr {
+        AstExpr::Identifier(id) => match bindings.get(id.as_str()) {
+            Some(replacement) => replacement.clone(),
+            None => AstExpr::Identifier(id.clone()),
+        },
+        AstExpr::Number(n) => AstExpr::Number(*n),
+        AstExpr::StringLiteral(s) => AstExpr::StringLiteral(s.clone()),
+        AstExpr::Boolean(b) => AstExpr::Boolean(*b),
+        AstExpr::Length(l) => AstExpr::Length(*l),
+        AstExpr::Angle(a) => AstExpr::Angle(*a),
+        AstExpr::Duration(d) => AstExpr::Duration(*d),
+        AstExpr::Vector3([x, y, z]) => AstExpr::Vector3([
+            Box::new(substitute_expr(x, bindings)?),
+            Box::new(substitute_expr(y, bindings)?),
+            Box::new(substitute_expr(z, bindings)?),
+        ]),
+        AstExpr::Pose {
+            position,
+            orientation,
+        } => AstExpr::Pose {
+            position: Box::new(substitute_expr(position, bindings)?),
+            orientation: Box::new(substitute_expr(orientation, bindings)?),
+        },
+        AstExpr::Call { callee, args } => AstExpr::Call {
+            callee: callee.clone(),
+            args: args
+                .iter()
+                .map(|a| substitute_arg(a, bindings))
+                .collect::<Result<_, _>>()?,
+        },
+        AstExpr::MemberCall {
+            object,
+            method,
+            args,
+        } => AstExpr::MemberCall {
+            object: object.clone(),
+            method: method.clone(),
+            args: args
+                .iter()
+                .map(|a| substitute_arg(a, bindings))
+                .collect::<Result<_, _>>()?,
+        },
+        AstExpr::MemberAccess { object, member } => AstExpr::MemberAccess {
+            object: object.clone(),
+            member: member.clone(),
+        },
+        AstExpr::Binary { left, op, right } => AstExpr::Binary {
+            left: Box::new(substitute_expr(left, bindings)?),
+            op: *op,
+            right: Box::new(substitute_expr(right, bindings)?),
+        },
+        AstExpr::Unary { op, operand } => AstExpr::Unary {
+            op: *op,
+            operand: Box::new(substitute_expr(operand, bindings)?),
+        },
+    })
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // Runtime (Task 3)
 // ───────────────────────────────────────────────────────────────────────────
 
@@ -838,5 +1059,73 @@ fn main() { start p }
             "pallet.full must write `admitting`: {effect:?}"
         );
         assert_eq!(rt.state("admitting"), Some(&RuntimeValue::Bool(false)));
+    }
+
+    const SPECIALIZE_SRC: &str = r#"
+target slot_1 = joints(10deg, 20deg)
+target slot_2 = joints(30deg, 40deg)
+
+fn place(slot: Int) {
+    if slot == 1 {
+        movej(slot_1)
+    } else {
+        movej(slot_2)
+    }
+}
+
+work place_box(box_id: Int, slot: Int) {
+    place(slot);
+}
+"#;
+
+    fn resolved_for(slot: i64) -> crate::model::ResolvedProgram {
+        let ast = parse_source(SPECIALIZE_SRC).expect("parse");
+        let specialized = specialize_work(
+            &ast,
+            "place_box",
+            &[
+                ("box_id".to_string(), CompileTimeValue::Int(12)),
+                ("slot".to_string(), CompileTimeValue::Int(slot)),
+            ],
+        )
+        .expect("specialize");
+        let semantic = crate::compiler::SemanticCompiler::compile(&specialized).expect("compile");
+        crate::resolver::SemanticResolver::resolve(&semantic).expect("resolve")
+    }
+
+    #[test]
+    fn specialize_binds_payload_and_compiles_through_the_pipeline() {
+        let one = resolved_for(1);
+        let two = resolved_for(2);
+        assert_ne!(
+            one, two,
+            "different payloads must yield different resolved programs"
+        );
+        assert_eq!(one.statements.len(), 1);
+    }
+
+    #[test]
+    fn specialize_requires_all_arguments() {
+        let ast = parse_source(SPECIALIZE_SRC).expect("parse");
+        let err = specialize_work(
+            &ast,
+            "place_box",
+            &[("box_id".to_string(), CompileTimeValue::Int(1))],
+        )
+        .expect_err("missing slot must fail");
+        assert!(
+            err.iter().any(|e| e.contains("missing argument 'slot'")),
+            "got {err:?}"
+        );
+    }
+
+    #[test]
+    fn specialize_unknown_work_is_an_error() {
+        let ast = parse_source(SPECIALIZE_SRC).expect("parse");
+        let err = specialize_work(&ast, "ghost", &[]).expect_err("unknown work must fail");
+        assert!(
+            err.iter().any(|e| e.contains("work 'ghost' not found")),
+            "got {err:?}"
+        );
     }
 }
