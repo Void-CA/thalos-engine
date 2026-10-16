@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use thalos_lang::ast::{Expr, Statement, UnaryOp};
 use thalos_lang::span::Span;
 use crate::operators::BinaryOpRule;
+use crate::reactive::SignalSchema;
 use crate::scope::SymbolTable;
 use crate::symbols::{Symbol, SymbolKind};
 use crate::types::Type;
@@ -24,6 +25,8 @@ pub struct TypeChecker<'a> {
     pub diagnostics: Vec<SemanticDiagnostic>,
     pub current_fn_name: Option<String>,
     pub current_fn_return_type: Option<Type>,
+    /// Declared signals: `module.channel` reads are typed against this.
+    signals: Option<&'a SignalSchema>,
     silent: bool,
 }
 
@@ -34,8 +37,15 @@ impl<'a> TypeChecker<'a> {
             diagnostics: Vec::new(),
             current_fn_name: None,
             current_fn_return_type: None,
+            signals: None,
             silent: false,
         }
+    }
+
+    /// Attach a signal schema so `module.channel` reads type-check as signals.
+    pub fn with_signals(mut self, signals: &'a SignalSchema) -> Self {
+        self.signals = Some(signals);
+        self
     }
 
     /// Record a diagnostic unless we are in a silent (type-collection) pass.
@@ -387,6 +397,30 @@ impl<'a> TypeChecker<'a> {
                 }
             }
             Expr::MemberAccess { object, member } => {
+                // A declared signal module: `module.channel` is a signal read,
+                // typed by the schema.
+                if let Some(signals) = self.signals
+                    && signals.knows_module(object)
+                {
+                    return match signals.type_of(object, member) {
+                        Some(ty) => TypedExpr {
+                            expr: expr.clone(),
+                            ty: ty.as_type(),
+                            span: None,
+                        },
+                        None => {
+                            self.push_diag(format!(
+                                "Module '{}' has no signal '{}'",
+                                object, member
+                            ));
+                            TypedExpr {
+                                expr: expr.clone(),
+                                ty: Type::Error,
+                                span: None,
+                            }
+                        }
+                    };
+                }
                 // `object` is a bare identifier in v1. Resolve its type first;
                 // the member is then looked up in that type's schema. This also
                 // means a namespace like `module.channel` no longer maps to a

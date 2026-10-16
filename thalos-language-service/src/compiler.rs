@@ -7,6 +7,7 @@ use crate::model::{
     JointConfiguration, MotionKind, MotionTarget, Provenance, ResolvedTarget, SemanticArg,
     SemanticExpr, SemanticFunction, SemanticMotion, SemanticProgram, SemanticStatement,
 };
+use crate::reactive::{ReactiveProgram, SignalSchema};
 use crate::scope::SymbolTable;
 use crate::symbols::{Symbol, SymbolKind};
 use crate::types::Type;
@@ -15,6 +16,15 @@ pub struct SemanticCompiler;
 
 impl SemanticCompiler {
     pub fn compile(ast: &Program) -> Result<SemanticProgram, Vec<String>> {
+        Self::compile_with_signals(ast, &SignalSchema::new())
+    }
+
+    /// Compile with a declared signal schema: a `module.channel` read becomes a
+    /// first-class [`SemanticExpr::ChannelAccess`].
+    pub fn compile_with_signals(
+        ast: &Program,
+        signals: &SignalSchema,
+    ) -> Result<SemanticProgram, Vec<String>> {
         // Resolve named arguments into canonical positional form once, up front.
         // Every stage below (evaluator, checker, lowering, resolver) only ever
         // sees positional arguments and never re-implements named-arg semantics.
@@ -32,7 +42,7 @@ impl SemanticCompiler {
         } = prepare_symbols(&ast);
 
         // 3. Type check AST functions and statements in isolated parameter scope
-        let mut checker = TypeChecker::new(&mut table);
+        let mut checker = TypeChecker::new(&mut table).with_signals(signals);
         for item in &ast.items {
             if let Item::Function(f) = item {
                 let expected_ret = f
@@ -128,11 +138,22 @@ impl SemanticCompiler {
             }
         }
 
-        Ok(SemanticProgram {
+        let mut program = SemanticProgram {
             targets: resolved_targets,
             functions: semantic_functions,
             entry_point: "main".to_string(),
-        })
+        };
+        rewrite_signal_access(&mut program, signals);
+        Ok(program)
+    }
+
+    /// Compile straight to a control-flow-preserving [`ReactiveProgram`].
+    pub fn compile_reactive(
+        ast: &Program,
+        signals: &SignalSchema,
+    ) -> Result<ReactiveProgram, Vec<String>> {
+        let semantic = Self::compile_with_signals(ast, signals)?;
+        crate::reactive::lower_reactive(&semantic, signals)
     }
 }
 
@@ -573,9 +594,94 @@ fn lower_expr(
     }
 }
 
+/// Rewrite `module.channel` member accesses into first-class
+/// [`SemanticExpr::ChannelAccess`] reads, for channels declared in the schema.
+fn rewrite_signal_access(program: &mut SemanticProgram, signals: &SignalSchema) {
+    for func in &mut program.functions {
+        rewrite_statements(&mut func.body, signals);
+        if let Some(tail) = func.tail_expr.as_mut() {
+            rewrite_expr(tail, signals);
+        }
+    }
+}
+
+fn rewrite_statements(statements: &mut [SemanticStatement], signals: &SignalSchema) {
+    for statement in statements {
+        match statement {
+            SemanticStatement::Let { value, .. } => rewrite_expr(value, signals),
+            SemanticStatement::Motion(SemanticMotion { target, .. }) => rewrite_expr(target, signals),
+            SemanticStatement::Wait { duration, .. } => rewrite_expr(duration, signals),
+            SemanticStatement::If {
+                condition,
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                rewrite_expr(condition, signals);
+                rewrite_statements(then_branch, signals);
+                if let Some(else_body) = else_branch {
+                    rewrite_statements(else_body, signals);
+                }
+            }
+            SemanticStatement::Call { args, .. } => {
+                for arg in args {
+                    rewrite_expr(arg, signals);
+                }
+            }
+            SemanticStatement::Expr(expr) => rewrite_expr(expr, signals),
+            SemanticStatement::SetOutput { .. } => {}
+        }
+    }
+}
+
+fn rewrite_expr(expr: &mut SemanticExpr, signals: &SignalSchema) {
+    match expr {
+        SemanticExpr::MemberAccess { object, member } => {
+            rewrite_expr(object, signals);
+            if let SemanticExpr::TargetRef(module) = object.as_ref()
+                && signals.type_of(module, member).is_some()
+            {
+                *expr = SemanticExpr::ChannelAccess {
+                    module: module.clone(),
+                    channel: member.clone(),
+                };
+            }
+        }
+        SemanticExpr::Binary { left, right, .. } => {
+            rewrite_expr(left, signals);
+            rewrite_expr(right, signals);
+        }
+        SemanticExpr::Unary { operand, .. } => rewrite_expr(operand, signals),
+        SemanticExpr::Offset { receiver, deltas } => {
+            rewrite_expr(receiver, signals);
+            for delta in deltas {
+                rewrite_expr(&mut delta.value, signals);
+            }
+        }
+        SemanticExpr::Call { args, .. } => {
+            for arg in args {
+                rewrite_expr(arg, signals);
+            }
+        }
+        SemanticExpr::MemberCall { object, args, .. } => {
+            rewrite_expr(object, signals);
+            for arg in args {
+                rewrite_expr(arg, signals);
+            }
+        }
+        SemanticExpr::Constant(_)
+        | SemanticExpr::ConstRef(_)
+        | SemanticExpr::LocalRef(_)
+        | SemanticExpr::ParameterRef(_)
+        | SemanticExpr::TargetRef(_)
+        | SemanticExpr::ChannelAccess { .. } => {}
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::reactive::{ReactiveExpr, ReactiveStatement, SignalType};
     use thalos_lang::parse_source;
 
     #[test]
@@ -600,5 +706,36 @@ fn main() {
             vec!["Unknown identifier 'ptt2'".to_string()],
             "only the root cause must be reported, got: {errors:?}"
         );
+    }
+
+    #[test]
+    fn channel_access_is_produced_typed_and_preserved() {
+        let source = r#"
+fn main() {
+    if sensors.temp > 50.0 {
+        set_output("gripper", true);
+    }
+}
+"#;
+        let program = parse_source(source).expect("source must parse");
+        let schema = SignalSchema::new().with("sensors", "temp", SignalType::Float);
+        let reactive =
+            SemanticCompiler::compile_reactive(&program, &schema).expect("compile_reactive");
+
+        assert_eq!(reactive.statements.len(), 1, "one preserved If");
+        match &reactive.statements[0] {
+            ReactiveStatement::If { condition, .. } => match condition {
+                ReactiveExpr::Binary { left, .. } => match left.as_ref() {
+                    ReactiveExpr::Signal { module, channel, ty } => {
+                        assert_eq!(module, "sensors");
+                        assert_eq!(channel, "temp");
+                        assert_eq!(*ty, SignalType::Float);
+                    }
+                    other => panic!("expected a signal read, got {other:?}"),
+                },
+                other => panic!("expected a binary condition, got {other:?}"),
+            },
+            other => panic!("expected a preserved If, got {other:?}"),
+        }
     }
 }
