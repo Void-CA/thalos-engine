@@ -441,7 +441,7 @@ mod tests {
 
         let mesh = load_stl(tmp.path()).unwrap();
         assert_eq!(mesh.triangles[0].normal, [0.0, 0.0, 1.0]);
-        for n in mesh.normals.chunks_exact(3) {
+        for n in mesh.normals.as_chunks::<3>().0 {
             assert!(
                 (n[0]).abs() < 1e-6 && (n[1]).abs() < 1e-6 && (n[2] - 1.0).abs() < 1e-6,
                 "recomputed normal should be +Z, got {:?}",

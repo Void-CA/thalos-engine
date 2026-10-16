@@ -76,16 +76,16 @@ impl<'a> MultiStartIKSolver<'a> {
         for seed in seeds {
             let result = self.base_solver.solve(seed, goal.clone());
 
+            // Skip non-converged/error seeds, and only keep solutions that are
+            // significantly different from the ones already collected.
             match result {
-                Ok(ik_result) if ik_result.status.is_converged() => {
-                    // Check if this solution is significantly different from existing ones
-                    if !self.is_duplicate(&ik_result.q, &solutions) {
-                        solutions.push(ik_result);
-                    }
+                Ok(ik_result)
+                    if ik_result.status.is_converged()
+                        && !self.is_duplicate(&ik_result.q, &solutions) =>
+                {
+                    solutions.push(ik_result);
                 }
-                _ => {
-                    // Non-converged or error — skip this seed
-                }
+                _ => {}
             }
         }
 

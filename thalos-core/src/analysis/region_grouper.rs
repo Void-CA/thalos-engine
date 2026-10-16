@@ -106,7 +106,7 @@ impl RegionGrouper {
             })
             .collect();
 
-        sorted.sort_by(|a, b| a.waypoint.cmp(&b.waypoint));
+        sorted.sort_by_key(|a| a.waypoint);
         sorted
     }
 
