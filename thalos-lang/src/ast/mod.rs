@@ -6,7 +6,10 @@ pub mod statement;
 pub mod target;
 
 pub use expression::{Arg, BinaryOp, Expr, UnaryOp};
-pub use item::{ConstDecl, FnDecl, Item, Param, UseDecl};
+pub use item::{
+    ConstDecl, CycleDecl, Event, FnDecl, Item, OnDecl, Param, ProcessDecl, ProcessItem, StateDecl,
+    UseDecl, UseTree, WorkDecl,
+};
 pub use program::Program;
 pub use spanned::{
     Spanned, SpannedArg, SpannedConstDecl, SpannedExpr, SpannedExprKind, SpannedFnDecl,

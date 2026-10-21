@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use thalos_lang::ast::{ConstDecl, Expr as AstExpr, Item, Program, Statement as AstStatement, TargetDecl};
+use thalos_lang::ast::{ConstDecl, Expr as AstExpr, Item, Program, Statement as AstStatement, TargetDecl, UseTree};
 use crate::builtins::register_builtins;
 use crate::checker::TypeChecker;
 use crate::evaluator::{CompileTimeValue, EvalResult, Evaluator, Position};
@@ -7,6 +7,7 @@ use crate::model::{
     JointConfiguration, MotionKind, MotionTarget, Provenance, ResolvedTarget, SemanticArg,
     SemanticExpr, SemanticFunction, SemanticMotion, SemanticProgram, SemanticStatement,
 };
+use crate::reactive::{ReactiveProgram, SignalSchema};
 use crate::scope::SymbolTable;
 use crate::symbols::{Symbol, SymbolKind};
 use crate::types::Type;
@@ -15,6 +16,15 @@ pub struct SemanticCompiler;
 
 impl SemanticCompiler {
     pub fn compile(ast: &Program) -> Result<SemanticProgram, Vec<String>> {
+        Self::compile_with_signals(ast, &SignalSchema::new())
+    }
+
+    /// Compile with a declared signal schema: a `module.channel` read becomes a
+    /// first-class [`SemanticExpr::ChannelAccess`].
+    pub fn compile_with_signals(
+        ast: &Program,
+        signals: &SignalSchema,
+    ) -> Result<SemanticProgram, Vec<String>> {
         // Resolve named arguments into canonical positional form once, up front.
         // Every stage below (evaluator, checker, lowering, resolver) only ever
         // sees positional arguments and never re-implements named-arg semantics.
@@ -22,6 +32,10 @@ impl SemanticCompiler {
         if !bind_errors.is_empty() {
             return Err(bind_errors);
         }
+
+        // `use` aliases: a local name maps to the real signal module. Shared by
+        // the checker (signal typing) and the rewrite pass (ChannelAccess).
+        let signal_aliases = build_signal_aliases(&ast);
 
         let PreparedSymbols {
             mut table,
@@ -32,7 +46,9 @@ impl SemanticCompiler {
         } = prepare_symbols(&ast);
 
         // 3. Type check AST functions and statements in isolated parameter scope
-        let mut checker = TypeChecker::new(&mut table);
+        let mut checker = TypeChecker::new(&mut table)
+            .with_signals(signals)
+            .with_signal_aliases(&signal_aliases);
         for item in &ast.items {
             if let Item::Function(f) = item {
                 let expected_ret = f
@@ -128,11 +144,22 @@ impl SemanticCompiler {
             }
         }
 
-        Ok(SemanticProgram {
+        let mut program = SemanticProgram {
             targets: resolved_targets,
             functions: semantic_functions,
             entry_point: "main".to_string(),
-        })
+        };
+        rewrite_signal_access(&mut program, signals, &signal_aliases);
+        Ok(program)
+    }
+
+    /// Compile straight to a control-flow-preserving [`ReactiveProgram`].
+    pub fn compile_reactive(
+        ast: &Program,
+        signals: &SignalSchema,
+    ) -> Result<ReactiveProgram, Vec<String>> {
+        let semantic = Self::compile_with_signals(ast, signals)?;
+        crate::reactive::lower_reactive(&semantic, signals)
     }
 }
 
@@ -400,6 +427,30 @@ fn lower_statement(
                 provenance: Provenance::new(None, None),
             }
         }
+        // Reactive statements are parsed (task 1) but their semantics are not
+        // lowered here yet; they lower to an inert marker so the run-once
+        // pipeline keeps compiling.
+        AstStatement::Request { name, args } => {
+            let sem_args = args
+                .iter()
+                .map(|arg| lower_expr(&arg.value, evaluator, params, locals, consts))
+                .collect();
+            SemanticStatement::Call {
+                function: format!("request::{name}"),
+                args: sem_args,
+                provenance: Provenance::new(Some(name.clone()), None),
+            }
+        }
+        AstStatement::Start { process } => SemanticStatement::Call {
+            function: format!("start::{process}"),
+            args: Vec::new(),
+            provenance: Provenance::new(Some(process.clone()), None),
+        },
+        AstStatement::Assign { name, value } => SemanticStatement::Call {
+            function: format!("assign::{name}"),
+            args: vec![lower_expr(value, evaluator, params, locals, consts)],
+            provenance: Provenance::new(Some(name.clone()), None),
+        },
         AstStatement::Expr(AstExpr::Call { callee, args }) => {
             match callee.as_str() {
                 "set_output" => {
@@ -573,9 +624,136 @@ fn lower_expr(
     }
 }
 
+/// Rewrite `module.channel` member accesses into first-class
+/// [`SemanticExpr::ChannelAccess`] reads, for channels declared in the schema.
+/// Build the `use` alias map (local name → real signal module).
+fn build_signal_aliases(program: &Program) -> std::collections::HashMap<String, String> {
+    let mut aliases = std::collections::HashMap::new();
+    for item in &program.items {
+        if let Item::Use(u) = item {
+            collect_alias_map(&u.tree, &mut aliases);
+        }
+    }
+    aliases
+}
+
+fn collect_alias_map(tree: &UseTree, out: &mut std::collections::HashMap<String, String>) {
+    if tree.is_group() {
+        for child in &tree.group {
+            collect_alias_map(child, out);
+        }
+        return;
+    }
+    if let Some(node) = tree.prefix.last() {
+        let local = tree.alias.clone().unwrap_or_else(|| node.clone());
+        out.insert(local, node.clone());
+    }
+}
+
+/// Rewrite `module.channel` member accesses into first-class
+/// [`SemanticExpr::ChannelAccess`] reads, for channels declared in the schema.
+/// `aliases` resolves a local `use` name to the real module.
+fn rewrite_signal_access(
+    program: &mut SemanticProgram,
+    signals: &SignalSchema,
+    aliases: &std::collections::HashMap<String, String>,
+) {
+    for func in &mut program.functions {
+        rewrite_statements(&mut func.body, signals, aliases);
+        if let Some(tail) = func.tail_expr.as_mut() {
+            rewrite_expr(tail, signals, aliases);
+        }
+    }
+}
+
+fn rewrite_statements(
+    statements: &mut [SemanticStatement],
+    signals: &SignalSchema,
+    aliases: &std::collections::HashMap<String, String>,
+) {
+    for statement in statements {
+        match statement {
+            SemanticStatement::Let { value, .. } => rewrite_expr(value, signals, aliases),
+            SemanticStatement::Motion(SemanticMotion { target, .. }) => {
+                rewrite_expr(target, signals, aliases)
+            }
+            SemanticStatement::Wait { duration, .. } => rewrite_expr(duration, signals, aliases),
+            SemanticStatement::If {
+                condition,
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                rewrite_expr(condition, signals, aliases);
+                rewrite_statements(then_branch, signals, aliases);
+                if let Some(else_body) = else_branch {
+                    rewrite_statements(else_body, signals, aliases);
+                }
+            }
+            SemanticStatement::Call { args, .. } => {
+                for arg in args {
+                    rewrite_expr(arg, signals, aliases);
+                }
+            }
+            SemanticStatement::Expr(expr) => rewrite_expr(expr, signals, aliases),
+            SemanticStatement::SetOutput { .. } => {}
+        }
+    }
+}
+
+fn rewrite_expr(
+    expr: &mut SemanticExpr,
+    signals: &SignalSchema,
+    aliases: &std::collections::HashMap<String, String>,
+) {
+    match expr {
+        SemanticExpr::MemberAccess { object, member } => {
+            rewrite_expr(object, signals, aliases);
+            if let SemanticExpr::TargetRef(name) = object.as_ref() {
+                let module = aliases.get(name).map(String::as_str).unwrap_or(name.as_str());
+                if signals.type_of(module, member).is_some() {
+                    *expr = SemanticExpr::ChannelAccess {
+                        module: module.to_string(),
+                        channel: member.clone(),
+                    };
+                }
+            }
+        }
+        SemanticExpr::Binary { left, right, .. } => {
+            rewrite_expr(left, signals, aliases);
+            rewrite_expr(right, signals, aliases);
+        }
+        SemanticExpr::Unary { operand, .. } => rewrite_expr(operand, signals, aliases),
+        SemanticExpr::Offset { receiver, deltas } => {
+            rewrite_expr(receiver, signals, aliases);
+            for delta in deltas {
+                rewrite_expr(&mut delta.value, signals, aliases);
+            }
+        }
+        SemanticExpr::Call { args, .. } => {
+            for arg in args {
+                rewrite_expr(arg, signals, aliases);
+            }
+        }
+        SemanticExpr::MemberCall { object, args, .. } => {
+            rewrite_expr(object, signals, aliases);
+            for arg in args {
+                rewrite_expr(arg, signals, aliases);
+            }
+        }
+        SemanticExpr::Constant(_)
+        | SemanticExpr::ConstRef(_)
+        | SemanticExpr::LocalRef(_)
+        | SemanticExpr::ParameterRef(_)
+        | SemanticExpr::TargetRef(_)
+        | SemanticExpr::ChannelAccess { .. } => {}
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::reactive::{ReactiveExpr, ReactiveStatement, SignalType};
     use thalos_lang::parse_source;
 
     #[test]
@@ -600,5 +778,36 @@ fn main() {
             vec!["Unknown identifier 'ptt2'".to_string()],
             "only the root cause must be reported, got: {errors:?}"
         );
+    }
+
+    #[test]
+    fn channel_access_is_produced_typed_and_preserved() {
+        let source = r#"
+fn main() {
+    if sensors.temp > 50.0 {
+        set_output("gripper", true);
+    }
+}
+"#;
+        let program = parse_source(source).expect("source must parse");
+        let schema = SignalSchema::new().with("sensors", "temp", SignalType::Float);
+        let reactive =
+            SemanticCompiler::compile_reactive(&program, &schema).expect("compile_reactive");
+
+        assert_eq!(reactive.statements.len(), 1, "one preserved If");
+        match &reactive.statements[0] {
+            ReactiveStatement::If { condition, .. } => match condition {
+                ReactiveExpr::Binary { left, .. } => match left.as_ref() {
+                    ReactiveExpr::Signal { module, channel, ty } => {
+                        assert_eq!(module, "sensors");
+                        assert_eq!(channel, "temp");
+                        assert_eq!(*ty, SignalType::Float);
+                    }
+                    other => panic!("expected a signal read, got {other:?}"),
+                },
+                other => panic!("expected a binary condition, got {other:?}"),
+            },
+            other => panic!("expected a preserved If, got {other:?}"),
+        }
     }
 }
