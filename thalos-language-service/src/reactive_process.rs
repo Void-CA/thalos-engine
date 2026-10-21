@@ -139,6 +139,7 @@ struct Ctx<'a> {
     schema: &'a SignalSchema,
     states: &'a HashSet<String>,
     locals: &'a HashSet<String>,
+    functions: &'a HashMap<String, &'a FnDecl>,
 }
 
 impl Ctx<'_> {
@@ -196,19 +197,6 @@ impl Ctx<'_> {
                         value: self.expr(value)?,
                     });
                 }
-                AstStatement::SetOutput { output, value } => {
-                    if scope == Scope::Reaction {
-                        return Err("a reaction cannot actuate (set_output)".to_string());
-                    }
-                    let v = match self.evaluator.eval_expr(value) {
-                        EvalResult::Value(CompileTimeValue::Bool(b)) => b,
-                        _ => return Err("set_output value must be a constant bool".to_string()),
-                    };
-                    out.push(PStmt::SetOutput {
-                        name: output.clone(),
-                        value: v,
-                    });
-                }
                 AstStatement::Request { name, args } => {
                     let mut compiled = Vec::with_capacity(args.len());
                     for arg in args {
@@ -231,38 +219,148 @@ impl Ctx<'_> {
                         None => None,
                     },
                 }),
-                AstStatement::Expr(AstExpr::Call { callee, args }) => {
-                    if scope == Scope::Reaction {
-                        return Err("a reaction cannot actuate (call)".to_string());
-                    }
-                    let mut compiled = Vec::with_capacity(args.len());
-                    for arg in args {
-                        compiled.push(self.expr(&arg.value)?);
-                    }
-                    out.push(PStmt::Call {
-                        function: callee.clone(),
-                        args: compiled,
+                AstStatement::SetOutput { output, value } => {
+                    require_work_scope(scope, "set_output")?;
+                    let v = match self.evaluator.eval_expr(value) {
+                        EvalResult::Value(CompileTimeValue::Bool(b)) => b,
+                        _ => return Err("set_output value must be a constant bool".to_string()),
+                    };
+                    out.push(PStmt::SetOutput {
+                        name: output.clone(),
+                        value: v,
                     });
                 }
-                AstStatement::Expr(_) | AstStatement::Let { .. } => {}
+                AstStatement::MoveJ { .. } => require_work_scope(scope, "movej")?,
+                AstStatement::MoveL { .. } => require_work_scope(scope, "movel")?,
+                AstStatement::MoveC { .. } => require_work_scope(scope, "movec")?,
+                AstStatement::Wait(_) => require_work_scope(scope, "wait")?,
                 AstStatement::Start { .. } => {
                     return Err("`start` is only allowed in `main`".to_string());
                 }
-                AstStatement::Wait(_) => {
-                    if scope == Scope::Reaction {
-                        return Err("a reaction cannot wait".to_string());
+                AstStatement::Expr(AstExpr::Call { callee, args }) => {
+                    if scope == Scope::Work {
+                        let mut compiled = Vec::with_capacity(args.len());
+                        for arg in args {
+                            compiled.push(self.expr(&arg.value)?);
+                        }
+                        out.push(PStmt::Call {
+                            function: callee.clone(),
+                            args: compiled,
+                        });
+                    } else {
+                        // Resolution first: an unknown call is a semantic error,
+                        // independent of whether effect analysis runs.
+                        if callee == "set_output" {
+                            return Err(format!(
+                                "physical operation 'set_output' is not allowed in {}",
+                                scope_name(scope)
+                            ));
+                        }
+                        if !self.functions.contains_key(callee) {
+                            return Err(format!("unknown function '{callee}'"));
+                        }
+                        // Any call is rejected; the message distinguishes physical
+                        // from pure, but neither is accepted as a statement.
+                        if self.fn_has_physical_effects(callee, &mut HashSet::new())? {
+                            return Err(format!(
+                                "physical operation '{callee}' is not allowed in {}",
+                                scope_name(scope)
+                            ));
+                        }
+                        return Err(format!(
+                            "function calls are not supported in {} (use an expression or `request work`)",
+                            scope_name(scope)
+                        ));
                     }
                 }
-                AstStatement::MoveJ { .. }
-                | AstStatement::MoveL { .. }
-                | AstStatement::MoveC { .. } => {
-                    if scope == Scope::Reaction {
-                        return Err("a reaction cannot move the robot".to_string());
+                AstStatement::Expr(_) => {
+                    if scope != Scope::Work {
+                        return Err(format!(
+                            "expression statements are not supported in {}",
+                            scope_name(scope)
+                        ));
+                    }
+                }
+                AstStatement::Let { .. } => {
+                    if scope != Scope::Work {
+                        return Err(format!(
+                            "local bindings (`let`) are not supported in {}",
+                            scope_name(scope)
+                        ));
                     }
                 }
             }
         }
         Ok(out)
+    }
+
+    /// Whether a function produces physical/IO effects, directly or transitively.
+    ///
+    /// `visited` guards against call cycles. `set_output` is recognized in both AST
+    /// forms: the dedicated [`AstStatement::SetOutput`] and the
+    /// `Expr::Call { callee: "set_output" }` form used when the output name is a
+    /// string literal.
+    fn fn_has_physical_effects(
+        &self,
+        name: &str,
+        visited: &mut HashSet<String>,
+    ) -> Result<bool, String> {
+        if !visited.insert(name.to_string()) {
+            return Ok(false);
+        }
+        let Some(function) = self.functions.get(name) else {
+            return Err(format!("unknown function '{name}'"));
+        };
+        for stmt in &function.body {
+            if self.stmt_has_physical(stmt, visited)? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    fn stmt_has_physical(
+        &self,
+        stmt: &AstStatement,
+        visited: &mut HashSet<String>,
+    ) -> Result<bool, String> {
+        Ok(match stmt {
+            AstStatement::MoveJ { .. }
+            | AstStatement::MoveL { .. }
+            | AstStatement::MoveC { .. }
+            | AstStatement::Wait(_)
+            | AstStatement::SetOutput { .. }
+            | AstStatement::Start { .. } => true,
+            AstStatement::If {
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                for s in then_branch {
+                    if self.stmt_has_physical(s, visited)? {
+                        return Ok(true);
+                    }
+                }
+                if let Some(branch) = else_branch {
+                    for s in branch {
+                        if self.stmt_has_physical(s, visited)? {
+                            return Ok(true);
+                        }
+                    }
+                }
+                false
+            }
+            AstStatement::Expr(AstExpr::Call { callee, .. }) => {
+                if callee == "set_output" {
+                    true
+                } else if self.functions.contains_key(callee) {
+                    self.fn_has_physical_effects(callee, visited)?
+                } else {
+                    return Err(format!("unknown function '{callee}'"));
+                }
+            }
+            _ => false,
+        })
     }
 
     fn event(&self, event: &thalos_lang::ast::Event) -> Result<PEvent, String> {
@@ -294,6 +392,26 @@ impl Ctx<'_> {
             }
             other => Err(format!("event expects a signal, got {other:?}")),
         }
+    }
+}
+
+fn scope_name(scope: Scope) -> &'static str {
+    match scope {
+        Scope::Reaction => "on",
+        Scope::Cycle => "cycle",
+        Scope::Work => "work",
+    }
+}
+
+/// Reject a physical operation outside a `work` body.
+fn require_work_scope(scope: Scope, operation: &str) -> Result<(), String> {
+    if scope == Scope::Work {
+        Ok(())
+    } else {
+        Err(format!(
+            "physical operation '{operation}' is not allowed in {}",
+            scope_name(scope)
+        ))
     }
 }
 
@@ -379,6 +497,16 @@ pub fn compile_process(ast: &Program, schema: &SignalSchema) -> Result<ProcessPr
         .collect();
     let no_locals: HashSet<String> = HashSet::new();
 
+    // Function declarations, for effect analysis and call resolution.
+    let functions: HashMap<String, &FnDecl> = ast
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Function(f) => Some((f.name.clone(), f)),
+            _ => None,
+        })
+        .collect();
+
     let evaluator = Evaluator::with_target_values(&prep.table, &prep.target_values);
     let ctx = Ctx {
         evaluator: &evaluator,
@@ -386,6 +514,7 @@ pub fn compile_process(ast: &Program, schema: &SignalSchema) -> Result<ProcessPr
         schema,
         states: &states,
         locals: &no_locals,
+        functions: &functions,
     };
 
     let mut compiled_states = Vec::new();
@@ -424,6 +553,7 @@ pub fn compile_process(ast: &Program, schema: &SignalSchema) -> Result<ProcessPr
                 schema,
                 states: &states,
                 locals: &params,
+                functions: &functions,
             };
             match work_ctx.stmts(&w.body, Scope::Work) {
                 Ok(body) => works.push(PWork {
@@ -1001,8 +1131,9 @@ fn main() { start p }
     }
 
     #[test]
-    fn reaction_cannot_actuate() {
-        let src = r#"
+    fn a_reaction_cannot_actuate() {
+        let program = parse_source(
+            r#"
 use station::{ box_sensor as box }
 process p {
     on rising(box.present) {
@@ -1010,13 +1141,149 @@ process p {
     }
 }
 fn main() { start p }
-"#;
-        let program = parse_source(src).expect("parse");
-        let err = compile_process(&program, &schema()).expect_err("actuation in reaction must fail");
+"#,
+        )
+        .expect("parse");
+        let err = compile_process(&program, &schema()).expect_err("actuation in a reaction must fail");
         assert!(
-            err.iter().any(|e| e.contains("reaction cannot actuate")),
+            err.iter()
+                .any(|e| e.contains("physical operation 'set_output'") && e.contains("on")),
             "got {err:?}"
         );
+    }
+
+    #[test]
+    fn cycle_rejects_physical_operations() {
+        let template = r#"
+use station::{ box_sensor as box }
+target slot_1 = joints(0deg, 0deg)
+target pos_1 = position([0mm, 0mm, 0mm])
+target pos_2 = position([100mm, 0mm, 0mm])
+process p {
+    cycle {
+        BODY
+    }
+}
+fn main() { start p }
+"#;
+        for (label, body) in [
+            ("movej", "movej(slot_1)"),
+            ("movel", "movel(pos_1)"),
+            ("movec", "movec(pos_1, pos_2)"),
+            ("set_output_ident", "set_output(gripper, true)"),
+            ("set_output_string", "set_output(\"gripper\", true);"),
+            ("wait", "wait(200ms)"),
+        ] {
+            let src = template.replace("BODY", body);
+            let program = parse_source(&src).expect("parse");
+            let err =
+                compile_process(&program, &schema()).expect_err(&format!("{label} must fail"));
+            assert!(
+                err.iter().any(|e| e.contains("not allowed in cycle")),
+                "{label} got {err:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn cycle_rejects_function_calls_physical_and_pure() {
+        let err = compile_process(
+            &parse_source(
+                r#"
+use station::{ box_sensor as box }
+fn do_move() { movej(joints(0deg, 0deg)) }
+process p { cycle { do_move(); } }
+fn main() { start p }
+"#,
+            )
+            .expect("parse"),
+            &schema(),
+        )
+        .expect_err("a physical call in cycle must fail");
+        assert!(
+            err.iter()
+                .any(|e| e.contains("physical operation 'do_move'") && e.contains("cycle")),
+            "got {err:?}"
+        );
+
+        let err = compile_process(
+            &parse_source(
+                r#"
+use station::{ box_sensor as box }
+fn pure() -> Int { 1 }
+process p { cycle { pure(); } }
+fn main() { start p }
+"#,
+            )
+            .expect("parse"),
+            &schema(),
+        )
+        .expect_err("a pure call in cycle must fail too");
+        assert!(
+            err.iter()
+                .any(|e| e.contains("function calls are not supported in cycle")),
+            "got {err:?}"
+        );
+    }
+
+    #[test]
+    fn cycle_rejects_let_and_unknown_calls() {
+        let err = compile_process(
+            &parse_source(
+                r#"
+use station::{ box_sensor as box }
+process p { cycle { let x = 1 } }
+fn main() { start p }
+"#,
+            )
+            .expect("parse"),
+            &schema(),
+        )
+        .expect_err("let in cycle must fail");
+        assert!(
+            err.iter().any(|e| e.contains("`let`") && e.contains("cycle")),
+            "got {err:?}"
+        );
+
+        let err = compile_process(
+            &parse_source(
+                r#"
+use station::{ box_sensor as box }
+process p { cycle { ghost(); } }
+fn main() { start p }
+"#,
+            )
+            .expect("parse"),
+            &schema(),
+        )
+        .expect_err("an unknown call must fail by resolution");
+        assert!(
+            err.iter().any(|e| e.contains("unknown function 'ghost'")),
+            "got {err:?}"
+        );
+    }
+
+    #[test]
+    fn cycle_accepts_coordination_only() {
+        let program = parse_source(
+            r#"
+use station::{ box_sensor as box }
+process p {
+    state n : Int = 0
+    cycle {
+        if n == 0 {
+            request do_work()
+        }
+        n = n + 1
+    }
+}
+work do_work() { }
+fn main() { start p }
+"#,
+        )
+        .expect("parse");
+        compile_process(&program, &schema())
+            .expect("a coordination-only cycle must compile");
     }
 
     #[test]

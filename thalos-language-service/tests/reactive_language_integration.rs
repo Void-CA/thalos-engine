@@ -116,7 +116,8 @@ fn main() { start p }
     let ast = parse_source(src).expect("parse");
     let err = compile_process(&ast, &schema()).expect_err("actuation in a reaction must fail");
     assert!(
-        err.iter().any(|e| e.contains("reaction cannot actuate")),
+        err.iter()
+            .any(|e| e.contains("physical operation 'set_output'") && e.contains("on")),
         "got {err:?}"
     );
 }
