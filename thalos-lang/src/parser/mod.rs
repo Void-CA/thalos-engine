@@ -629,7 +629,7 @@ pub fn parser() -> impl Parser<char, SpannedProgram, Error = Simple<char>> {
             },
         );
 
-    // `use`: recursive import tree (see docs/design/interfaz-senales.md).
+    // `use`: recursive import tree (see the Industrial language reference, `thalos-lang.md` §11).
     let use_tree = recursive(|use_tree| {
         let path = ident
             .separated_by(just("::").padded())

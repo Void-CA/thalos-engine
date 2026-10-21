@@ -877,8 +877,8 @@ impl ProcessRuntime {
     /// Run one iteration of the `cycle` body, returning its effects.
     ///
     /// The cycle is a **background** admission unit: the runtime drives it only
-    /// when the arbiter is idle (see the process model in
-    /// `docs/design/modelo-reactivo.md`).
+    /// when the arbiter is idle (see the process model in the Industrial
+    /// language reference, `thalos-lang.md` §11).
     pub fn run_cycle(&mut self, observations: &ObservationBundle) -> Vec<Effect> {
         let cycle = self.program.cycle.clone();
         let mut effects = Vec::new();
