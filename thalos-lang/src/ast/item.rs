@@ -25,7 +25,7 @@ pub struct FnDecl {
     pub tail_expr: Option<Box<Expr>>,
 }
 
-/// A `use` import tree (see `docs/design/interfaz-senales.md`).
+/// A `use` import tree (see the Industrial language reference, `thalos-lang.md` §11).
 ///
 /// A tree is either a **leaf** (`prefix [as alias]`, no group) or a **group**
 /// (`prefix::{ ... }`, with nested trees). `prefix` is the dotted/`::` path
