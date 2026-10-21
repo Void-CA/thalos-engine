@@ -29,7 +29,7 @@ pub enum Statement {
         else_branch: Option<Vec<Statement>>,
     },
     /// `request name(args)`: emit a work request. Does not admit it; the runtime
-    /// arbitrates (see `docs/design/lenguaje-reactivo.md`).
+    /// arbitrates (see the Industrial language reference, `thalos-lang.md` §11).
     Request {
         name: String,
         args: Vec<Arg>,

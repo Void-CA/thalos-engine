@@ -6,7 +6,7 @@
 //! carry a runtime condition to execution.
 //!
 //! This module defines the complementary representation used by reactive
-//! programs (see `docs/design/modelo-reactivo.md`):
+//! programs (see the Industrial language reference, `thalos-lang.md` §11):
 //!
 //! - **Signals are first-class**: a read `module.channel` becomes
 //!   [`ReactiveExpr::Signal`], typed against a [`SignalSchema`].
