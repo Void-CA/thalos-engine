@@ -139,6 +139,7 @@ pub enum SpannedStatementKind {
     Request {
         name: String,
         args: Vec<SpannedArg>,
+        token: Option<String>,
     },
     Start {
         process: String,
@@ -305,9 +306,10 @@ impl SpannedStatement {
                     branch.into_iter().map(SpannedStatement::unspan).collect()
                 }),
             },
-            SpannedStatementKind::Request { name, args } => Statement::Request {
+            SpannedStatementKind::Request { name, args, token } => Statement::Request {
                 name,
                 args: args.into_iter().map(SpannedArg::unspan).collect(),
+                token,
             },
             SpannedStatementKind::Start { process } => Statement::Start { process },
             SpannedStatementKind::Assign { name, value, .. } => Statement::Assign {

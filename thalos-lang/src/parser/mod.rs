@@ -424,11 +424,20 @@ pub fn parser() -> impl Parser<char, SpannedProgram, Error = Simple<char>> {
                     .allow_trailing()
                     .delimited_by(just('(').padded(), just(')').padded()),
             )
+            .then(just("as").padded().ignore_then(ident_spanned.padded()).or_not())
             .then_ignore(just(';').or_not())
             .map_with_span(
-                |((name, _), args): ((String, Span), Vec<SpannedArg>), span: Range<usize>| {
+                |(((name, _), args), token): (
+                    ((String, Span), Vec<SpannedArg>),
+                    Option<(String, Span)>,
+                ),
+                 span: Range<usize>| {
                     SpannedStatement {
-                        kind: SpannedStatementKind::Request { name, args },
+                        kind: SpannedStatementKind::Request {
+                            name,
+                            args,
+                            token: token.map(|(token, _)| token),
+                        },
                         span: char_span(span),
                     }
                 },

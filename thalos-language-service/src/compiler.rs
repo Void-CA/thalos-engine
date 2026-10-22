@@ -430,7 +430,7 @@ fn lower_statement(
         // Reactive statements are parsed (task 1) but their semantics are not
         // lowered here yet; they lower to an inert marker so the run-once
         // pipeline keeps compiling.
-        AstStatement::Request { name, args } => {
+        AstStatement::Request { name, args, .. } => {
             let sem_args = args
                 .iter()
                 .map(|arg| lower_expr(&arg.value, evaluator, params, locals, consts))
