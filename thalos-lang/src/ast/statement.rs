@@ -33,6 +33,7 @@ pub enum Statement {
     Request {
         name: String,
         args: Vec<Arg>,
+        token: Option<String>,
     },
     /// `start name`: start a persistent process. Valid only in the contexts
     /// defined for starting processes (e.g. `main`), never inside a `work`.

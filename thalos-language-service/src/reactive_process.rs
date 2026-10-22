@@ -69,10 +69,11 @@ pub enum PExpr {
 pub enum PStmt {
     /// `state = value`
     SetState { name: String, value: PExpr },
-    /// `request work(args)`
+    /// `request work(args)` (optionally `as token`)
     Request {
         work: String,
         args: Vec<(Option<String>, PExpr)>,
+        token: Option<String>,
     },
     SetOutput { name: String, value: bool },
     /// A call to a task function inside a `cycle`/`work` body.
@@ -90,6 +91,23 @@ pub enum PEvent {
     Rising(SignalRef),
     Falling(SignalRef),
     Level(PExpr),
+    /// A terminal (or `busy`) outcome of a request occurrence token.
+    Token { token: String, event: TokenEvent },
+}
+
+/// A token occurrence outcome observable by a reactive process.
+///
+/// `Admitted` and `Busy` are not terminal: they do not free the token.
+/// `Rejected`, `Completed`, `Failed` and `Unconfirmed` are terminal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TokenEvent {
+    Admitted,
+    Rejected,
+    Completed,
+    Failed,
+    Unconfirmed,
+    Busy,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -116,6 +134,8 @@ pub struct PWork {
 pub struct ProcessProgram {
     pub name: String,
     pub aliases: Vec<SignalAlias>,
+    /// Request occurrence tokens declared in this process (unique).
+    pub tokens: Vec<String>,
     pub states: Vec<PState>,
     pub reactions: Vec<PReaction>,
     pub cycle: Vec<PStmt>,
@@ -138,6 +158,7 @@ struct Ctx<'a> {
     aliases: &'a BTreeMap<String, String>,
     schema: &'a SignalSchema,
     states: &'a HashSet<String>,
+    tokens: &'a HashSet<String>,
     locals: &'a HashSet<String>,
     functions: &'a HashMap<String, &'a FnDecl>,
 }
@@ -197,7 +218,12 @@ impl Ctx<'_> {
                         value: self.expr(value)?,
                     });
                 }
-                AstStatement::Request { name, args } => {
+                AstStatement::Request { name, args, token } => {
+                    if scope == Scope::Work && token.is_some() {
+                        return Err(
+                            "`request ... as token` is only allowed in `on`/`cycle`".to_string(),
+                        );
+                    }
                     let mut compiled = Vec::with_capacity(args.len());
                     for arg in args {
                         compiled.push((arg.name.clone(), self.expr(&arg.value)?));
@@ -205,6 +231,7 @@ impl Ctx<'_> {
                     out.push(PStmt::Request {
                         work: name.clone(),
                         args: compiled,
+                        token: token.clone(),
                     });
                 }
                 AstStatement::If {
@@ -368,7 +395,10 @@ impl Ctx<'_> {
         match event {
             AstEvent::Rising(e) => Ok(PEvent::Rising(self.edge_signal(e)?)),
             AstEvent::Falling(e) => Ok(PEvent::Falling(self.edge_signal(e)?)),
-            AstEvent::Level(e) => Ok(PEvent::Level(self.expr(e)?)),
+            AstEvent::Level(e) => match token_event(e, self.tokens)? {
+                Some((token, event)) => Ok(PEvent::Token { token, event }),
+                None => Ok(PEvent::Level(self.expr(e)?)),
+            },
         }
     }
 
@@ -456,6 +486,70 @@ fn find_started_process(program: &Program) -> Option<String> {
     None
 }
 
+fn collect_process_tokens(
+    process: &thalos_lang::ast::ProcessDecl,
+    tokens: &mut HashSet<String>,
+) {
+    for item in &process.items {
+        match item {
+            thalos_lang::ast::ProcessItem::On(on) => collect_statement_tokens(&on.body, tokens),
+            thalos_lang::ast::ProcessItem::Cycle(cycle) => {
+                collect_statement_tokens(&cycle.body, tokens)
+            }
+            thalos_lang::ast::ProcessItem::State(_) => {}
+        }
+    }
+}
+
+fn collect_statement_tokens(stmts: &[AstStatement], tokens: &mut HashSet<String>) {
+    for stmt in stmts {
+        match stmt {
+            AstStatement::Request {
+                token: Some(token), ..
+            } => {
+                // A token is a process-scoped slot: several request sites may
+                // name the same token. Only one occurrence may own it at a time.
+                tokens.insert(token.clone());
+            }
+            AstStatement::If {
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                collect_statement_tokens(then_branch, tokens);
+                if let Some(else_branch) = else_branch {
+                    collect_statement_tokens(else_branch, tokens);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Resolve `token.event` in an `on` header. Returns `None` when the member
+/// access is not a declared token (it may still be a signal level condition).
+fn token_event(
+    expr: &AstExpr,
+    tokens: &HashSet<String>,
+) -> Result<Option<(String, TokenEvent)>, String> {
+    let AstExpr::MemberAccess { object, member } = expr else {
+        return Ok(None);
+    };
+    if !tokens.contains(object) {
+        return Ok(None);
+    }
+    let event = match member.as_str() {
+        "admitted" => TokenEvent::Admitted,
+        "rejected" => TokenEvent::Rejected,
+        "completed" => TokenEvent::Completed,
+        "failed" => TokenEvent::Failed,
+        "unconfirmed" => TokenEvent::Unconfirmed,
+        "busy" => TokenEvent::Busy,
+        other => return Err(format!("token '{object}' has no event '{other}'")),
+    };
+    Ok(Some((object.clone(), event)))
+}
+
 /// Compile a reactive program into a [`ProcessProgram`], validated against
 /// `schema` (Task 2).
 pub fn compile_process(ast: &Program, schema: &SignalSchema) -> Result<ProcessProgram, Vec<String>> {
@@ -495,6 +589,18 @@ pub fn compile_process(ast: &Program, schema: &SignalSchema) -> Result<ProcessPr
             _ => None,
         })
         .collect();
+    // Request occurrence tokens: declared at `request ... as token` sites in
+    // on/cycle, unique per process, and never colliding with state/aliases.
+    let mut tokens = HashSet::new();
+    collect_process_tokens(process, &mut tokens);
+    for token in &tokens {
+        if states.contains(token) {
+            errors.push(format!("token '{token}' collides with a state"));
+        }
+        if aliases.contains_key(token) {
+            errors.push(format!("token '{token}' collides with a signal alias"));
+        }
+    }
     let no_locals: HashSet<String> = HashSet::new();
 
     // Function declarations, for effect analysis and call resolution.
@@ -513,6 +619,7 @@ pub fn compile_process(ast: &Program, schema: &SignalSchema) -> Result<ProcessPr
         aliases: &aliases,
         schema,
         states: &states,
+        tokens: &tokens,
         locals: &no_locals,
         functions: &functions,
     };
@@ -552,6 +659,7 @@ pub fn compile_process(ast: &Program, schema: &SignalSchema) -> Result<ProcessPr
                 aliases: &aliases,
                 schema,
                 states: &states,
+                tokens: &tokens,
                 locals: &params,
                 functions: &functions,
             };
@@ -570,12 +678,16 @@ pub fn compile_process(ast: &Program, schema: &SignalSchema) -> Result<ProcessPr
         return Err(errors);
     }
 
+    let mut token_names: Vec<String> = tokens.iter().cloned().collect();
+    token_names.sort();
+
     Ok(ProcessProgram {
         name: process_name,
         aliases: aliases
             .into_iter()
             .map(|(local, node)| SignalAlias { local, node })
             .collect(),
+        tokens: token_names,
         states: compiled_states,
         reactions,
         cycle,
@@ -713,8 +825,9 @@ fn substitute_statement(
                 None => None,
             },
         },
-        AstStatement::Request { name, args } => AstStatement::Request {
+        AstStatement::Request { name, args, token } => AstStatement::Request {
             name: name.clone(),
+            token: token.clone(),
             args: args
                 .iter()
                 .map(|a| substitute_arg(a, bindings))
@@ -807,14 +920,105 @@ fn substitute_expr(
 // Runtime (Task 3)
 // ───────────────────────────────────────────────────────────────────────────
 
+/// Why an admission/notification rejected a request occurrence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RejectionReason {
+    /// The arbiter has no room (active slot + bounded pending queue are full).
+    Capacity,
+    /// The admission notification could not be delivered to the planner.
+    Notification,
+}
+
+impl RejectionReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Capacity => "capacity",
+            Self::Notification => "notification",
+        }
+    }
+}
+
+/// The outcome of a request occurrence, as seen by the process.
+///
+/// `Admitted` and `Busy` are **not** terminal: they do not free the token.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TokenOutcome {
+    Admitted,
+    Rejected { reason: RejectionReason },
+    Completed,
+    Failed { reason: String },
+    Unconfirmed,
+    Busy,
+}
+
+impl TokenOutcome {
+    pub fn event(&self) -> TokenEvent {
+        match self {
+            Self::Admitted => TokenEvent::Admitted,
+            Self::Rejected { .. } => TokenEvent::Rejected,
+            Self::Completed => TokenEvent::Completed,
+            Self::Failed { .. } => TokenEvent::Failed,
+            Self::Unconfirmed => TokenEvent::Unconfirmed,
+            Self::Busy => TokenEvent::Busy,
+        }
+    }
+}
+
+/// A terminal (or `busy`) outcome that could not be correlated to its occurrence.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TokenDeliveryError {
+    UnknownToken(String),
+    StaleOccurrence {
+        token: String,
+        expected: Option<u64>,
+        got: u64,
+    },
+}
+
+impl std::fmt::Display for TokenDeliveryError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnknownToken(token) => write!(f, "unknown token '{token}'"),
+            Self::StaleOccurrence {
+                token,
+                expected,
+                got,
+            } => write!(
+                f,
+                "stale occurrence for token '{token}': expected {expected:?}, got {got}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for TokenDeliveryError {}
+
+#[derive(Debug, Clone)]
+struct PendingOutcome {
+    token: String,
+    occurrence: u64,
+    outcome: TokenOutcome,
+}
+
+#[derive(Debug, Clone, Default)]
+struct TokenSlot {
+    /// The occurrence currently occupying the token, if any.
+    current: Option<u64>,
+}
+
 /// An observable effect produced by evaluating the process for one tick.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Effect {
     /// The process asks for a unit of work (not yet admitted).
     Request {
+        token: Option<String>,
+        occurrence: u64,
         work: String,
         args: Vec<(Option<String>, RuntimeValue)>,
     },
+    /// A request was rejected because its token already had an occurrence.
+    /// The active occurrence is untouched and the token is not freed.
+    Busy { token: String, occurrence: u64 },
     /// A process state changed.
     StateChanged {
         name: String,
@@ -830,6 +1034,12 @@ pub struct ProcessRuntime {
     prev: HashMap<String, bool>,
     /// True once at least one tick has observed each signal.
     seen: HashSet<String>,
+    /// Per-process occurrence tokens.
+    tokens: HashMap<String, TokenSlot>,
+    /// Monotonic occurrence id (internal, never exposed by the language).
+    next_occurrence: u64,
+    /// Outcomes delivered by the runtime, drained FIFO at the next tick.
+    outcomes: std::collections::VecDeque<PendingOutcome>,
 }
 
 impl ProcessRuntime {
@@ -840,11 +1050,19 @@ impl ProcessRuntime {
                 state.insert(s.name.clone(), RuntimeValue::from_constant(value.clone()));
             }
         }
+        let tokens = program
+            .tokens
+            .iter()
+            .map(|token| (token.clone(), TokenSlot::default()))
+            .collect();
         Self {
             program,
             state,
             prev: HashMap::new(),
             seen: HashSet::new(),
+            tokens,
+            next_occurrence: 0,
+            outcomes: std::collections::VecDeque::new(),
         }
     }
 
@@ -856,17 +1074,107 @@ impl ProcessRuntime {
         self.state.get(name)
     }
 
-    /// Evaluate one control tick. Returns the effects observable this tick.
+    /// Deliver an outcome for an exact occurrence. Outcomes are applied FIFO at
+    /// the start of the next tick; this method only validates correlation.
+    ///
+    /// `Busy` is a non-terminal event for a *new* occurrence that did not
+    /// replace the active one, so it skips the current-occurrence check.
+    pub fn deliver_outcome(
+        &mut self,
+        token: &str,
+        occurrence: u64,
+        outcome: TokenOutcome,
+    ) -> Result<(), TokenDeliveryError> {
+        let slot = self
+            .tokens
+            .get(token)
+            .ok_or_else(|| TokenDeliveryError::UnknownToken(token.to_string()))?;
+        if !matches!(outcome, TokenOutcome::Busy) && slot.current != Some(occurrence) {
+            return Err(TokenDeliveryError::StaleOccurrence {
+                token: token.to_string(),
+                expected: slot.current,
+                got: occurrence,
+            });
+        }
+        self.outcomes.push_back(PendingOutcome {
+            token: token.to_string(),
+            occurrence,
+            outcome,
+        });
+        Ok(())
+    }
+
+    /// Evaluate one control tick.
+    ///
+    /// Order: drain pending outcomes FIFO (applying each slot and running its
+    /// token reactions), then evaluate observation reactions, then record edges.
+    /// This lets a terminal outcome free a token for reuse in the same tick,
+    /// while an older event cannot affect a newer occurrence.
     pub fn tick(&mut self, observations: &ObservationBundle) -> Vec<Effect> {
-        let reactions = self.program.reactions.clone();
         let mut effects = Vec::new();
+        let pending: Vec<PendingOutcome> = self.outcomes.drain(..).collect();
+        for outcome in pending {
+            if self.apply_outcome(&outcome) {
+                self.run_token_reactions(
+                    &outcome.token,
+                    outcome.outcome.event(),
+                    observations,
+                    &mut effects,
+                );
+            }
+        }
+
+        let reactions = self.program.reactions.clone();
         for reaction in &reactions {
-            if self.event_fires(&reaction.event, observations) {
+            if !matches!(reaction.event, PEvent::Token { .. })
+                && self.event_fires(&reaction.event, observations)
+            {
                 self.exec(&reaction.body, observations, &mut effects);
             }
         }
         self.record_edges(observations);
         effects
+    }
+
+    fn apply_outcome(&mut self, pending: &PendingOutcome) -> bool {
+        if matches!(pending.outcome, TokenOutcome::Busy) {
+            return true;
+        }
+        let Some(slot) = self.tokens.get_mut(&pending.token) else {
+            return false;
+        };
+        if slot.current != Some(pending.occurrence) {
+            return false;
+        }
+        if matches!(
+            pending.outcome,
+            TokenOutcome::Rejected { .. }
+                | TokenOutcome::Completed
+                | TokenOutcome::Failed { .. }
+                | TokenOutcome::Unconfirmed
+        ) {
+            slot.current = None;
+        }
+        true
+    }
+
+    fn run_token_reactions(
+        &mut self,
+        token: &str,
+        event: TokenEvent,
+        observations: &ObservationBundle,
+        effects: &mut Vec<Effect>,
+    ) {
+        let reactions = self.program.reactions.clone();
+        for reaction in &reactions {
+            if matches!(
+                &reaction.event,
+                PEvent::Token { token: reaction_token, event: reaction_event }
+                    if reaction_token == token && *reaction_event == event
+            ) {
+                self.exec(&reaction.body, observations, effects);
+            }
+        }
     }
 
     /// True when the process declares a `cycle` body.
@@ -899,6 +1207,9 @@ impl ProcessRuntime {
                 self.seen.contains(&key) && self.prev.get(&key) == Some(&true) && now == Some(false)
             }
             PEvent::Level(expr) => matches!(self.eval(expr, observations).as_bool(), Some(true)),
+            // Token events are delivered through the outcome queue, never by
+            // observation edge/level evaluation.
+            PEvent::Token { .. } => false,
         }
     }
 
@@ -906,7 +1217,7 @@ impl ProcessRuntime {
         for reaction in &self.program.reactions {
             let sig = match &reaction.event {
                 PEvent::Rising(s) | PEvent::Falling(s) => s,
-                PEvent::Level(_) => continue,
+                PEvent::Level(_) | PEvent::Token { .. } => continue,
             };
             let key = signalkey(sig);
             if let Some(value) = signal_bool(sig, observations) {
@@ -927,12 +1238,37 @@ impl ProcessRuntime {
                         value: v,
                     });
                 }
-                PStmt::Request { work, args } => {
+                PStmt::Request { work, args, token } => {
+                    let occurrence = self.next_occurrence;
+                    self.next_occurrence += 1;
+                    if let Some(token_name) = token {
+                        let busy = self
+                            .tokens
+                            .get(token_name)
+                            .is_some_and(|slot| slot.current.is_some());
+                        if busy {
+                            effects.push(Effect::Busy {
+                                token: token_name.clone(),
+                                occurrence,
+                            });
+                            self.outcomes.push_back(PendingOutcome {
+                                token: token_name.clone(),
+                                occurrence,
+                                outcome: TokenOutcome::Busy,
+                            });
+                            continue;
+                        }
+                        if let Some(slot) = self.tokens.get_mut(token_name) {
+                            slot.current = Some(occurrence);
+                        }
+                    }
                     let evaluated = args
                         .iter()
                         .map(|(name, expr)| (name.clone(), self.eval(expr, observations)))
                         .collect();
                     effects.push(Effect::Request {
+                        token: token.clone(),
+                        occurrence,
                         work: work.clone(),
                         args: evaluated,
                     });
@@ -1305,7 +1641,7 @@ fn main() { start p }
         let request = arrival
             .iter()
             .find_map(|e| match e {
-                Effect::Request { work, args } => Some((work, args)),
+                Effect::Request { work, args, .. } => Some((work, args)),
                 _ => None,
             })
             .expect("an arrival must request work");

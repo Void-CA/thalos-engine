@@ -156,8 +156,9 @@ fn normalize_statement(stmt: &Statement, errors: &mut Vec<String>) -> Statement 
             }),
         },
         Statement::Expr(expr) => Statement::Expr(normalize_expr(expr, errors)),
-        Statement::Request { name, args } => Statement::Request {
+        Statement::Request { name, args, token } => Statement::Request {
             name: name.clone(),
+            token: token.clone(),
             args: args
                 .iter()
                 .map(|arg| Arg {

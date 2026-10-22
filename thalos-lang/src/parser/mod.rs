@@ -39,6 +39,8 @@ type WorkDeclShape = (((String, Span), Vec<SpannedParam>), Vec<SpannedStatement>
 ///
 /// Spans stay in **character offsets** throughout the parser/spanned tree; the
 /// language service performs the single char → byte conversion at its boundary.
+type RequestParts = (((String, Span), Vec<SpannedArg>), Option<(String, Span)>);
+
 fn char_span(range: Range<usize>) -> Span {
     Span::new(range.start, range.end)
 }
@@ -424,11 +426,16 @@ pub fn parser() -> impl Parser<char, SpannedProgram, Error = Simple<char>> {
                     .allow_trailing()
                     .delimited_by(just('(').padded(), just(')').padded()),
             )
+            .then(just("as").padded().ignore_then(ident_spanned.padded()).or_not())
             .then_ignore(just(';').or_not())
             .map_with_span(
-                |((name, _), args): ((String, Span), Vec<SpannedArg>), span: Range<usize>| {
+                |(((name, _), args), token): RequestParts, span: Range<usize>| {
                     SpannedStatement {
-                        kind: SpannedStatementKind::Request { name, args },
+                        kind: SpannedStatementKind::Request {
+                            name,
+                            args,
+                            token: token.map(|(token, _)| token),
+                        },
                         span: char_span(span),
                     }
                 },
