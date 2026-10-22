@@ -489,26 +489,19 @@ fn find_started_process(program: &Program) -> Option<String> {
 fn collect_process_tokens(
     process: &thalos_lang::ast::ProcessDecl,
     tokens: &mut HashSet<String>,
-    errors: &mut Vec<String>,
 ) {
     for item in &process.items {
         match item {
-            thalos_lang::ast::ProcessItem::On(on) => {
-                collect_statement_tokens(&on.body, tokens, errors)
-            }
+            thalos_lang::ast::ProcessItem::On(on) => collect_statement_tokens(&on.body, tokens),
             thalos_lang::ast::ProcessItem::Cycle(cycle) => {
-                collect_statement_tokens(&cycle.body, tokens, errors)
+                collect_statement_tokens(&cycle.body, tokens)
             }
             thalos_lang::ast::ProcessItem::State(_) => {}
         }
     }
 }
 
-fn collect_statement_tokens(
-    stmts: &[AstStatement],
-    tokens: &mut HashSet<String>,
-    errors: &mut Vec<String>,
-) {
+fn collect_statement_tokens(stmts: &[AstStatement], tokens: &mut HashSet<String>) {
     for stmt in stmts {
         match stmt {
             AstStatement::Request {
@@ -523,9 +516,9 @@ fn collect_statement_tokens(
                 else_branch,
                 ..
             } => {
-                collect_statement_tokens(then_branch, tokens, errors);
+                collect_statement_tokens(then_branch, tokens);
                 if let Some(else_branch) = else_branch {
-                    collect_statement_tokens(else_branch, tokens, errors);
+                    collect_statement_tokens(else_branch, tokens);
                 }
             }
             _ => {}
@@ -599,7 +592,7 @@ pub fn compile_process(ast: &Program, schema: &SignalSchema) -> Result<ProcessPr
     // Request occurrence tokens: declared at `request ... as token` sites in
     // on/cycle, unique per process, and never colliding with state/aliases.
     let mut tokens = HashSet::new();
-    collect_process_tokens(process, &mut tokens, &mut errors);
+    collect_process_tokens(process, &mut tokens);
     for token in &tokens {
         if states.contains(token) {
             errors.push(format!("token '{token}' collides with a state"));
