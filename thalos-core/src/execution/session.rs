@@ -210,6 +210,9 @@ pub enum Decision {
     /// (A5) to RESPONSE (O3): it does not itself act, it selects the action.
     CorrectiveAction { reason: String },
     TerminateSession { reason: String },
+    /// The runtime detected an internal fault that must transition the session
+    /// to `Failed` (e.g. a reactive outcome could not be correlated).
+    Fault { reason: String },
     NoOp,
 }
 
