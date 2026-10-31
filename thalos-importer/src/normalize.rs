@@ -107,7 +107,12 @@ impl Normalizer for CandidateNormalizer {
             });
 
             let limits = match (raw_joint.lower_limit, raw_joint.upper_limit) {
-                (Some(min), Some(max)) => Some(JointLimits::new(min, max)),
+                (Some(min), Some(max)) => {
+                    let mut limits = JointLimits::new(min, max);
+                    limits.velocity = raw_joint.velocity;
+                    limits.effort = raw_joint.effort;
+                    Some(limits)
+                }
                 _ => {
                     if kind == JointKind::Revolute {
                         diagnostics.push(ImportDiagnostic::warning(

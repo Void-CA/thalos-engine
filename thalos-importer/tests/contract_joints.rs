@@ -49,6 +49,8 @@ fn joint_types_axes_and_limits_contract() {
     let limits = rev.limits.as_ref().expect("revolute joint requires limits");
     assert_eq!(limits.min, -3.14);
     assert_eq!(limits.max, 3.14);
+    assert_eq!(limits.velocity, Some(1.0), "velocity must survive the import");
+    assert_eq!(limits.effort, Some(10.0), "effort must survive the import");
 
     // Continuous joint (no lower/upper limits requirement)
     let cont = robot.joints.get("j_continuous").expect("j_continuous exists");
@@ -64,6 +66,8 @@ fn joint_types_axes_and_limits_contract() {
     let limits = prism.limits.as_ref().expect("prismatic joint requires limits");
     assert_eq!(limits.min, 0.0);
     assert_eq!(limits.max, 0.5);
+    assert_eq!(limits.velocity, Some(0.5));
+    assert_eq!(limits.effort, Some(50.0));
 
     // Fixed joint
     let fixed = robot.joints.get("j_fixed").expect("j_fixed exists");

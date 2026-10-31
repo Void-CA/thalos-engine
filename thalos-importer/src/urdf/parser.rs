@@ -142,6 +142,8 @@ fn parse_candidate_joint<R: std::io::BufRead>(
     let mut axis: Option<[f64; 3]> = None;
     let mut lower_limit: Option<f64> = None;
     let mut upper_limit: Option<f64> = None;
+    let mut velocity: Option<f64> = None;
+    let mut effort: Option<f64> = None;
 
     loop {
         buf.clear();
@@ -175,6 +177,10 @@ fn parse_candidate_joint<R: std::io::BufRead>(
                         lower_limit = attr(&e, b"lower")?
                             .and_then(|s| s.parse::<f64>().ok());
                         upper_limit = attr(&e, b"upper")?
+                            .and_then(|s| s.parse::<f64>().ok());
+                        velocity = attr(&e, b"velocity")?
+                            .and_then(|s| s.parse::<f64>().ok());
+                        effort = attr(&e, b"effort")?
                             .and_then(|s| s.parse::<f64>().ok());
                     }
                     _ => {}
@@ -212,5 +218,7 @@ fn parse_candidate_joint<R: std::io::BufRead>(
         origin_rpy,
         lower_limit,
         upper_limit,
+        velocity,
+        effort,
     })
 }

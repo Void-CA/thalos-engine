@@ -36,4 +36,8 @@ pub struct CandidateJoint {
     pub origin_rpy: Option<[f64; 3]>,
     pub lower_limit: Option<f64>,
     pub upper_limit: Option<f64>,
+    /// Maximum absolute velocity from `<limit velocity>`, when declared.
+    pub velocity: Option<f64>,
+    /// Maximum effort (torque / force) from `<limit effort>`, when declared.
+    pub effort: Option<f64>,
 }
