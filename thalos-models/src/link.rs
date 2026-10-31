@@ -7,7 +7,11 @@ use thalos_math::Transform3D;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Inertial {
     /// Pose of the inertial frame relative to the link frame.
-    pub origin: Transform3D,
+    ///
+    /// `None` when the description declared no `<inertial><origin>`: "never
+    /// authored" is kept distinct from "authored at the identity". Callers
+    /// that need a concrete pose must substitute the identity themselves.
+    pub origin: Option<Transform3D>,
     /// Mass in kg.
     pub mass: f64,
     /// 3×3 inertia tensor (symmetric) expressed at the CoM in the

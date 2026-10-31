@@ -79,7 +79,10 @@ fn parse_inertial<R: BufRead>(
     reader: &mut Reader<R>,
     buf: &mut Vec<u8>,
 ) -> Result<Inertial, UrdfError> {
-    let mut origin = Transform3D::identity();
+    // `None` until an `<origin>` element is seen: a missing `<origin>` must
+    // not become an authored identity pose (the importer's own default
+    // would erase "never declared" from the model).
+    let mut origin: Option<Transform3D> = None;
     let mut mass = None;
     let mut inertia = None;
 
@@ -90,7 +93,7 @@ fn parse_inertial<R: BufRead>(
                 let tag = e.name().as_ref().to_ascii_lowercase();
                 match tag.as_slice() {
                     b"origin" => {
-                        origin = parse_origin(&e)?;
+                        origin = Some(parse_origin(&e)?);
                     }
                     b"mass" => {
                         let s = required_attr(&e, b"value", "mass")?;
