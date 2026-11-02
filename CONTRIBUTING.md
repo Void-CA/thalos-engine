@@ -2,7 +2,8 @@
 
 > Reglas para entregar cambios al engine. El entorno y los comandos están en
 > [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md); las fronteras, en
-> [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+> [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md); tamaño, nombres y visibilidad,
+> en [`docs/CONVENTIONS.md`](docs/CONVENTIONS.md).
 
 ## Flujo
 
