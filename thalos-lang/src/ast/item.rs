@@ -118,6 +118,32 @@ pub struct WorkDecl {
     pub body: Vec<Statement>,
 }
 
+/// Comparison operator of a declared expectation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CompareOp {
+    Eq,
+    Ne,
+    Gt,
+    Ge,
+    Lt,
+    Le,
+}
+
+/// `expect module.channel <op> <number>` — a declared operational expectation
+/// over one observable signal.
+///
+/// This is a DECLARATION: it has no body, no branches and no effects. The
+/// language declares the expectation; the runtime compares it and the
+/// supervisor decides. The literal is always a bare number: this construct
+/// introduces no implicit unit conversions.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExpectDecl {
+    pub module: String,
+    pub channel: String,
+    pub op: CompareOp,
+    pub value: f64,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Item {
     Use(UseDecl),
@@ -126,4 +152,5 @@ pub enum Item {
     Function(FnDecl),
     Process(ProcessDecl),
     Work(WorkDecl),
+    Expect(ExpectDecl),
 }

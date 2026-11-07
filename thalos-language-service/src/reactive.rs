@@ -642,6 +642,7 @@ mod tests {
             targets: vec![],
             functions,
             entry_point: "main".to_string(),
+            expectations: Vec::new(),
         }
     }
 

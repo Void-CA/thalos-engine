@@ -179,6 +179,11 @@ pub struct SemanticProgram {
     pub targets: Vec<ResolvedTarget>,
     pub functions: Vec<SemanticFunction>,
     pub entry_point: String,
+    /// Declared operational expectations (`expect` items) typed against the
+    /// station signal schema. Empty when the source declares none, and also
+    /// empty on the planning path (which does not validate expectations).
+    #[serde(default)]
+    pub expectations: Vec<thalos_core::execution::condition::SignalCondition>,
 }
 
 // ── Concrete Resolved Output Types ──
@@ -207,4 +212,7 @@ pub enum ResolvedStatement {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ResolvedProgram {
     pub statements: Vec<ResolvedStatement>,
+    /// Declared operational expectations of the program.
+    #[serde(default)]
+    pub expectations: Vec<thalos_core::execution::condition::SignalCondition>,
 }

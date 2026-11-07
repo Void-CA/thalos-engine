@@ -185,6 +185,8 @@ fn extract_analysis_from_program(
 
     for item in &program.items {
         match item {
+            // A declaration with no program-level name (yet): no symbol entry.
+            Item::Expect(_) => {}
             Item::Target(decl) => {
                 let name_span = find_identifier_span(source, &decl.name);
                 let full_span = name_span;

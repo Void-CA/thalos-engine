@@ -555,3 +555,35 @@ fn main() {
         }
     );
 }
+
+#[test]
+fn parses_an_expectation_declaration() {
+    let program = parse_source("expect oven.temperature <= 75.0\nfn main() { }")
+        .expect("expectation must parse");
+
+    match &program.items[0] {
+        Item::Expect(decl) => {
+            assert_eq!(decl.module, "oven");
+            assert_eq!(decl.channel, "temperature");
+            assert_eq!(decl.op, CompareOp::Le);
+            assert_eq!(decl.value, 75.0);
+        }
+        other => panic!("expected ExpectDecl, got {other:?}"),
+    }
+}
+
+#[test]
+fn expectation_literal_is_a_bare_number_not_a_unit() {
+    assert!(
+        parse_source("expect oven.temperature <= 75.0mm\nfn main() { }").is_err(),
+        "unit-suffixed expectation literal must be rejected"
+    );
+}
+
+#[test]
+fn expectation_requires_a_comparison_operator() {
+    assert!(
+        parse_source("expect oven.temperature 75.0\nfn main() { }").is_err(),
+        "a bare value is not an expectation"
+    );
+}
