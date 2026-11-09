@@ -8,8 +8,8 @@ use crate::ast::spanned::{
     SpannedTargetDecl,
 };
 use crate::ast::item::{
-    CycleDecl, Event, OnDecl, Param, ProcessDecl, ProcessItem, StateDecl, UseDecl, UseTree,
-    WorkDecl,
+    CompareOp, CycleDecl, Event, ExpectDecl, OnDecl, Param, ProcessDecl, ProcessItem, StateDecl,
+    UseDecl, UseTree, WorkDecl,
 };
 use crate::ast::program::Program;
 use crate::span::Span;
@@ -773,6 +773,39 @@ pub fn parser() -> impl Parser<char, SpannedProgram, Error = Simple<char>> {
             },
         );
 
+    // `expect module.channel <op> <number>` — a declared operational
+    // expectation. The literal is a bare number (no unit suffix): the construct
+    // introduces no implicit unit conversions. `>=`/`<=` are tried before `>`/`<`.
+    let compare_op = choice((
+        just(">=").to(CompareOp::Ge),
+        just("<=").to(CompareOp::Le),
+        just("==").to(CompareOp::Eq),
+        just("!=").to(CompareOp::Ne),
+        just(">").to(CompareOp::Gt),
+        just("<").to(CompareOp::Lt),
+    ));
+
+    let expect_decl = just("expect")
+        .padded()
+        .ignore_then(ident)
+        .then_ignore(just('.').padded())
+        .then(ident)
+        .then(compare_op.padded())
+        .then(number.padded())
+        .map_with_span(
+            |(((module, channel), op), value), span: Range<usize>| SpannedItem::Expect {
+                decl: ExpectDecl {
+                    module,
+                    channel,
+                    op,
+                    value,
+                },
+                span: char_span(span),
+            },
+        )
+        .then_ignore(just(';').or_not())
+        .padded();
+
     let item = choice((
         const_decl,
         fn_decl,
@@ -780,6 +813,7 @@ pub fn parser() -> impl Parser<char, SpannedProgram, Error = Simple<char>> {
         use_decl,
         process_decl,
         work_decl,
+        expect_decl,
     ))
     .padded();
 

@@ -184,6 +184,8 @@ pub fn analyze_intelligence(source: &str, revision: u64) -> DocumentIntelligence
     // Global declarations (targets + consts) carry their type in the table.
     for item in &spanned.items {
         match item {
+            // Declarations without a program-level name: no symbol yet.
+            SpannedItem::Expect { .. } => {}
             SpannedItem::Const(decl) => {
                 record_global(
                     &table,

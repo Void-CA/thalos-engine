@@ -558,6 +558,18 @@ pub fn compile_process(ast: &Program, schema: &SignalSchema) -> Result<ProcessPr
         return Err(bind_errors);
     }
 
+    // `expect` declares plan-driven supervision expectations. It has no
+    // reactive semantics, so accepting it here would silently do nothing.
+    if let Some(decl) = ast.items.iter().find_map(|item| match item {
+        Item::Expect(decl) => Some(decl),
+        _ => None,
+    }) {
+        return Err(vec![format!(
+            "`expect {}.{}` is only valid for plan-driven supervision, not for a reactive process",
+            decl.module, decl.channel
+        )]);
+    }
+
     let prep = prepare_symbols(&ast);
     let mut errors = prep.errors.clone();
 

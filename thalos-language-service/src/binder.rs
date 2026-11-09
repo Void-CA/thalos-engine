@@ -36,6 +36,7 @@ pub fn normalize_program(program: &Program) -> (Program, Vec<String>) {
 fn normalize_item(item: &Item, errors: &mut Vec<String>) -> Item {
     match item {
         Item::Use(use_decl) => Item::Use(use_decl.clone()),
+        Item::Expect(decl) => Item::Expect(decl.clone()),
         Item::Const(c) => Item::Const(ConstDecl {
             name: c.name.clone(),
             type_ann: c.type_ann.clone(),

@@ -15,15 +15,40 @@ use crate::types::Type;
 pub struct SemanticCompiler;
 
 impl SemanticCompiler {
+    /// Compile WITHOUT a station signal schema.
+    ///
+    /// `expect` declarations are accepted syntactically and IGNORED here: the
+    /// planning path must not depend on the signal interface. Expectations are
+    /// validated by [`SemanticCompiler::compile_with_signals`] or
+    /// [`SemanticCompiler::compile_expectations`].
     pub fn compile(ast: &Program) -> Result<SemanticProgram, Vec<String>> {
-        Self::compile_with_signals(ast, &SignalSchema::new())
+        Self::compile_impl(ast, &SignalSchema::new(), false)
     }
 
     /// Compile with a declared signal schema: a `module.channel` read becomes a
-    /// first-class [`SemanticExpr::ChannelAccess`].
+    /// first-class [`SemanticExpr::ChannelAccess`], and `expect` declarations
+    /// are validated and resolved into `SignalCondition`s.
     pub fn compile_with_signals(
         ast: &Program,
         signals: &SignalSchema,
+    ) -> Result<SemanticProgram, Vec<String>> {
+        Self::compile_impl(ast, signals, true)
+    }
+
+    /// Resolve ONLY the declared expectations, validated against the station
+    /// schema. Used before a session exists; never involved in planning.
+    pub fn compile_expectations(
+        ast: &Program,
+        signals: &SignalSchema,
+    ) -> Result<Vec<thalos_core::execution::condition::SignalCondition>, Vec<String>> {
+        let (expectations, errors) = resolve_expectations(ast, signals);
+        if errors.is_empty() { Ok(expectations) } else { Err(errors) }
+    }
+
+    fn compile_impl(
+        ast: &Program,
+        signals: &SignalSchema,
+        validate_expectations: bool,
     ) -> Result<SemanticProgram, Vec<String>> {
         // Resolve named arguments into canonical positional form once, up front.
         // Every stage below (evaluator, checker, lowering, resolver) only ever
@@ -105,6 +130,15 @@ impl SemanticCompiler {
             }
         }
 
+        // Declared expectations: validated only when a schema is in play.
+        let expectations = if validate_expectations {
+            let (resolved, expectation_errors) = resolve_expectations(&ast, signals);
+            errors.extend(expectation_errors);
+            resolved
+        } else {
+            Vec::new()
+        };
+
         if !errors.is_empty() {
             return Err(errors);
         }
@@ -148,6 +182,7 @@ impl SemanticCompiler {
             targets: resolved_targets,
             functions: semantic_functions,
             entry_point: "main".to_string(),
+            expectations,
         };
         rewrite_signal_access(&mut program, signals, &signal_aliases);
         Ok(program)
@@ -809,5 +844,173 @@ fn main() {
             },
             other => panic!("expected a preserved If, got {other:?}"),
         }
+    }
+}
+
+
+/// Resolve `expect` declarations against the station signal schema.
+///
+/// Rules:
+/// - the comparison is numeric: `Float` and `Int` channels are accepted;
+///   `Bool` channels are rejected (a numeric comparison could never be true).
+/// - the runtime key is the CHANNEL SYMBOL (the observation bundle is keyed by
+///   `signal_key = signal.symbol`), so a symbol declared by more than one
+///   module is ambiguous and rejected rather than silently collapsed.
+/// - two expectations on the same `module.channel` are a conflict.
+fn resolve_expectations(
+    ast: &Program,
+    signals: &SignalSchema,
+) -> (
+    Vec<thalos_core::execution::condition::SignalCondition>,
+    Vec<String>,
+) {
+    use thalos_core::execution::condition::{ComparisonOp, SignalCondition};
+
+    let mut expectations = Vec::new();
+    let mut errors = Vec::new();
+    let mut seen: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
+
+    for item in &ast.items {
+        let Item::Expect(decl) = item else {
+            continue;
+        };
+        if !seen.insert((decl.module.clone(), decl.channel.clone())) {
+            errors.push(format!(
+                "duplicate expectation on '{}.{}'",
+                decl.module, decl.channel
+            ));
+            continue;
+        }
+
+        match signals.type_of(&decl.module, &decl.channel) {
+            Some(crate::reactive::SignalType::Float | crate::reactive::SignalType::Int) => {
+                let modules_with_channel = signals
+                    .bindings()
+                    .iter()
+                    .filter(|b| b.channel == decl.channel)
+                    .map(|b| b.module.as_str())
+                    .collect::<std::collections::BTreeSet<_>>();
+                if modules_with_channel.len() > 1 {
+                    errors.push(format!(
+                        "ambiguous expectation: channel '{}' is declared by modules {:?}",
+                        decl.channel, modules_with_channel
+                    ));
+                    continue;
+                }
+                let op = match decl.op {
+                    thalos_lang::ast::item::CompareOp::Eq => ComparisonOp::Eq,
+                    thalos_lang::ast::item::CompareOp::Ne => ComparisonOp::Ne,
+                    thalos_lang::ast::item::CompareOp::Gt => ComparisonOp::Gt,
+                    thalos_lang::ast::item::CompareOp::Ge => ComparisonOp::Ge,
+                    thalos_lang::ast::item::CompareOp::Lt => ComparisonOp::Lt,
+                    thalos_lang::ast::item::CompareOp::Le => ComparisonOp::Le,
+                };
+                expectations.push(SignalCondition::new(decl.channel.clone(), op, decl.value));
+            }
+            Some(crate::reactive::SignalType::Bool) => errors.push(format!(
+                "expectation on '{}.{}' is not numeric (Bool channels cannot be compared)",
+                decl.module, decl.channel
+            )),
+            None => errors.push(format!(
+                "unknown signal '{}.{}' in expectation",
+                decl.module, decl.channel
+            )),
+        }
+    }
+    (expectations, errors)
+}
+
+#[cfg(test)]
+mod expect_tests {
+    use super::*;
+    use crate::reactive::{SignalSchema, SignalType};
+    use thalos_core::execution::condition::{ComparisonOp, SignalCondition};
+    use thalos_lang::parse_source;
+
+    fn schema() -> SignalSchema {
+        SignalSchema::new()
+            .with("oven", "temperature", SignalType::Float)
+            .with("conveyor", "position", SignalType::Int)
+            .with("oven", "door_open", SignalType::Bool)
+    }
+
+    #[test]
+    fn expectations_resolve_against_the_station_schema() {
+        let program = parse_source("expect oven.temperature <= 75.0\nfn main() { }").unwrap();
+        let compiled = SemanticCompiler::compile_with_signals(&program, &schema()).unwrap();
+
+        // The runtime key is the channel SYMBOL (the observation bundle key),
+        // not the dotted module path.
+        assert_eq!(
+            compiled.expectations,
+            vec![SignalCondition::new("temperature", ComparisonOp::Le, 75.0)]
+        );
+    }
+
+    #[test]
+    fn the_planning_path_ignores_expectations() {
+        let program = parse_source("expect oven.temperature <= 75.0\nfn main() { }").unwrap();
+        let compiled = SemanticCompiler::compile(&program).expect("planning path must accept");
+        assert!(compiled.expectations.is_empty());
+    }
+
+    #[test]
+    fn unknown_channel_is_rejected() {
+        let program = parse_source("expect oven.nonexistent > 1.0\nfn main() { }").unwrap();
+        let errors = SemanticCompiler::compile_with_signals(&program, &schema()).unwrap_err();
+        assert!(errors.iter().any(|e| e.contains("unknown signal")), "{errors:?}");
+    }
+
+    #[test]
+    fn boolean_channel_is_rejected_as_not_numeric() {
+        let program = parse_source("expect oven.door_open > 0.0\nfn main() { }").unwrap();
+        let errors = SemanticCompiler::compile_with_signals(&program, &schema()).unwrap_err();
+        assert!(errors.iter().any(|e| e.contains("not numeric")), "{errors:?}");
+    }
+
+    #[test]
+    fn duplicate_expectation_is_rejected() {
+        let program = parse_source(
+            "expect oven.temperature <= 75.0\nexpect oven.temperature <= 80.0\nfn main() { }",
+        )
+        .unwrap();
+        let errors = SemanticCompiler::compile_with_signals(&program, &schema()).unwrap_err();
+        assert!(errors.iter().any(|e| e.contains("duplicate expectation")), "{errors:?}");
+    }
+
+    #[test]
+    fn ambiguous_channel_symbol_is_rejected() {
+        // Two modules declaring the same channel symbol: the runtime key would
+        // collapse them, so the expectation is ambiguous.
+        let ambiguous = SignalSchema::new()
+            .with("a", "temperature", SignalType::Float)
+            .with("b", "temperature", SignalType::Float);
+        let program = parse_source("expect a.temperature <= 75.0\nfn main() { }").unwrap();
+        let errors = SemanticCompiler::compile_with_signals(&program, &ambiguous).unwrap_err();
+        assert!(errors.iter().any(|e| e.contains("ambiguous")), "{errors:?}");
+    }
+
+    #[test]
+    fn the_dedicated_api_resolves_only_expectations() {
+        let program =
+            parse_source("expect conveyor.position >= 10\nfn main() { }").unwrap();
+        let expectations = SemanticCompiler::compile_expectations(&program, &schema()).unwrap();
+        assert_eq!(
+            expectations,
+            vec![SignalCondition::new("position", ComparisonOp::Ge, 10.0)]
+        );
+    }
+
+    #[test]
+    fn reactive_processes_reject_expectations() {
+        let program = parse_source(
+            "expect oven.temperature <= 75.0\nprocess p { cycle { } }\nfn main() { start p }",
+        )
+        .unwrap();
+        let errors = crate::reactive_process::compile_process(&program, &schema()).unwrap_err();
+        assert!(
+            errors.iter().any(|e| e.contains("only valid for plan-driven")),
+            "{errors:?}"
+        );
     }
 }

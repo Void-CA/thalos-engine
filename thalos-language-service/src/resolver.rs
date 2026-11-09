@@ -46,6 +46,7 @@ impl SemanticResolver {
         } else {
             Ok(ResolvedProgram {
                 statements: resolved_statements,
+                expectations: program.expectations.clone(),
             })
         }
     }

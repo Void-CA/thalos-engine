@@ -24,7 +24,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::ast::expression::{Arg, BinaryOp, UnaryOp};
-use crate::ast::item::{ConstDecl, FnDecl, Item, Param, ProcessDecl, UseDecl, WorkDecl};
+use crate::ast::item::{ConstDecl, ExpectDecl, FnDecl, Item, Param, ProcessDecl, UseDecl, WorkDecl};
 use crate::ast::program::Program;
 use crate::ast::statement::Statement;
 use crate::ast::target::TargetDecl;
@@ -54,6 +54,7 @@ pub enum SpannedItem {
     Function(SpannedFnDecl),
     Process { decl: ProcessDecl, span: Span },
     Work { decl: WorkDecl, span: Span },
+    Expect { decl: ExpectDecl, span: Span },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -263,6 +264,7 @@ impl SpannedItem {
             }),
             SpannedItem::Process { decl, .. } => Item::Process(decl),
             SpannedItem::Work { decl, .. } => Item::Work(decl),
+            SpannedItem::Expect { decl, .. } => Item::Expect(decl),
         }
     }
 }
