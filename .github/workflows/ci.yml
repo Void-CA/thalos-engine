@@ -33,8 +33,16 @@ jobs:
       - name: Clippy (deny warnings)
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      - name: Unused dependencies (cargo-machete)
+        run: |
+          cargo install cargo-machete --locked
+          cargo machete
+
       - name: Docs
         run: cargo doc --workspace --no-deps
+
+      - name: Docs links
+        run: python3 scripts/quality/check_docs_links.py
 
       # NOTE: `cargo fmt --check` is intentionally omitted until the formatting
       # pass (Fase 5.1) lands; the workspace is not yet rustfmt-clean.
