@@ -44,9 +44,23 @@ fn public_surface_is_self_contained() {
     };
     use thalos_api::document::program_document::ProgramDocument;
     use thalos_api::importer::import_urdf;
-    use thalos_api::lang::parse_source;
+    use thalos_api::lang::{
+        Program, Span, TypeArg, TypeExpr, ast, parse_source, parse_source_spanned,
+    };
     use thalos_api::planning::execution_plan_builder::ExecutionPlanBuilder;
-    use thalos_api::semantic::DocumentAnalysis;
+    use thalos_api::semantic::compiler::{
+        CompileReport, CompilerWarning, SemanticCompiler, ValidatedProgram,
+    };
+    use thalos_api::semantic::evaluator::CompileTimeValue;
+    use thalos_api::semantic::intelligence::DocumentIntelligence;
+    use thalos_api::semantic::model::{ResolvedProgram, SemanticProgram};
+    use thalos_api::semantic::reactive::{SignalSchema, SignalType};
+    use thalos_api::semantic::reactive_process::{ProcessProgram, compile_process};
+    use thalos_api::semantic::resolver::SemanticResolver;
+    use thalos_api::semantic::types::{Dimension, Type};
+    use thalos_api::semantic::{
+        Diagnostic, DiagnosticSeverity, DocumentAnalysis, SourceSpan, SymbolKind,
+    };
     use thalos_api::visual::{SceneBuilder, VisualScene};
 
     // IO / transport contracts.
@@ -163,6 +177,35 @@ fn public_surface_is_self_contained() {
     let _ = std::any::type_name::<ExecutionEvent>();
     let _ = std::any::type_name::<TemporalInvariants>();
     let _: Option<&dyn ExecutionRunner> = None;
+
+    // Language + type-system surface (Fase 1 curation).
+    let _ = parse_source;
+    let _ = parse_source_spanned;
+    let _ = std::any::type_name::<Program>();
+    let _ = std::any::type_name::<Span>();
+    let _ = std::any::type_name::<TypeExpr>();
+    let _ = std::any::type_name::<TypeArg>();
+    let _ = std::any::type_name::<ast::Expr>();
+    let _ = std::any::type_name::<SemanticCompiler>();
+    let _ = std::any::type_name::<ValidatedProgram>();
+    let _ = std::any::type_name::<CompileReport>();
+    let _ = std::any::type_name::<CompilerWarning>();
+    let _ = std::any::type_name::<CompileTimeValue>();
+    let _ = std::any::type_name::<DocumentIntelligence>();
+    let _ = std::any::type_name::<SemanticProgram>();
+    let _ = std::any::type_name::<ResolvedProgram>();
+    let _ = std::any::type_name::<SignalSchema>();
+    let _ = std::any::type_name::<SignalType>();
+    let _ = std::any::type_name::<ProcessProgram>();
+    let _ = std::any::type_name::<SemanticResolver>();
+    let _ = std::any::type_name::<Type>();
+    let _ = std::any::type_name::<Dimension>();
+    let _ = std::any::type_name::<Diagnostic>();
+    let _ = std::any::type_name::<DiagnosticSeverity>();
+    let _ = std::any::type_name::<DocumentAnalysis>();
+    let _ = std::any::type_name::<SourceSpan>();
+    let _ = std::any::type_name::<SymbolKind>();
+    let _ = compile_process;
 
     // Execution evidence / observation semantics (materialized in F2.1b).
     use thalos_api::core::execution::ExecutionSource;

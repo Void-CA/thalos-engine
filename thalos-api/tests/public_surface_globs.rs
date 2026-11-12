@@ -13,8 +13,6 @@ const BASELINE: &[&str] = &[
     "pub use thalos_core::models::*;",
     "pub use thalos_math::*;",
     "pub use thalos_planning::*;",
-    "pub use thalos_lang::*;",
-    "pub use thalos_language_service::*;",
     "pub use thalos_importer::*;",
     "pub use thalos_ports::*;",
     "pub use thalos_document::*;",

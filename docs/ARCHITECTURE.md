@@ -38,7 +38,7 @@ engine defina el significado de una sesión **no** significa que deba ejecutarla
 | Regla | Guarda |
 |---|---|
 | Un consumidor importa solo `thalos-api` | `thalos-api/tests/dependency_purity.rs` |
-| La superficie pública es exactamente la declarada | `thalos-api/tests/public_surface.rs` |
+| La superficie pública es exactamente la declarada (sin globs nuevos) | `thalos-api/tests/{public_surface,public_surface_globs}.rs` |
 | Los crates de dominio puro no dependen de infraestructura | `dependency_purity.rs` |
 | La aplicación no vuelve a exportar conceptos del engine | `thalos-runtime/tests/no_engine_reexports.rs` (repo Industrial) |
 

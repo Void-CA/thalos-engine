@@ -190,10 +190,6 @@ impl Type {
         matches!(self, Type::Error)
     }
 
-    pub fn is_unknown(&self) -> bool {
-        matches!(self, Type::Unknown)
-    }
-
     /// The single compatibility rule: `expected.accepts(actual)`.
     ///
     /// - `Int` satisfies `Float` (numeric promotion).

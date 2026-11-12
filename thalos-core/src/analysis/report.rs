@@ -85,7 +85,7 @@ pub enum ReportError {
 /// - `observations`: diagnostic facts — immutable, machine-readable (I1-I3).
 /// - `actions`: remediation steps referencing observations by id (I5).
 /// - `metrics`: named numeric measurements of the analysis run itself. Type
-///   chosen per design.md Interfaces (`BTreeMap<String, f64>`); the spec's
+///   chosen by the analysis-report contract (`BTreeMap<String, f64>`); the spec's
 ///   `metrics[]` notation is the JSON wire shape, projected by the DTO (I6).
 /// - `summary`: derived quality view (I7, design C2).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

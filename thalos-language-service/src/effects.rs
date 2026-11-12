@@ -40,12 +40,6 @@ impl EffectSet {
         Self::default()
     }
 
-    pub fn pure() -> Self {
-        let mut set = Self::default();
-        set.0.insert(Effect::Pure);
-        set
-    }
-
     pub fn insert(&mut self, effect: Effect) {
         self.0.remove(&Effect::Pure);
         self.0.insert(effect);

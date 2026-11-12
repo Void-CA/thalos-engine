@@ -20,8 +20,14 @@ La pureza de la frontera la verifican dos tests:
 
 - `thalos-api/tests/public_surface.rs` — todo camino público se alcanza sin
   nombrar un crate interno.
+- `thalos-api/tests/public_surface_globs.rs` — ningún glob nuevo; los globs
+  históricos están en una baseline que sólo puede reducirse.
 - `thalos-api/tests/dependency_purity.rs` — `thalos-api` no depende de la capa de
   aplicación.
+
+`lang` y `semantic` exponen ítems explícitos (AST, parser, compiler, evaluator,
+intelligence, model, reactive, reactive_process, resolver y types). Los demás
+namespaces conservan globs históricos registrados en el ratchet.
 
 ## 2. Modelo de tiers
 

@@ -268,11 +268,6 @@ impl TypeRegistry {
         self.constructor_overloads(name).and_then(|specs| specs.first())
     }
 
-    pub fn is_variadic(&self, name: &str) -> bool {
-        self.constructor(name)
-            .is_some_and(|spec| matches!(spec.shape, ConstructorShape::Variadic { .. }))
-    }
-
     pub fn is_receiver_method(&self, name: &str) -> bool {
         self.constructor(name)
             .is_some_and(|spec| matches!(spec.shape, ConstructorShape::ReceiverMethod))
@@ -280,18 +275,6 @@ impl TypeRegistry {
 
     pub fn binding_of(&self, name: &str) -> Option<ConstructorBinding> {
         self.constructor(name).map(|spec| spec.binding)
-    }
-
-    /// Lowercase constructor names kept as compatibility aliases.
-    pub fn legacy_constructor_names(&self) -> Vec<&'static str> {
-        let mut names: Vec<&'static str> = self
-            .constructors
-            .iter()
-            .filter(|(_, specs)| specs.iter().any(|spec| spec.deprecated))
-            .map(|(name, _)| *name)
-            .collect();
-        names.sort_unstable();
-        names
     }
 
     /// Canonical replacement for a deprecated constructor name.
@@ -313,7 +296,7 @@ impl TypeRegistry {
 
     /// Member specification for a checked type, if it has one.
     pub fn member_spec(&self, ty: &Type) -> Option<MemberSpec> {
-        ty.member_schema()
+        self.type_spec(ty).members
     }
 
     /// Metadata for a checked type.

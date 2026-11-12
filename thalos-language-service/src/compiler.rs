@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use thalos_lang::ast::{ConstDecl, Expr as AstExpr, Item, Program, Statement as AstStatement, TargetDecl, UseTree};
 use crate::builtins::register_builtins;
 use crate::checker::TypeChecker;
+use crate::deprecations::collect_legacy_warnings;
+pub use crate::deprecations::CompilerWarning;
 use crate::effects::{analyze_function_effects, describe_effects};
 use crate::evaluator::{CompileTimeValue, EvalResult, Evaluator, Position};
 use crate::model::{
@@ -48,6 +50,13 @@ impl std::ops::Deref for ValidatedProgram {
     }
 }
 
+/// A successful compilation plus its non-fatal diagnostics.
+#[derive(Debug, Clone)]
+pub struct CompileReport {
+    pub program: ValidatedProgram,
+    pub warnings: Vec<CompilerWarning>,
+}
+
 impl SemanticCompiler {
     /// Compile WITHOUT a station signal schema.
     ///
@@ -56,12 +65,22 @@ impl SemanticCompiler {
     /// validated by [`SemanticCompiler::compile_with_signals`] or
     /// [`SemanticCompiler::compile_expectations`].
     pub fn compile(ast: &Program) -> Result<SemanticProgram, Vec<String>> {
-        Self::compile_validated(ast).map(ValidatedProgram::into_inner)
+        Self::compile_with_warnings(ast).map(|report| report.program.into_inner())
     }
 
-    /// Compile and return the validated-program proof.
+    /// Compile and return the validated-program proof plus warnings.
+    pub fn compile_with_warnings(ast: &Program) -> Result<CompileReport, Vec<String>> {
+        Self::compile_impl(ast, &SignalSchema::new(), false).map(
+            |(program, warnings)| CompileReport {
+                program: ValidatedProgram::new(program),
+                warnings,
+            },
+        )
+    }
+
+    /// Compile and return only the validated-program proof.
     pub fn compile_validated(ast: &Program) -> Result<ValidatedProgram, Vec<String>> {
-        Self::compile_impl(ast, &SignalSchema::new(), false).map(ValidatedProgram::new)
+        Self::compile_with_warnings(ast).map(|report| report.program)
     }
 
     /// Compile with a declared signal schema: a `module.channel` read becomes a
@@ -71,15 +90,28 @@ impl SemanticCompiler {
         ast: &Program,
         signals: &SignalSchema,
     ) -> Result<SemanticProgram, Vec<String>> {
-        Self::compile_with_signals_validated(ast, signals).map(ValidatedProgram::into_inner)
+        Self::compile_with_signals_and_warnings(ast, signals)
+            .map(|report| report.program.into_inner())
     }
 
-    /// Compile with a signal schema and return the validated-program proof.
+    /// Compile with a signal schema and return the validated-program proof
+    /// plus warnings.
+    pub fn compile_with_signals_and_warnings(
+        ast: &Program,
+        signals: &SignalSchema,
+    ) -> Result<CompileReport, Vec<String>> {
+        Self::compile_impl(ast, signals, true).map(|(program, warnings)| CompileReport {
+            program: ValidatedProgram::new(program),
+            warnings,
+        })
+    }
+
+    /// Compile with a signal schema and return only the validated-program proof.
     pub fn compile_with_signals_validated(
         ast: &Program,
         signals: &SignalSchema,
     ) -> Result<ValidatedProgram, Vec<String>> {
-        Self::compile_impl(ast, signals, true).map(ValidatedProgram::new)
+        Self::compile_with_signals_and_warnings(ast, signals).map(|report| report.program)
     }
 
     /// Resolve ONLY the declared expectations, validated against the station
@@ -96,7 +128,7 @@ impl SemanticCompiler {
         ast: &Program,
         signals: &SignalSchema,
         validate_expectations: bool,
-    ) -> Result<SemanticProgram, Vec<String>> {
+    ) -> Result<(SemanticProgram, Vec<CompilerWarning>), Vec<String>> {
         // Resolve named arguments into canonical positional form once, up front.
         // Every stage below (evaluator, checker, lowering, resolver) only ever
         // sees positional arguments and never re-implements named-arg semantics.
@@ -279,7 +311,8 @@ impl SemanticCompiler {
             expectations,
         };
         rewrite_signal_access(&mut program, signals, &signal_aliases);
-        Ok(program)
+        let warnings = collect_legacy_warnings(&ast);
+        Ok((program, warnings))
     }
 
     /// Compile straight to a control-flow-preserving [`ReactiveProgram`].

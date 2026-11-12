@@ -58,7 +58,7 @@ impl ResourceRequirement {
 }
 
 // ---------------------------------------------------------------------------
-// Plane B — execution provider capability contract (`docs/reference/firmware-boundary.md`)
+// Plane B — execution provider capability contract (`thalos-industrial/docs/design/contratos/firmware-boundary.md`)
 //
 // Pure vocabulary. No I/O, no transport, no registry: a provider advertises a
 // descriptor, a request is matched against it before dispatch, and the provider's
@@ -67,7 +67,7 @@ impl ResourceRequirement {
 
 /// What an execution provider accepts when it assumes responsibility for motion.
 ///
-/// Responsibility follows capability (`docs/firmware-boundary.md` §3):
+/// Responsibility follows capability (`thalos-industrial/docs/design/contratos/firmware-boundary.md` §3):
 /// for `MoveJ`/`MoveL` the resource generates the trajectory; for
 /// `TrajectoryBatch` Thalos plans and the resource reproduces.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -85,7 +85,7 @@ pub enum CommandCapability {
 
 /// Where Cartesian → joint resolution (IK) is performed, declared by the provider.
 ///
-/// Only meaningful for `MoveL` (`docs/firmware-boundary.md` §3.1, §7.6).
+/// Only meaningful for `MoveL` (`thalos-industrial/docs/design/contratos/firmware-boundary.md` §3.1, §7.6).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TargetResolution {
@@ -98,7 +98,7 @@ pub enum TargetResolution {
 /// What a provider can truthfully attest to about an execution.
 ///
 /// Ordered: a provider that `Provides` `E4` also satisfies `E0`–`E3`. Claims are
-/// bounded by the declared maximum (`docs/firmware-boundary.md` §6.2). Only `E4`
+/// bounded by the declared maximum (`thalos-industrial/docs/design/contratos/firmware-boundary.md` §6.2). Only `E4`
 /// supports *"the actuator achieved state X"*.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -118,7 +118,7 @@ pub enum EvidenceLevel {
 /// Declarative capability descriptor advertised by an execution provider (Plane B).
 ///
 /// Advertised at connection / session initialization. A change requires
-/// re-negotiation, never silent drift (`docs/firmware-boundary.md` §7.6).
+/// re-negotiation, never silent drift (`thalos-industrial/docs/design/contratos/firmware-boundary.md` §7.6).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CapabilityDescriptor {
     pub contract_version: String,
@@ -140,7 +140,7 @@ impl CapabilityDescriptor {
     ///
     /// Match-before-dispatch: a program's requirements are matched against the
     /// declared descriptor *before* execution. No fallback is implicit
-    /// (`docs/firmware-boundary.md` §8).
+    /// (`thalos-industrial/docs/design/contratos/firmware-boundary.md` §8).
     pub fn satisfies(&self, request: &CapabilityRequest) -> ProviderMatch {
         if !self.accepts(request.command) {
             return ProviderMatch::MissingCommand(request.command);

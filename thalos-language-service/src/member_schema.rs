@@ -15,8 +15,8 @@
 //! ```
 //!
 //! This module only models the schema. Consumers (the checker, the evaluator,
-//! accessors and member calls) are added incrementally; see
-//! `.opencode/plans/thls-value-member-schema.md`.
+//! accessors and member calls) consume this schema; the normative contract is
+//! `thalos-industrial/docs/lenguaje/sistema-tipos.md` §8.
 
 use serde::{Deserialize, Serialize};
 

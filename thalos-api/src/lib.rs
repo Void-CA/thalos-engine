@@ -90,12 +90,75 @@ pub mod intent;
 
 /// Raw Thalos language front-end (AST and parser).
 pub mod lang {
-    pub use thalos_lang::*;
+    pub use thalos_lang::ast;
+    pub use thalos_lang::ast::{
+        Arg, BinaryOp, CompareOp, ConstDecl, CycleDecl, Event, ExpectDecl, Expr, FnDecl, Item,
+        OnDecl, Param, ProcessDecl, ProcessItem, Program, Spanned, SpannedArg, SpannedConstDecl,
+        SpannedExpr, SpannedExprKind, SpannedFnDecl, SpannedItem, SpannedProgram, SpannedStatement,
+        SpannedStatementKind, SpannedTargetDecl, StateDecl, Statement, TargetDecl, TypeArg,
+        TypeExpr, UnaryOp, UseDecl, UseTree, WorkDecl,
+    };
+    pub use thalos_lang::parser::{parse_source, parse_source_spanned};
+    pub use thalos_lang::span::Span;
+    pub use thalos_lang::units::{AngleRadians, DurationSeconds, LengthMeters};
 }
 
 /// Semantic language service (diagnostics, symbols, compilation pipeline).
 pub mod semantic {
-    pub use thalos_language_service::*;
+    pub use thalos_language_service::{
+        analyze_document, char_range_to_byte_span, Diagnostic, DiagnosticSeverity,
+        DocumentAnalysis, ProvenanceEntry, ProvenanceKind, SourceSpan, Symbol, SymbolKind,
+    };
+
+    pub mod compiler {
+        pub use thalos_language_service::compiler::{
+            CompileReport, CompilerWarning, SemanticCompiler, ValidatedProgram,
+        };
+    }
+    pub mod evaluator {
+        pub use thalos_language_service::evaluator::{
+            CompileTimeValue, EvalResult, Evaluator, Pose, Position, negate_value, read_member,
+        };
+    }
+    pub mod intelligence {
+        pub use thalos_language_service::intelligence::{
+            DocumentIntelligence, HintOrigin, InlayHint, SemanticTokenFact, SemanticTokenKind,
+            SignatureInfo, TypedExpression, TypedSymbol, analyze_intelligence,
+        };
+    }
+    pub mod model {
+        pub use thalos_language_service::model::{
+            CallSite, JointConfiguration, MotionKind, MotionTarget, Provenance, ResolvedMotion,
+            ResolvedProgram, ResolvedStatement, ResolvedTarget, SemanticArg, SemanticExpr,
+            SemanticFunction, SemanticMotion, SemanticProgram, SemanticStatement,
+        };
+    }
+    pub mod reactive {
+        pub use thalos_language_service::reactive::{
+            ReactiveExpr, ReactiveProgram, ReactiveStatement, SignalBinding, SignalRef, SignalSchema,
+            SignalType, lower_reactive,
+        };
+    }
+    pub mod reactive_eval {
+        pub use thalos_language_service::reactive_eval::{
+            ReactiveEvaluator, ReactiveStep, RuntimeValue,
+        };
+    }
+    pub mod reactive_process {
+        pub use thalos_language_service::reactive_process::{
+            Effect, PEvent, PExpr, PReaction, PState, PStmt, PWork, ProcessProgram, ProcessRuntime,
+            RejectionReason, SignalAlias, TokenDeliveryError, TokenEvent, TokenOutcome,
+            compile_process, specialize_work,
+        };
+    }
+    pub mod resolver {
+        pub use thalos_language_service::resolver::SemanticResolver;
+    }
+    pub mod types {
+        pub use thalos_language_service::types::{
+            Dimension, FunctionType, Type, TypeAnnotationError, resolve_type,
+        };
+    }
 }
 
 /// URDF / asset importing.

@@ -9,6 +9,7 @@ pub mod binder;
 pub mod builtins;
 pub mod checker;
 pub mod compiler;
+pub(crate) mod deprecations;
 pub mod intelligence;
 pub mod evaluator;
 pub mod effects;

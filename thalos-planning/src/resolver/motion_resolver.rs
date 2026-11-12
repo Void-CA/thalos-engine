@@ -60,10 +60,9 @@ impl<'a> MotionResolver<'a> {
     ///
     /// # Design note
     ///
-    /// The `initial_state` parameter extends the design from `design.md`
-    /// — the original interface did not include it, but IK requires a `q0`
-    /// seed. Without it, `MoveJ` resolution cannot determine the robot's
-    /// starting configuration.
+    /// The `initial_state` parameter extends the original resolver interface:
+    /// IK requires a `q0` seed. Without it, `MoveJ` resolution cannot determine
+    /// the robot's starting configuration.
     pub fn new(
         ik_solver: &'a dyn IKSolver,
         frame_registry: &'a FrameRegistry,
