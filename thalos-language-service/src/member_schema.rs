@@ -20,7 +20,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::types::{FunctionType, Type};
+use crate::types::{Dimension, FunctionType, Type};
 
 /// Whether a member is readable data or a callable operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -129,6 +129,12 @@ impl MemberSchema {
         self.get(name).is_some_and(|m| m.kind == MemberKind::Operation)
     }
 
+    /// Add a readable field member.
+    pub fn with_field(mut self, name: impl Into<String>, ty: Type) -> Self {
+        self.members.push(Member::field(name, ty));
+        self
+    }
+
     /// Add an operation member whose result type is `result`.
     pub fn with_operation(mut self, name: impl Into<String>, result: Type) -> Self {
         self.members.push(Member::operation_result(name, result));
@@ -178,8 +184,11 @@ pub fn joint_index(name: &str) -> Option<usize> {
 /// `receiver.op(args)` into `op(receiver, args)` only when `op` is listed here.
 /// Whether a *specific* receiver supports the operation is decided by that
 /// operation's own type rules (e.g. `offset` checks the receiver type).
+/// Declared member operations. This is the single list the binder consults.
+pub const MEMBER_OPERATIONS: &[&str] = &["offset"];
+
 pub fn is_member_operation(name: &str) -> bool {
-    matches!(name, "offset")
+    MEMBER_OPERATIONS.contains(&name)
 }
 
 impl Type {
@@ -192,12 +201,17 @@ impl Type {
         match self {
             Type::Vector3 => Some(MemberSchema::xyz().with_operation("offset", Type::Vector3)),
             Type::Position => Some(MemberSchema::xyz().with_operation("offset", Type::Position)),
-            // `Pose` rotation members and rotational `offset` are deferred.
-            Type::Pose => Some(MemberSchema::xyz()),
-            Type::Joints { dimension: Some(n) } => {
+            // `Position` and `orientation` expose the structured halves of a
+            // pose; `x/y/z` remain available as the translation shortcut.
+            Type::Pose => Some(
+                MemberSchema::xyz()
+                    .with_field("position", Type::Position)
+                    .with_field("orientation", Type::Quaternion),
+            ),
+            Type::Joints { dimension: Dimension::Known(n) } => {
                 Some(MemberSchema::joints(*n).with_operation("offset", self.clone()))
             }
-            Type::Joints { dimension: None } => None,
+            Type::Joints { dimension: Dimension::Unknown } => None,
             _ => None,
         }
     }
@@ -221,7 +235,7 @@ mod tests {
 
     #[test]
     fn joints_schema_is_derived_from_dimension() {
-        let schema = Type::Joints { dimension: Some(4) }
+        let schema = Type::Joints { dimension: Dimension::Known(4) }
             .member_schema()
             .expect("Joints<4> has a schema");
         assert_eq!(
@@ -235,7 +249,7 @@ mod tests {
 
     #[test]
     fn joints_without_dimension_has_no_schema() {
-        assert!(Type::Joints { dimension: None }.member_schema().is_none());
+        assert!(Type::Joints { dimension: Dimension::Unknown }.member_schema().is_none());
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use crate::scope::SymbolTable;
 use crate::symbols::{Symbol, SymbolKind};
-use crate::types::{FunctionType, Type};
+use crate::types::{Dimension, FunctionType, Type};
 
 pub fn register_builtins(table: &mut SymbolTable) {
     // (name, parameter types, parameter names, return type). Parameter names are
@@ -8,7 +8,7 @@ pub fn register_builtins(table: &mut SymbolTable) {
     // overload identity. Commands that are parsed as statements carry no names.
     let overloaded_builtins: Vec<(&str, Vec<Type>, Vec<&str>, Type)> = vec![
         // movej
-        ("movej", vec![Type::Joints { dimension: None }], vec![], Type::Unit),
+        ("movej", vec![Type::Joints { dimension: Dimension::Unknown }], vec![], Type::Unit),
         ("movej", vec![Type::Position], vec![], Type::Unit),
         ("movej", vec![Type::Pose], vec![], Type::Unit),
 
@@ -26,32 +26,6 @@ pub fn register_builtins(table: &mut SymbolTable) {
         // set_output
         ("set_output", vec![Type::String, Type::Bool], vec![], Type::Unit),
 
-        // Built-in constructors
-        ("position", vec![Type::Vector3], vec!["x", "y", "z"], Type::Position),
-        (
-            "pose",
-            vec![Type::Vector3, Type::Quaternion],
-            vec!["position", "orientation"],
-            Type::Pose,
-        ),
-        (
-            "pose",
-            vec![Type::Position, Type::Quaternion],
-            vec!["position", "orientation"],
-            Type::Pose,
-        ),
-        (
-            "euler",
-            vec![Type::Angle, Type::Angle, Type::Angle],
-            vec!["rx", "ry", "rz"],
-            Type::Quaternion,
-        ),
-        (
-            "quaternion",
-            vec![Type::Float, Type::Float, Type::Float, Type::Float],
-            vec!["w", "x", "y", "z"],
-            Type::Quaternion,
-        ),
     ];
 
     for (name, params, names, return_type) in overloaded_builtins {

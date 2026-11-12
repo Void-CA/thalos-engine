@@ -4,6 +4,7 @@ pub mod program;
 pub mod spanned;
 pub mod statement;
 pub mod target;
+pub mod type_expr;
 
 pub use expression::{Arg, BinaryOp, Expr, UnaryOp};
 pub use item::{
@@ -17,3 +18,4 @@ pub use spanned::{
 };
 pub use statement::Statement;
 pub use target::TargetDecl;
+pub use type_expr::{TypeArg, TypeExpr};

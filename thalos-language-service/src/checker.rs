@@ -1,11 +1,12 @@
 use serde::{Deserialize, Serialize};
-use thalos_lang::ast::{Expr, Statement, UnaryOp};
+use thalos_lang::ast::{Arg, Expr, Statement, UnaryOp};
 use thalos_lang::span::Span;
 use crate::operators::BinaryOpRule;
+use crate::registry::{registry, ConstructorShape, ConstructorSpec, TypeRegistry};
 use crate::reactive::SignalSchema;
 use crate::scope::SymbolTable;
 use crate::symbols::{Symbol, SymbolKind};
-use crate::types::Type;
+use crate::types::{resolve_type, Dimension, Type};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TypedExpr {
@@ -29,6 +30,11 @@ pub struct TypeChecker<'a> {
     signals: Option<&'a SignalSchema>,
     /// `use` aliases: a local name maps to the real signal module.
     signal_aliases: Option<&'a std::collections::HashMap<String, String>>,
+    /// Declared process names. `start <process>` is only valid for one of these
+    /// inside `main`.
+    processes: Option<&'a std::collections::HashSet<String>>,
+    /// Constructor/member registry: the single source of constructor semantics.
+    registry: &'static TypeRegistry,
     silent: bool,
 }
 
@@ -41,6 +47,8 @@ impl<'a> TypeChecker<'a> {
             current_fn_return_type: None,
             signals: None,
             signal_aliases: None,
+            processes: None,
+            registry: registry(),
             silent: false,
         }
     }
@@ -57,6 +65,12 @@ impl<'a> TypeChecker<'a> {
         aliases: &'a std::collections::HashMap<String, String>,
     ) -> Self {
         self.signal_aliases = Some(aliases);
+        self
+    }
+
+    /// Attach the declared process names so `start <process>` can be validated.
+    pub fn with_processes(mut self, processes: &'a std::collections::HashSet<String>) -> Self {
+        self.processes = Some(processes);
         self
     }
 
@@ -82,19 +96,6 @@ impl<'a> TypeChecker<'a> {
         typed
     }
 
-    fn check_purity_for_statement(&mut self, stmt_kind: &str) {
-        if let Some(ref ret_ty) = self.current_fn_return_type
-            && *ret_ty != Type::Unit {
-                let fn_name = self.current_fn_name.clone().unwrap_or_default();
-                self.diagnostics.push(SemanticDiagnostic {
-                    message: format!(
-                        "Function '{}' has non-Unit return type {:?} and cannot produce robotic/IO effects through '{}'",
-                        fn_name, ret_ty, stmt_kind
-                    ),
-                    span: None,
-                });
-            }
-    }
 
     pub fn infer_expr(&mut self, expr: &Expr) -> TypedExpr {
         match expr {
@@ -201,7 +202,7 @@ impl<'a> TypeChecker<'a> {
                 );
                 if !negatable {
                     self.push_diag(format!(
-                        "Cannot negate value of type {:?}",
+                        "Cannot negate value of type {}",
                         typed_operand.ty
                     ));
                     return TypedExpr {
@@ -236,7 +237,7 @@ impl<'a> TypeChecker<'a> {
                 for elem in &elems {
                     if elem.ty != Type::Length {
                         self.push_diag(format!(
-                            "vector component expected Length, found {:?}",
+                            "vector component expected Length, found {}",
                             elem.ty
                         ));
                         ok = false;
@@ -253,104 +254,11 @@ impl<'a> TypeChecker<'a> {
                     args.iter().map(|a| self.infer_expr(&a.value)).collect();
                 let param_types: Vec<Type> = arg_types.iter().map(|a| a.ty.clone()).collect();
 
-                // `joints` is a variadic constructor of `Angle` components (a
-                // joint configuration is not a cartesian Vector3). The
-                // fixed-arity overload model cannot express variadicity, so it is
-                // handled explicitly (mirrors the compile-time evaluator).
-                if callee == "joints" {
-                    if arg_types.iter().any(|a| a.ty.is_error()) {
-                        return TypedExpr {
-                            expr: expr.clone(),
-                            ty: Type::Error,
-                            span: None,
-                        };
-                    }
-                    let mut ok = true;
-                    for arg in &arg_types {
-                        if arg.ty != Type::Angle {
-                            self.push_diag(format!(
-                                "joints component expected Angle, found {:?}",
-                                arg.ty
-                            ));
-                            ok = false;
-                        }
-                    }
-                    return TypedExpr {
-                        expr: expr.clone(),
-                        ty: if ok {
-                            Type::Joints {
-                                dimension: Some(arg_types.len()),
-                            }
-                        } else {
-                            Type::Error
-                        },
-                        span: None,
-                    };
-                }
-
-                // `offset` is receiver-type-directed: the receiver's type
-                // decides the delta shape and component names. Canonicalization
-                // is shared with the evaluator (crate::offset).
-                if callee == "offset" {
-                    let Some(receiver_arg) = args.first() else {
-                        self.push_diag("offset requires a receiver argument".to_string());
-                        return TypedExpr {
-                            expr: expr.clone(),
-                            ty: Type::Error,
-                            span: None,
-                        };
-                    };
-                    let receiver = self.infer_expr(&receiver_arg.value);
-                    if receiver.ty.is_error() {
-                        return TypedExpr {
-                            expr: expr.clone(),
-                            ty: Type::Error,
-                            span: None,
-                        };
-                    }
-                    let canonical = match crate::offset::canonicalize_delta(&receiver.ty, &args[1..])
-                    {
-                        Ok(canonical) => canonical,
-                        Err(message) => {
-                            self.push_diag(message);
-                            return TypedExpr {
-                                expr: expr.clone(),
-                                ty: Type::Error,
-                                span: None,
-                            };
-                        }
-                    };
-                    let mut ok = true;
-                    match canonical.shape {
-                        crate::offset::DeltaShape::Vector3 => {
-                            let delta_ty = self.infer_expr(&canonical.args[0].value).ty;
-                            if !delta_ty.is_error() && delta_ty != Type::Vector3 {
-                                self.push_diag(format!(
-                                    "offset delta expected Vector3, got {:?}",
-                                    delta_ty
-                                ));
-                                ok = false;
-                            }
-                        }
-                        crate::offset::DeltaShape::Scalars => {
-                            for arg in &canonical.args {
-                                let delta_ty = self.infer_expr(&arg.value).ty;
-                                if !delta_ty.is_error() && !is_offset_scalar(&delta_ty) {
-                                    self.push_diag(format!(
-                                        "offset joint delta expected Angle, found {:?}",
-                                        delta_ty
-                                    ));
-                                    ok = false;
-                                }
-                            }
-                        }
-                    }
-                    let ty = if ok { receiver.ty } else { Type::Error };
-                    return TypedExpr {
-                        expr: expr.clone(),
-                        ty,
-                        span: None,
-                    };
+                // Constructors are declared in the registry. Fixed-arity
+                // constructors, variadic `joints` and receiver-directed
+                // `offset` share one dispatch point.
+                if let Some(overloads) = self.registry.constructor_overloads(callee) {
+                    return self.check_constructor_call(expr, args, &arg_types, overloads);
                 }
 
                 if let Some(symbols) = self.symbol_table.lookup(callee) {
@@ -375,7 +283,7 @@ impl<'a> TypeChecker<'a> {
                                 .params
                                 .iter()
                                 .zip(&param_types)
-                                .all(|(param, actual)| param.accepts_numeric_widening(actual))
+                                .all(|(param, actual)| param.accepts(actual))
                         {
                             matched_return = Some(*ft.return_type.clone());
                             break;
@@ -390,8 +298,9 @@ impl<'a> TypeChecker<'a> {
                         }
                     } else {
                         self.push_diag(format!(
-                            "No matching overload for call '{}' with argument types {:?}",
-                            callee, param_types
+                            "No matching overload for call '{}' with argument types {}",
+                            callee,
+                            param_types.iter().map(ToString::to_string).collect::<Vec<_>>().join(", ")
                         ));
                         TypedExpr {
                             expr: expr.clone(),
@@ -411,39 +320,41 @@ impl<'a> TypeChecker<'a> {
             Expr::MemberAccess { object, member } => {
                 // A declared signal module: `module.channel` is a signal read,
                 // typed by the schema. An alias resolves to the real module.
-                let module = self
-                    .signal_aliases
-                    .and_then(|aliases| aliases.get(object))
-                    .map(String::as_str)
-                    .unwrap_or(object);
-                if let Some(signals) = self.signals
-                    && signals.knows_module(module)
-                {
-                    return match signals.type_of(module, member) {
-                        Some(ty) => TypedExpr {
-                            expr: expr.clone(),
-                            ty: ty.as_type(),
-                            span: None,
-                        },
-                        None => {
-                            self.push_diag(format!(
-                                "Module '{}' has no signal '{}'",
-                                module, member
-                            ));
-                            TypedExpr {
+                // Only an identifier can be a module; a chained receiver is a
+                // value member.
+                if let Expr::Identifier(module_name) = object.as_ref() {
+                    let module = self
+                        .signal_aliases
+                        .and_then(|aliases| aliases.get(module_name))
+                        .map(String::as_str)
+                        .unwrap_or(module_name.as_str());
+                    if let Some(signals) = self.signals
+                        && signals.knows_module(module)
+                    {
+                        return match signals.type_of(module, member) {
+                            Some(ty) => TypedExpr {
                                 expr: expr.clone(),
-                                ty: Type::Error,
+                                ty: ty.as_type(),
                                 span: None,
+                            },
+                            None => {
+                                self.push_diag(format!(
+                                    "Module '{}' has no signal '{}'",
+                                    module, member
+                                ));
+                                TypedExpr {
+                                    expr: expr.clone(),
+                                    ty: Type::Error,
+                                    span: None,
+                                }
                             }
-                        }
-                    };
+                        };
+                    }
                 }
-                // `object` is a bare identifier in v1. Resolve its type first;
-                // the member is then looked up in that type's schema. This also
-                // means a namespace like `module.channel` no longer maps to a
-                // value: if `module` is not a declared value, the receiver
-                // inference reports it (no dead ChannelAccess fallback).
-                let receiver = self.infer_expr(&Expr::Identifier(object.clone()));
+                // Resolve the receiver expression, then look the member up in
+                // its type's schema. Chained receivers (`Position(...).x`) use
+                // the same path.
+                let receiver = self.infer_expr(object);
                 if receiver.ty.is_error() {
                     return TypedExpr {
                         expr: expr.clone(),
@@ -451,7 +362,23 @@ impl<'a> TypeChecker<'a> {
                         span: None,
                     };
                 }
-                match receiver.ty.member_schema() {
+                if matches!(
+                    receiver.ty,
+                    Type::Joints {
+                        dimension: Dimension::Unknown
+                    }
+                ) {
+                    self.push_diag(format!(
+                        "Joints dimension is unknown; annotate as Joints<N> to access '{}'",
+                        member
+                    ));
+                    return TypedExpr {
+                        expr: expr.clone(),
+                        ty: Type::Error,
+                        span: None,
+                    };
+                }
+                match self.registry.member_spec(&receiver.ty) {
                     Some(schema) => match schema.field_ty(member) {
                         Some(member_ty) => TypedExpr {
                             expr: expr.clone(),
@@ -461,7 +388,7 @@ impl<'a> TypeChecker<'a> {
                         None => {
                             let available: Vec<&str> = schema.names().collect();
                             self.push_diag(format!(
-                                "Unknown member '{}' on type {:?}; available: {}",
+                                "Unknown member '{}' on type {}; available: {}",
                                 member,
                                 receiver.ty,
                                 available.join(", ")
@@ -475,7 +402,7 @@ impl<'a> TypeChecker<'a> {
                     },
                     None => {
                         self.push_diag(format!(
-                            "Type {:?} has no member '{}'",
+                            "Type {} has no member '{}'",
                             receiver.ty, member
                         ));
                         TypedExpr {
@@ -486,11 +413,153 @@ impl<'a> TypeChecker<'a> {
                     }
                 }
             }
-            _ => TypedExpr {
+            // Member calls are desugared by the binder (`offset`) or become
+            // associated constructors (`Quaternion.euler`). Reaching this arm
+            // means normalization already reported the problem; poison the type
+            // without duplicating the diagnostic.
+            Expr::MemberCall { .. } => TypedExpr {
                 expr: expr.clone(),
-                ty: Type::Unit,
+                ty: Type::Error,
                 span: None,
             },
+        }
+    }
+
+    fn constructor_error(&mut self, expr: &Expr, message: String) -> TypedExpr {
+        self.push_diag(message);
+        TypedExpr {
+            expr: expr.clone(),
+            ty: Type::Error,
+            span: None,
+        }
+    }
+
+    /// Check a call to a registry constructor. The registry owns the signature,
+    /// arity and shape; this method only applies them to the inferred arguments.
+    fn check_constructor_call(
+        &mut self,
+        expr: &Expr,
+        args: &[Arg],
+        arg_types: &[TypedExpr],
+        overloads: &[ConstructorSpec],
+    ) -> TypedExpr {
+        let callee = overloads[0].name;
+        if arg_types.iter().any(|arg| arg.ty.is_error()) {
+            return TypedExpr {
+                expr: expr.clone(),
+                ty: Type::Error,
+                span: None,
+            };
+        }
+
+        match &overloads[0].shape {
+            ConstructorShape::Fixed => {
+                let param_types: Vec<Type> = arg_types.iter().map(|arg| arg.ty.clone()).collect();
+                let matched = overloads.iter().find(|spec| {
+                    spec.params.len() == param_types.len()
+                        && spec
+                            .params
+                            .iter()
+                            .zip(&param_types)
+                            .all(|(param, actual)| param.accepts(actual))
+                });
+                match matched {
+                    Some(spec) => TypedExpr {
+                        expr: expr.clone(),
+                        ty: spec.returns.clone(),
+                        span: None,
+                    },
+                    None => self.constructor_error(
+                        expr,
+                        format!(
+                            "No matching overload for constructor '{}' with argument types {}",
+                            callee,
+                            param_types
+                                .iter()
+                                .map(ToString::to_string)
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ),
+                    ),
+                }
+            }
+            ConstructorShape::Variadic { param } => {
+                if arg_types.is_empty() {
+                    return self.constructor_error(
+                        expr,
+                        format!("{} requires at least one {}", callee, param),
+                    );
+                }
+                let mut ok = true;
+                for arg in arg_types {
+                    if !param.accepts(&arg.ty) {
+                        self.push_diag(format!(
+                            "{} component expected {}, found {}",
+                            callee, param, arg.ty
+                        ));
+                        ok = false;
+                    }
+                }
+                TypedExpr {
+                    expr: expr.clone(),
+                    ty: if ok {
+                        Type::Joints {
+                            dimension: crate::types::Dimension::Known(arg_types.len()),
+                        }
+                    } else {
+                        Type::Error
+                    },
+                    span: None,
+                }
+            }
+            ConstructorShape::ReceiverMethod => {
+                let Some(receiver) = arg_types.first() else {
+                    return self
+                        .constructor_error(expr, format!("{} requires a receiver argument", callee));
+                };
+                if receiver.ty.is_error() {
+                    return TypedExpr {
+                        expr: expr.clone(),
+                        ty: Type::Error,
+                        span: None,
+                    };
+                }
+                let canonical =
+                    match crate::offset::canonicalize_delta(&receiver.ty, &args[1..]) {
+                        Ok(canonical) => canonical,
+                        Err(message) => return self.constructor_error(expr, message),
+                    };
+                let mut ok = true;
+                match canonical.shape {
+                    crate::offset::DeltaShape::Vector3 => {
+                        let delta_ty = self.infer_expr(&canonical.args[0].value).ty;
+                        if !delta_ty.is_error() && delta_ty != Type::Vector3 {
+                            self.push_diag(format!(
+                                "offset delta expected Vector3, got {}",
+                                delta_ty
+                            ));
+                            ok = false;
+                        }
+                    }
+                    crate::offset::DeltaShape::Scalars => {
+                        for arg in &canonical.args {
+                            let delta_ty = self.infer_expr(&arg.value).ty;
+                            if !delta_ty.is_error() && !is_offset_scalar(&delta_ty) {
+                                self.push_diag(format!(
+                                    "offset joint delta expected Angle, found {}",
+                                    delta_ty
+                                ));
+                                ok = false;
+                            }
+                        }
+                    }
+                }
+                TypedExpr {
+                    expr: expr.clone(),
+                    ty: if ok { receiver.ty.clone() } else { Type::Error },
+                    span: None,
+                }
+            }
         }
     }
 
@@ -500,7 +569,7 @@ impl<'a> TypeChecker<'a> {
                 let typed_cond = self.infer_expr(condition);
                 if !typed_cond.ty.is_error() && typed_cond.ty != Type::Bool {
                     self.diagnostics.push(SemanticDiagnostic {
-                        message: format!("if condition expected Bool, got {:?}", typed_cond.ty),
+                        message: format!("if condition expected Bool, got {}", typed_cond.ty),
                         span: None,
                     });
                 }
@@ -515,89 +584,130 @@ impl<'a> TypeChecker<'a> {
             }
             Statement::Let { name, type_ann, value } => {
                 let typed_val = self.infer_expr(value);
-                if let Some(ann) = type_ann {
-                    if let Some(expected_ty) = Type::from_name(ann) {
-                        // Numeric widening (Int -> Float) applies to annotations,
-                        // so `let n : Float = 1` is valid; physical dimensions
-                        // still require an exact match.
-                        if !typed_val.ty.is_error()
-                            && !expected_ty.accepts_numeric_widening(&typed_val.ty)
-                        {
-                            self.diagnostics.push(SemanticDiagnostic {
-                                message: format!(
-                                    "Type mismatch in let binding '{}': expected {:?}, got {:?}",
-                                    name, expected_ty, typed_val.ty
-                                ),
-                                span: None,
-                            });
+                let declared_ty = match type_ann {
+                    Some(ann) => match resolve_type(ann) {
+                        Ok(expected_ty) => {
+                            // Numeric widening (Int -> Float) applies to
+                            // annotations; physical dimensions require an exact
+                            // match.
+                            if !typed_val.ty.is_error() && !expected_ty.accepts(&typed_val.ty) {
+                                self.diagnostics.push(SemanticDiagnostic {
+                                    message: format!(
+                                        "Type mismatch in let binding '{}': expected {}, got {}",
+                                        name, expected_ty, typed_val.ty
+                                    ),
+                                    span: Some(ann.span()),
+                                });
+                            }
+                            expected_ty
                         }
-                    } else {
-                        self.diagnostics.push(SemanticDiagnostic {
-                            message: format!("Unknown type annotation '{}' in let binding '{}'", ann, name),
-                            span: None,
-                        });
-                    }
-                }
+                        Err(error) => {
+                            self.diagnostics.push(SemanticDiagnostic {
+                                message: error.message,
+                                span: error.span,
+                            });
+                            Type::Error
+                        }
+                    },
+                    None => typed_val.ty.clone(),
+                };
+                // The annotation is a checked assertion; the binding keeps the
+                // inferred type so the symbol and the value never diverge (e.g.
+                // `let n: Float = 1` binds an `Int`).
+                let symbol_ty = if declared_ty.is_error() {
+                    Type::Error
+                } else {
+                    typed_val.ty.clone()
+                };
                 let _ = self.symbol_table.declare(Symbol::new(
                     name.clone(),
                     SymbolKind::Variable,
-                    typed_val.ty,
+                    symbol_ty,
                     None,
                 ));
             }
             Statement::MoveJ { target } => {
-                self.check_purity_for_statement("movej");
                 let typed_target = self.infer_expr(target);
                 if !typed_target.ty.is_error() && !typed_target.ty.is_target() {
                     self.diagnostics.push(SemanticDiagnostic {
-                        message: format!("movej expected a target (Position, Pose, or Joints), got {:?}", typed_target.ty),
+                        message: format!("movej expected a target (Position, Pose, or Joints), got {}", typed_target.ty),
                         span: None,
                     });
                 }
             }
             Statement::MoveL { target } => {
-                self.check_purity_for_statement("movel");
                 let typed_target = self.infer_expr(target);
                 if !typed_target.ty.is_error() && !typed_target.ty.is_spatial_target() {
                     self.diagnostics.push(SemanticDiagnostic {
-                        message: format!("movel expected a spatial target (Position or Pose), got {:?}", typed_target.ty),
+                        message: format!("movel expected a spatial target (Position or Pose), got {}", typed_target.ty),
+                        span: None,
+                    });
+                }
+            }
+            Statement::MoveC { via, target } => {
+                let typed_via = self.infer_expr(via);
+                let typed_target = self.infer_expr(target);
+                if typed_via.ty.is_error() || typed_target.ty.is_error() {
+                    return;
+                }
+                if !typed_via.ty.is_spatial_target() || !typed_target.ty.is_spatial_target() {
+                    self.diagnostics.push(SemanticDiagnostic {
+                        message: format!(
+                            "movec expected Position or Pose for both via and target, got {} and {}",
+                            typed_via.ty, typed_target.ty
+                        ),
+                        span: None,
+                    });
+                } else if typed_via.ty != typed_target.ty {
+                    self.diagnostics.push(SemanticDiagnostic {
+                        message: format!(
+                            "movec via and target must have the same type, got {} and {}",
+                            typed_via.ty, typed_target.ty
+                        ),
                         span: None,
                     });
                 }
             }
             Statement::Wait(dur_expr) => {
-                self.check_purity_for_statement("wait");
                 let typed_dur = self.infer_expr(dur_expr);
                 if !typed_dur.ty.is_error() && typed_dur.ty != Type::Duration {
                     self.diagnostics.push(SemanticDiagnostic {
-                        message: format!("wait expected Duration, got {:?}", typed_dur.ty),
+                        message: format!("wait expected Duration, got {}", typed_dur.ty),
                         span: None,
                     });
                 }
             }
             Statement::SetOutput { .. } => {
-                self.check_purity_for_statement("set_output");
+            }
+            Statement::Assign { name, .. } => {
+                self.push_diag(format!(
+                    "Assignment to '{}' is only valid inside a process",
+                    name
+                ));
+            }
+            Statement::Request { name, .. } => {
+                self.push_diag(format!(
+                    "request '{}' is only valid inside a process",
+                    name
+                ));
+            }
+            Statement::Start { process } => {
+                if self.current_fn_name.as_deref() != Some("main") {
+                    self.push_diag(format!(
+                        "start '{}' is only valid inside main",
+                        process
+                    ));
+                } else if let Some(processes) = self.processes
+                    && !processes.contains(process)
+                {
+                    self.push_diag(format!("Unknown process '{}'", process));
+                }
             }
             Statement::Expr(expr) => {
-                let typed_expr = self.infer_expr(expr);
-                if let Some(ref ret_ty) = self.current_fn_return_type
-                    && *ret_ty != Type::Unit && typed_expr.ty == Type::Unit {
-                        let name = match expr {
-                            Expr::Call { callee, .. } => callee.clone(),
-                            Expr::MemberCall { object, method, .. } => format!("{}.{}", object, method),
-                            _ => "side-effecting statement".to_string(),
-                        };
-                        let fn_name = self.current_fn_name.clone().unwrap_or_default();
-                        self.diagnostics.push(SemanticDiagnostic {
-                            message: format!(
-                                "Function '{}' has non-Unit return type {:?} and cannot produce robotic/IO effects through '{}'",
-                                fn_name, ret_ty, name
-                            ),
-                            span: None,
-                        });
-                    }
+                // Expression statements are checked for their own errors; the
+                // purity of a non-Unit function is decided by effect analysis.
+                let _ = self.infer_expr(expr);
             }
-            _ => {}
         }
     }
 }
@@ -693,7 +803,7 @@ mod tests {
             .declare(Symbol::new(
                 "jtt",
                 SymbolKind::Target,
-                Type::Joints { dimension: Some(6) },
+                Type::Joints { dimension: crate::types::Dimension::Known(6) },
                 None,
             ))
             .unwrap();
@@ -707,7 +817,7 @@ mod tests {
         let checker = &mut TypeChecker::new(table);
         checker
             .infer_expr_silent(&Expr::MemberAccess {
-                object: object.to_string(),
+                object: Box::new(Expr::Identifier(object.to_string())),
                 member: member.to_string(),
             })
             .ty
@@ -716,7 +826,7 @@ mod tests {
     fn member_diagnostics(table: &mut SymbolTable, object: &str, member: &str) -> Vec<String> {
         let mut checker = TypeChecker::new(table);
         checker.infer_expr(&Expr::MemberAccess {
-            object: object.to_string(),
+            object: Box::new(Expr::Identifier(object.to_string())),
             member: member.to_string(),
         });
         checker

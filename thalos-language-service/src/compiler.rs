@@ -1,7 +1,10 @@
 use std::collections::HashMap;
+
+use serde::{Deserialize, Serialize};
 use thalos_lang::ast::{ConstDecl, Expr as AstExpr, Item, Program, Statement as AstStatement, TargetDecl, UseTree};
 use crate::builtins::register_builtins;
 use crate::checker::TypeChecker;
+use crate::effects::{analyze_function_effects, describe_effects};
 use crate::evaluator::{CompileTimeValue, EvalResult, Evaluator, Position};
 use crate::model::{
     JointConfiguration, MotionKind, MotionTarget, Provenance, ResolvedTarget, SemanticArg,
@@ -10,9 +13,40 @@ use crate::model::{
 use crate::reactive::{ReactiveProgram, SignalSchema};
 use crate::scope::SymbolTable;
 use crate::symbols::{Symbol, SymbolKind};
-use crate::types::Type;
+use crate::types::{resolve_type, Type};
 
 pub struct SemanticCompiler;
+
+/// A [`SemanticProgram`] that passed every semantic check.
+///
+/// The wrapper is the compile-time proof that no `Type::Error` escaped analysis.
+/// Existing callers keep using [`SemanticCompiler::compile`] (which only returns
+/// after the same gate); callers that want the proof can use
+/// [`SemanticCompiler::compile_validated`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ValidatedProgram(SemanticProgram);
+
+impl ValidatedProgram {
+    fn new(program: SemanticProgram) -> Self {
+        Self(program)
+    }
+
+    pub fn into_inner(self) -> SemanticProgram {
+        self.0
+    }
+
+    pub fn as_inner(&self) -> &SemanticProgram {
+        &self.0
+    }
+}
+
+impl std::ops::Deref for ValidatedProgram {
+    type Target = SemanticProgram;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 impl SemanticCompiler {
     /// Compile WITHOUT a station signal schema.
@@ -22,7 +56,12 @@ impl SemanticCompiler {
     /// validated by [`SemanticCompiler::compile_with_signals`] or
     /// [`SemanticCompiler::compile_expectations`].
     pub fn compile(ast: &Program) -> Result<SemanticProgram, Vec<String>> {
-        Self::compile_impl(ast, &SignalSchema::new(), false)
+        Self::compile_validated(ast).map(ValidatedProgram::into_inner)
+    }
+
+    /// Compile and return the validated-program proof.
+    pub fn compile_validated(ast: &Program) -> Result<ValidatedProgram, Vec<String>> {
+        Self::compile_impl(ast, &SignalSchema::new(), false).map(ValidatedProgram::new)
     }
 
     /// Compile with a declared signal schema: a `module.channel` read becomes a
@@ -32,7 +71,15 @@ impl SemanticCompiler {
         ast: &Program,
         signals: &SignalSchema,
     ) -> Result<SemanticProgram, Vec<String>> {
-        Self::compile_impl(ast, signals, true)
+        Self::compile_with_signals_validated(ast, signals).map(ValidatedProgram::into_inner)
+    }
+
+    /// Compile with a signal schema and return the validated-program proof.
+    pub fn compile_with_signals_validated(
+        ast: &Program,
+        signals: &SignalSchema,
+    ) -> Result<ValidatedProgram, Vec<String>> {
+        Self::compile_impl(ast, signals, true).map(ValidatedProgram::new)
     }
 
     /// Resolve ONLY the declared expectations, validated against the station
@@ -67,36 +114,42 @@ impl SemanticCompiler {
             target_values,
             const_names,
             resolved_targets,
+            function_types,
             mut errors,
         } = prepare_symbols(&ast);
+
+        // Declared processes, for `start <process>` validation.
+        let processes: std::collections::HashSet<String> = ast
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Process(process) => Some(process.name.clone()),
+                _ => None,
+            })
+            .collect();
 
         // 3. Type check AST functions and statements in isolated parameter scope
         let mut checker = TypeChecker::new(&mut table)
             .with_signals(signals)
-            .with_signal_aliases(&signal_aliases);
+            .with_signal_aliases(&signal_aliases)
+            .with_processes(&processes);
         for item in &ast.items {
             if let Item::Function(f) = item {
-                let expected_ret = f
-                    .return_type
-                    .as_deref()
-                    .and_then(Type::from_name)
-                    .unwrap_or(Type::Unit);
+                let signature = function_types
+                    .get(&f.name)
+                    .cloned()
+                    .unwrap_or_else(|| crate::types::FunctionType::new(Vec::new(), Type::Unit));
+                let expected_ret = (*signature.return_type).clone();
 
                 checker.current_fn_name = Some(f.name.clone());
                 checker.current_fn_return_type = Some(expected_ret.clone());
 
                 checker.symbol_table.push_scope(crate::scope::ScopeKind::Function);
-                for param in &f.params {
-                    let p_ty = param
-                        .type_ann
-                        .as_deref()
-                        .and_then(Type::from_name)
-                        .unwrap_or(Type::Position);
-
+                for (param, param_ty) in f.params.iter().zip(signature.params.iter()) {
                     let _ = checker.symbol_table.declare(Symbol::new(
                         param.name.clone(),
                         SymbolKind::Parameter,
-                        p_ty,
+                        param_ty.clone(),
                         None,
                     ));
                 }
@@ -105,17 +158,26 @@ impl SemanticCompiler {
                 }
                 if let Some(ref tail) = f.tail_expr {
                     let typed_tail = checker.infer_expr(tail);
-                    if !typed_tail.ty.is_error()
-                        && expected_ret != Type::Unit
-                        && !expected_ret.accepts_numeric_widening(&typed_tail.ty)
-                    {
-                        checker.diagnostics.push(crate::checker::SemanticDiagnostic {
-                            message: format!(
-                                "Function '{}' return type mismatch: expected {:?}, got {:?}",
-                                f.name, expected_ret, typed_tail.ty
-                            ),
-                            span: None,
-                        });
+                    if !typed_tail.ty.is_error() && !expected_ret.is_error() {
+                        if expected_ret == Type::Unit {
+                            if typed_tail.ty != Type::Unit {
+                                checker.diagnostics.push(crate::checker::SemanticDiagnostic {
+                                    message: format!(
+                                        "Function '{}' returns {}, but its return type is Unit",
+                                        f.name, typed_tail.ty
+                                    ),
+                                    span: None,
+                                });
+                            }
+                        } else if !expected_ret.accepts(&typed_tail.ty) {
+                            checker.diagnostics.push(crate::checker::SemanticDiagnostic {
+                                message: format!(
+                                    "Function '{}' return type mismatch: expected {}, got {}",
+                                    f.name, expected_ret, typed_tail.ty
+                                ),
+                                span: None,
+                            });
+                        }
                     }
                 }
                 checker.symbol_table.pop_scope();
@@ -130,6 +192,27 @@ impl SemanticCompiler {
             }
         }
 
+        // Effect analysis: a function with a non-Unit return type is pure by
+        // contract. Effects are inferred transitively through user calls.
+        let function_effects = analyze_function_effects(&ast, signals);
+        for item in &ast.items {
+            if let Item::Function(f) = item
+                && let Some(signature) = function_types.get(&f.name)
+                && signature.return_type.as_ref() != &Type::Unit
+                && !signature.return_type.is_error()
+            {
+                let effects = function_effects.get(&f.name).cloned().unwrap_or_default();
+                if !effects.is_pure() {
+                    errors.push(format!(
+                        "Function '{}' has non-Unit return type {} and cannot have effects: {}",
+                        f.name,
+                        signature.return_type,
+                        describe_effects(&effects)
+                    ));
+                }
+            }
+        }
+
         // Declared expectations: validated only when a schema is in play.
         let expectations = if validate_expectations {
             let (resolved, expectation_errors) = resolve_expectations(&ast, signals);
@@ -141,6 +224,18 @@ impl SemanticCompiler {
 
         if !errors.is_empty() {
             return Err(errors);
+        }
+
+        // No poison may cross the compilation boundary. This is a defensive
+        // gate: if a diagnostic was dropped anywhere, an `Error` type still
+        // prevents the program from becoming `ValidatedProgram`.
+        let poison: Vec<String> = table
+            .iter()
+            .filter(|symbol| type_contains_error(&symbol.ty))
+            .map(|symbol| format!("internal type error in '{}'", symbol.name))
+            .collect();
+        if !poison.is_empty() {
+            return Err(poison);
         }
 
         // 4. Lower functions to SemanticFunction and SemanticStatement
@@ -161,10 +256,9 @@ impl SemanticCompiler {
                     .as_ref()
                     .map(|e| lower_expr(e, &evaluator, &param_names, &local_names, &const_names));
 
-                let return_type = f
-                    .return_type
-                    .as_deref()
-                    .and_then(Type::from_name)
+                let return_type = function_types
+                    .get(&f.name)
+                    .map(|signature| (*signature.return_type).clone())
                     .unwrap_or(Type::Unit);
 
                 semantic_functions.push(SemanticFunction {
@@ -208,6 +302,7 @@ pub(crate) struct PreparedSymbols {
     pub target_values: HashMap<String, CompileTimeValue>,
     pub const_names: std::collections::HashSet<String>,
     pub resolved_targets: Vec<ResolvedTarget>,
+    pub function_types: HashMap<String, crate::types::FunctionType>,
     pub errors: Vec<String>,
 }
 
@@ -218,16 +313,29 @@ pub(crate) struct PreparedSymbols {
 pub(crate) fn prepare_symbols(ast: &Program) -> PreparedSymbols {
     let mut table = SymbolTable::new();
     register_builtins(&mut table);
+    crate::registry::registry().register_constructors(&mut table);
 
     let mut resolved_targets = Vec::new();
     let mut target_values = HashMap::new();
     let mut const_names = std::collections::HashSet::new();
+    let mut function_types = HashMap::new();
     let mut errors = Vec::new();
 
     // 1. Resolve and evaluate consts and targets sequentially
     for item in &ast.items {
         match item {
-            Item::Const(ConstDecl { name, value, .. }) => {
+            Item::Const(ConstDecl { name, value, type_ann }) => {
+                // The checker is the authority for the initializer's type; the
+                // evaluator only computes the value of an already-typed
+                // expression.
+                let checked_ty = {
+                    let mut checker = TypeChecker::new(&mut table);
+                    let typed = checker.infer_expr(value);
+                    for diagnostic in checker.diagnostics {
+                        errors.push(format!("const '{}': {}", name, diagnostic.message));
+                    }
+                    typed.ty
+                };
                 let eval_result = {
                     let evaluator = Evaluator::with_target_values(&table, &target_values);
                     evaluator.eval_expr(value)
@@ -235,12 +343,39 @@ pub(crate) fn prepare_symbols(ast: &Program) -> PreparedSymbols {
 
                 match eval_result {
                     EvalResult::Value(val) => {
+                        let declared_ty = match type_ann {
+                            Some(annotation) => match resolve_type(annotation) {
+                                Ok(expected) => {
+                                    if !checked_ty.is_error() && !expected.accepts(&checked_ty) {
+                                        errors.push(format!(
+                                            "const '{}': expected {}, got {}",
+                                            name, expected, checked_ty
+                                        ));
+                                    }
+                                    expected
+                                }
+                                Err(error) => {
+                                    errors.push(format!("const '{}': {}", name, error.message));
+                                    Type::Error
+                                }
+                            },
+                            None => checked_ty.clone(),
+                        };
+                        // A constant annotated `Float` holds a `Float` value even
+                        // if it was written as an integer literal.
+                        let val = coerce_constant(val, &declared_ty);
+                        let value_ty = val.get_type();
                         const_names.insert(name.clone());
                         target_values.insert(name.clone(), val.clone());
+                        let symbol_ty = if declared_ty.is_error() {
+                            Type::Error
+                        } else {
+                            value_ty
+                        };
                         let _ = table.declare(Symbol::new(
                             name.clone(),
                             SymbolKind::Const,
-                            val.get_type(),
+                            symbol_ty,
                             None,
                         ));
                     }
@@ -253,6 +388,20 @@ pub(crate) fn prepare_symbols(ast: &Program) -> PreparedSymbols {
                 }
             }
             Item::Target(TargetDecl { name, pose, .. }) => {
+                let checked_ty = {
+                    let mut checker = TypeChecker::new(&mut table);
+                    let typed = checker.infer_expr(pose);
+                    for diagnostic in checker.diagnostics {
+                        errors.push(format!("target '{}': {}", name, diagnostic.message));
+                    }
+                    typed.ty
+                };
+                if !checked_ty.is_error() && !checked_ty.is_target() {
+                    errors.push(format!(
+                        "target '{}' must be a Position, Pose, or Joints, got {}",
+                        name, checked_ty
+                    ));
+                }
                 let eval_result = {
                     let evaluator = Evaluator::with_target_values(&table, &target_values);
                     evaluator.eval_expr(pose)
@@ -296,9 +445,8 @@ pub(crate) fn prepare_symbols(ast: &Program) -> PreparedSymbols {
                             name.clone(),
                             SymbolKind::Target,
                             Type::Joints {
-                                dimension: Some(j.len()),
-                            },
-                            None,
+                                dimension: crate::types::Dimension::Known(j.len()),
+                            },                            None,
                         ));
                         resolved_targets.push(ResolvedTarget {
                             name: name.clone(),
@@ -321,36 +469,52 @@ pub(crate) fn prepare_symbols(ast: &Program) -> PreparedSymbols {
     // 2. Declare all user functions in SymbolTable
     for item in &ast.items {
         if let Item::Function(f) = item {
-            let ret_ty = f
-                .return_type
-                .as_deref()
-                .and_then(Type::from_name)
-                .unwrap_or(Type::Unit);
+            let ret_ty = match f.return_type.as_ref() {
+                Some(annotation) => match resolve_type(annotation) {
+                    Ok(ty) => ty,
+                    Err(error) => {
+                        errors.push(format!("function '{}': {}", f.name, error.message));
+                        Type::Error
+                    }
+                },
+                None => Type::Unit,
+            };
 
             let param_types: Vec<Type> = f
                 .params
                 .iter()
-                .map(|p| {
-                    p.type_ann
-                        .as_deref()
-                        .and_then(Type::from_name)
-                        .unwrap_or(Type::Position)
+                .map(|p| match p.type_ann.as_ref() {
+                    Some(annotation) => match resolve_type(annotation) {
+                        Ok(ty) => ty,
+                        Err(error) => {
+                            errors.push(format!(
+                                "function '{}' parameter '{}': {}",
+                                f.name, p.name, error.message
+                            ));
+                            Type::Error
+                        }
+                    },
+                    // An unannotated parameter is unknown, not `Position`.
+                    None => Type::Unknown,
                 })
                 .collect();
 
             let param_names: Vec<String> =
                 f.params.iter().map(|p| p.name.clone()).collect();
 
+            let signature = crate::types::FunctionType::with_names(
+                param_types,
+                param_names,
+                ret_ty,
+            );
+
             let _ = table.declare(Symbol::new(
                 f.name.clone(),
                 SymbolKind::Function,
-                Type::Function(crate::types::FunctionType::with_names(
-                    param_types,
-                    param_names,
-                    ret_ty,
-                )),
+                Type::Function(signature.clone()),
                 None,
             ));
+            function_types.insert(f.name.clone(), signature);
         }
     }
 
@@ -359,6 +523,7 @@ pub(crate) fn prepare_symbols(ast: &Program) -> PreparedSymbols {
         target_values,
         const_names,
         resolved_targets,
+        function_types,
         errors,
     }
 }
@@ -565,13 +730,7 @@ fn lower_expr(
         AstExpr::MemberAccess { object, member } => match evaluator.eval_expr(expr) {
             EvalResult::Value(val) => SemanticExpr::Constant(val),
             _ => SemanticExpr::MemberAccess {
-                object: Box::new(lower_expr(
-                    &AstExpr::Identifier(object.clone()),
-                    evaluator,
-                    params,
-                    locals,
-                    consts,
-                )),
+                object: Box::new(lower_expr(object, evaluator, params, locals, consts)),
                 member: member.clone(),
             },
         },
@@ -598,7 +757,7 @@ fn lower_expr(
                     op: *op,
                     operand: Box::new(lower_expr(operand, evaluator, params, locals, consts)),
                 },
-                AstExpr::Call { callee, args } if callee == "offset" => {
+                AstExpr::Call { callee, args } if crate::registry::registry().is_receiver_method(callee) => {
                     // `offset` binding is receiver-type-directed and may only be
                     // resolvable at runtime (`p.offset(x = side)`), so its named
                     // delta components must survive lowering instead of being
@@ -640,13 +799,7 @@ fn lower_expr(
                         .collect(),
                 },
                 AstExpr::MemberCall { object, method, args } => SemanticExpr::MemberCall {
-                    object: Box::new(lower_expr(
-                        &AstExpr::Identifier(object.clone()),
-                        evaluator,
-                        params,
-                        locals,
-                        consts,
-                    )),
+                    object: Box::new(lower_expr(object, evaluator, params, locals, consts)),
                     member: method.clone(),
                     args: args
                         .iter()
@@ -1012,5 +1165,26 @@ mod expect_tests {
             errors.iter().any(|e| e.contains("only valid for plan-driven")),
             "{errors:?}"
         );
+    }
+}
+
+/// Numeric widening at a constant boundary: `Int` becomes `Float` when the
+/// declared type is `Float`, so the stored value and its type agree.
+fn coerce_constant(value: CompileTimeValue, expected: &Type) -> CompileTimeValue {
+    match (expected, value) {
+        (Type::Float, CompileTimeValue::Int(value)) => CompileTimeValue::Float(value as f64),
+        (_, other) => other,
+    }
+}
+
+/// Whether a type (including a function signature) contains the internal poison.
+fn type_contains_error(ty: &Type) -> bool {
+    match ty {
+        Type::Error => true,
+        Type::Function(signature) => {
+            signature.params.iter().any(type_contains_error)
+                || type_contains_error(&signature.return_type)
+        }
+        _ => false,
     }
 }

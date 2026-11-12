@@ -21,6 +21,7 @@
 | **Modelo temporal del movimiento** — Requested / Planned / Actual: el engine posee `Requested → Planned`, el ejecutor reporta `Actual` | ✅ vigente | `thalos-planning`, `thalos-core/src/execution` |
 | **Frontera de I/O físico** — el engine posee solo los puertos abstractos (`thalos-ports`); el I/O concreto (serial/TCP/ESP32) se movió a Thalos Industrial (F0, 2026-09-21) para no contaminar el workspace del engine | ✅ vigente | `thalos-ports/src/robot/transport.rs`; `thalos-industrial/backend/crates/thalos-transport` |
 | **Namespace numérico de ADRs** | 🔄 retirado | Los ADRs se eliminaron el 2026-09-20; las referencias en código se sustituyeron por nombres de contrato |
+| **Contrato semántico de tipos** — una sola resolución de anotaciones, `Joints<Unknown>` compatible sólo en fronteras, `accepts` como única regla, efectos declarativos y `Error` que no cruza la compilación; constructores y miembros declarados en un registro | ✅ Fases 1–3 | `thalos-lang/src/ast/type_expr.rs`, `thalos-language-service/src/{types,effects,registry,checker,compiler,evaluator}.rs`; spec normativa en `thalos-industrial/docs/lenguaje/sistema-tipos.md` |
 
 ## Fases cerradas
 
@@ -29,6 +30,7 @@
 | **1 — Extracción del engine** | El engine se separó de la aplicación; `thalos-runtime` dejó de estar en este repositorio | ✅ |
 | **2 — Cierre de frontera** | `thalos-runtime` consume el engine solo por `thalos-api`; superficie pública verificada por tests | ✅ |
 | **3 — Revisión de lanzamiento y congelación `v0.1.0`** | Revisión apta para consumo por Git: `check`/`test` (1384) / `examples` / `clippy -D warnings` / `doc` verdes; frontera probada con consumidor externo. Correcciones I1 (clippy), I3 (`test-support` fuera de producción) e I4 (Industrial importa la fachada, no el crate interno) aplicadas | ✅ (tag `v0.1.0`) |
+| **ST — Sistema de tipos (Fases 1–3 del plan)** | `TypeExpr` + `Joints<N>`, resolución única de anotaciones, `Dimension`/`Unknown`/`Error` separados, `Display`, `accepts`, validación de `const`/`state`, statements reactivos chequeados, efectos declarativos y `ValidatedProgram`. `TypeRegistry` con `ConstructorSpec`/`MemberSpec`: checker, evaluator, binder y lowering despachan por registro, no por strings. Constructores `PascalCase`, named args, `Quaternion.euler` y chaining postfix; alias minúsculos deprecados en tooling. Suite de conformidad y álgebra tipo/valor exhaustiva | ✅ |
 
 ## Deuda conocida
 

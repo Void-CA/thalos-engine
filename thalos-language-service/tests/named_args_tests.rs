@@ -71,11 +71,11 @@ fn out_of_range_named_joint_is_a_compile_error() {
 
 #[test]
 fn named_arguments_on_unsupported_callees_are_rejected() {
-    let source = "target P = position(x = 1mm)\nfn main() { movej(P) }";
+    let source = "fn main() {\n    custom_function(x = 1mm);\n}\n";
     let ast = parse_source(source).expect("source must parse");
     let errors = SemanticCompiler::compile(&ast).expect_err("must fail");
     assert!(
-        errors.iter().any(|e| e.contains("Named arguments are not supported for 'position'")),
+        errors.iter().any(|e| e.contains("Named arguments are not supported for 'custom_function'")),
         "unexpected errors: {errors:?}"
     );
 }

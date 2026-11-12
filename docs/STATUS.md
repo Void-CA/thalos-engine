@@ -19,6 +19,7 @@ Cadena: `.thls` → parse → compile → resolve → ir → validation → lowe
 | Parse `.thls` | 🟠 parcial | `thalos-lang/src/parser` (Chumsky) |
 | Compile / resolve / IR / lowering | ✅ | `thalos-language-service` |
 | Sistema dimensional (unidades, estrictez) | ✅ Fase 1; 🟠 álgebra evaluable | `thalos-lang/src/units`, `thalos-language-service` |
+| Sistema de tipos (anotaciones, `Joints<N>`, efectos, `Error` fuera del IR, registro y constructores `PascalCase`/chaining) | ✅ Fases 1–3 | `thalos-lang/src/ast/type_expr.rs`, `thalos-language-service/src/{types,effects,registry,checker,compiler,evaluator}.rs` |
 | `movec` (arco circular) | ✅ | `thalos-planning/src/motion/move_c.rs` |
 | IK (DLS) | ✅ | `thalos-core/src/kinematics/inverse` |
 | `ExecutionPlan` con joints + timing | ✅ | `thalos-planning/src/execution_plan_builder.rs` |

@@ -1,6 +1,9 @@
+use std::fmt;
 use std::hash::{Hash, Hasher};
 
 use serde::{Deserialize, Serialize};
+use thalos_lang::ast::{TypeArg, TypeExpr};
+use thalos_lang::span::Span;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FunctionType {
@@ -57,6 +60,21 @@ impl Hash for FunctionType {
     }
 }
 
+/// The dimension of a `Joints` configuration.
+///
+/// `Unknown` is **not** “any dimension”: it means the analysis does not know the
+/// dimension. It is compatible at assignment/call boundaries but never enables an
+/// operation that requires knowing the dimension.
+///
+/// Serde keeps the historical wire shape (`4` or `null`) so the frontend contract
+/// does not change in Fase 1.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Dimension {
+    Known(usize),
+    Unknown,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Type {
     // Primitives
@@ -84,16 +102,76 @@ pub enum Type {
     // Robot Semantics
     Position,
     Pose,
-    Joints { dimension: Option<usize> },
+    Joints { dimension: Dimension },
 
     // Functions & Special
     Function(FunctionType),
     Unit,
 
+    /// Analysis state: the type is not known yet. This is not a value type and
+    /// cannot be written as an annotation; it appears when a declaration omits
+    /// its annotation (parameters) or when inference cannot determine a type.
+    Unknown,
+
     /// Internal poison type: the expression's type could not be inferred
     /// because an error was already reported for it. It suppresses cascading
-    /// diagnostics and is never surfaced to the user.
+    /// diagnostics and never crosses the compilation boundary.
     Error,
+}
+
+/// A type annotation that could not be resolved.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeAnnotationError {
+    pub message: String,
+    pub span: Option<Span>,
+}
+
+impl TypeAnnotationError {
+    fn new(message: impl Into<String>, span: Span) -> Self {
+        Self {
+            message: message.into(),
+            span: Some(span),
+        }
+    }
+}
+
+/// Resolve a syntactic [`TypeExpr`] into a semantic [`Type`].
+///
+/// This is the single entry point for every annotation site: `let`, `const`,
+/// function/work parameters, return types and process `state`. Unknown names and
+/// invalid type arguments are errors, never silent fallbacks.
+pub fn resolve_type(annotation: &TypeExpr) -> Result<Type, TypeAnnotationError> {
+    match annotation {
+        TypeExpr::Name { name, span } => Type::from_name(name)
+            .ok_or_else(|| TypeAnnotationError::new(format!("Unknown type annotation '{name}'"), *span)),
+        TypeExpr::Applied { name, args, span } => {
+            if name != "Joints" {
+                return Err(TypeAnnotationError::new(
+                    format!("Type '{name}' does not take type arguments"),
+                    *span,
+                ));
+            }
+            if args.len() != 1 {
+                return Err(TypeAnnotationError::new(
+                    "Joints expects exactly one dimension argument",
+                    *span,
+                ));
+            }
+            match &args[0] {
+                TypeArg::Integer(dimension) if *dimension >= 1 => Ok(Type::Joints {
+                    dimension: Dimension::Known(*dimension),
+                }),
+                TypeArg::Integer(_) => Err(TypeAnnotationError::new(
+                    "Joints dimension must be greater than or equal to 1",
+                    *span,
+                )),
+                TypeArg::Type(_) => Err(TypeAnnotationError::new(
+                    "Joints dimension must be an integer literal",
+                    *span,
+                )),
+            }
+        }
+    }
 }
 
 impl Type {
@@ -112,14 +190,38 @@ impl Type {
         matches!(self, Type::Error)
     }
 
-    /// Numeric widening: an `Int` value satisfies a `Float` expectation.
+    pub fn is_unknown(&self) -> bool {
+        matches!(self, Type::Unknown)
+    }
+
+    /// The single compatibility rule: `expected.accepts(actual)`.
     ///
-    /// This is **not** subtyping and **not** dimensional coercion — it only
-    /// promotes between the two numeric representations of the `Number`
-    /// category. `Float` never satisfies `Int`, and no physical dimension is
-    /// ever silently satisfied by a `Number`.
-    pub fn accepts_numeric_widening(&self, actual: &Type) -> bool {
-        self == actual || (*self == Type::Float && *actual == Type::Int)
+    /// - `Int` satisfies `Float` (numeric promotion).
+    /// - `Joints<Unknown>` accepts a known dimension at a boundary.
+    /// - A known dimension never accepts an unknown one (it cannot be proven).
+    /// - `Unknown` (an unannotated parameter) accepts anything at the boundary.
+    /// - `Error` poisons compatibility; callers should check `is_error` first.
+    ///
+    /// This method deliberately contains **no per-operation exceptions**. A
+    /// command such as `movej` accepts `Joints<Unknown>` through its signature,
+    /// not by special-casing compatibility.
+    pub fn accepts(&self, actual: &Type) -> bool {
+        match (self, actual) {
+            (Type::Error, _) | (_, Type::Error) => false,
+            (Type::Unknown, _) => true,
+            (_, Type::Unknown) => false,
+            (Type::Float, Type::Int) => true,
+            (Type::Joints { dimension: Dimension::Unknown }, Type::Joints { .. }) => true,
+            (
+                Type::Joints { dimension: Dimension::Known(expected) },
+                Type::Joints { dimension: Dimension::Known(actual) },
+            ) => expected == actual,
+            (
+                Type::Joints { dimension: Dimension::Known(_) },
+                Type::Joints { dimension: Dimension::Unknown },
+            ) => false,
+            _ => self == actual,
+        }
     }
 
     pub fn from_name(name: &str) -> Option<Type> {
@@ -138,9 +240,46 @@ impl Type {
             "Transform3D" => Some(Type::Transform3D),
             "Position" => Some(Type::Position),
             "Pose" => Some(Type::Pose),
-            "Joints" => Some(Type::Joints { dimension: None }),
+            "Joints" => Some(Type::Joints {
+                dimension: Dimension::Unknown,
+            }),
             "Unit" => Some(Type::Unit),
             _ => None,
+        }
+    }
+}
+
+impl fmt::Display for Type {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Type::Bool => f.write_str("Bool"),
+            Type::Int => f.write_str("Int"),
+            Type::Float => f.write_str("Float"),
+            Type::String => f.write_str("String"),
+            Type::Length => f.write_str("Length"),
+            Type::Angle => f.write_str("Angle"),
+            Type::Duration => f.write_str("Duration"),
+            Type::Speed => f.write_str("Speed"),
+            Type::AngularSpeed => f.write_str("AngularSpeed"),
+            Type::Vector3 => f.write_str("Vector3"),
+            Type::Quaternion => f.write_str("Quaternion"),
+            Type::Transform3D => f.write_str("Transform3D"),
+            Type::Position => f.write_str("Position"),
+            Type::Pose => f.write_str("Pose"),
+            Type::Joints { dimension: Dimension::Known(n) } => write!(f, "Joints<{n}>"),
+            Type::Joints { dimension: Dimension::Unknown } => f.write_str("Joints"),
+            Type::Function(signature) => {
+                let params = signature
+                    .params
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(f, "({params}) -> {}", signature.return_type)
+            }
+            Type::Unit => f.write_str("Unit"),
+            Type::Unknown => f.write_str("Unknown"),
+            Type::Error => f.write_str("Error"),
         }
     }
 }
@@ -155,6 +294,13 @@ mod tests {
         let mut hasher = DefaultHasher::new();
         value.hash(&mut hasher);
         hasher.finish()
+    }
+
+    fn name(name: &str, start: usize) -> TypeExpr {
+        TypeExpr::Name {
+            name: name.to_string(),
+            span: Span::new(start, start + name.len()),
+        }
     }
 
     #[test]
@@ -194,5 +340,123 @@ mod tests {
         assert_eq!(sig.name_of(0), Some("x"));
         assert_eq!(sig.name_of(2), Some("z"));
         assert_eq!(sig.name_of(3), None);
+    }
+
+    #[test]
+    fn resolves_plain_and_applied_annotations() {
+        assert_eq!(resolve_type(&name("Position", 0)), Ok(Type::Position));
+        assert_eq!(
+            resolve_type(&name("Joints", 0)),
+            Ok(Type::Joints {
+                dimension: Dimension::Unknown
+            })
+        );
+
+        let applied = TypeExpr::Applied {
+            name: "Joints".to_string(),
+            args: vec![TypeArg::Integer(4)],
+            span: Span::new(0, 9),
+        };
+        assert_eq!(
+            resolve_type(&applied),
+            Ok(Type::Joints {
+                dimension: Dimension::Known(4)
+            })
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_and_invalid_annotations() {
+        let unknown = resolve_type(&name("Foo", 3)).expect_err("unknown type");
+        assert_eq!(unknown.message, "Unknown type annotation 'Foo'");
+        assert_eq!(unknown.span, Some(Span::new(3, 6)));
+
+        let zero = TypeExpr::Applied {
+            name: "Joints".to_string(),
+            args: vec![TypeArg::Integer(0)],
+            span: Span::new(0, 9),
+        };
+        assert!(resolve_type(&zero).is_err());
+
+        let not_applicable = TypeExpr::Applied {
+            name: "Position".to_string(),
+            args: vec![TypeArg::Integer(4)],
+            span: Span::new(0, 12),
+        };
+        assert!(resolve_type(&not_applicable).is_err());
+
+        let non_integer = TypeExpr::Applied {
+            name: "Joints".to_string(),
+            args: vec![TypeArg::Type(name("Position", 7))],
+            span: Span::new(0, 16),
+        };
+        assert!(resolve_type(&non_integer).is_err());
+    }
+
+    #[test]
+    fn joints_compatibility_separates_boundary_from_knowledge() {
+        let unknown = Type::Joints {
+            dimension: Dimension::Unknown,
+        };
+        let four = Type::Joints {
+            dimension: Dimension::Known(4),
+        };
+        let six = Type::Joints {
+            dimension: Dimension::Known(6),
+        };
+
+        assert!(unknown.accepts(&four), "unknown accepts a known dimension at a boundary");
+        assert!(four.accepts(&four));
+        assert!(!four.accepts(&six));
+        assert!(!four.accepts(&unknown), "a known dimension cannot be proven against unknown");
+        assert!(Type::Unknown.accepts(&four));
+        assert!(!four.accepts(&Type::Unknown));
+    }
+
+    #[test]
+    fn numeric_widening_is_the_only_promotion() {
+        assert!(Type::Float.accepts(&Type::Int));
+        assert!(!Type::Int.accepts(&Type::Float));
+        assert!(!Type::Length.accepts(&Type::Int));
+    }
+
+    #[test]
+    fn display_is_the_language_surface() {
+        assert_eq!(Type::Position.to_string(), "Position");
+        assert_eq!(
+            Type::Joints {
+                dimension: Dimension::Known(4)
+            }
+            .to_string(),
+            "Joints<4>"
+        );
+        assert_eq!(
+            Type::Joints {
+                dimension: Dimension::Unknown
+            }
+            .to_string(),
+            "Joints"
+        );
+        assert_eq!(
+            Type::Function(FunctionType::new(vec![Type::Length], Type::Position)).to_string(),
+            "(Length) -> Position"
+        );
+    }
+
+    #[test]
+    fn dimension_keeps_the_legacy_wire_shape() {
+        let known = serde_json::to_value(Dimension::Known(4)).expect("serialize");
+        assert_eq!(known, serde_json::json!(4));
+        let unknown = serde_json::to_value(Dimension::Unknown).expect("serialize");
+        assert_eq!(unknown, serde_json::json!(null));
+
+        assert_eq!(
+            serde_json::from_value::<Dimension>(serde_json::json!(4)).expect("deserialize"),
+            Dimension::Known(4)
+        );
+        assert_eq!(
+            serde_json::from_value::<Dimension>(serde_json::json!(null)).expect("deserialize"),
+            Dimension::Unknown
+        );
     }
 }

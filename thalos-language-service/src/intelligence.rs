@@ -21,14 +21,15 @@
 //! engine, so every consumer above this boundary deals exclusively in byte
 //! offsets.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
 use thalos_lang::ast::spanned::{
-    SpannedExpr, SpannedExprKind, SpannedItem, SpannedStatement, SpannedStatementKind,
+    SpannedExpr, SpannedExprKind, SpannedItem, SpannedProgram, SpannedStatement,
+    SpannedStatementKind,
 };
-use thalos_lang::ast::{Expr, Item, Statement};
+use thalos_lang::ast::{Expr, Item, Statement, TypeExpr};
 use thalos_lang::parser::parse_source_spanned;
 use thalos_lang::span::Span;
 
@@ -36,7 +37,7 @@ use crate::checker::TypeChecker;
 use crate::compiler::{prepare_symbols, PreparedSymbols};
 use crate::scope::{ScopeKind, SymbolTable};
 use crate::symbols::{Symbol, SymbolKind as InternalSymbolKind};
-use crate::types::{FunctionType, Type};
+use crate::types::{resolve_type, FunctionType, Type};
 use crate::{char_range_to_byte_span, Diagnostic, DiagnosticSeverity, SourceSpan, SymbolKind};
 
 /// Complete, revision-keyed analysis snapshot consumed by the editor.
@@ -179,7 +180,7 @@ pub fn analyze_intelligence(source: &str, revision: u64) -> DocumentIntelligence
         .map(|message| semantic_diagnostic(source, message, None))
         .collect();
 
-    let signatures = collect_signatures(&table);
+    let mut signatures = collect_signatures(&table);
 
     // Global declarations (targets + consts) carry their type in the table.
     for item in &spanned.items {
@@ -199,7 +200,7 @@ pub fn analyze_intelligence(source: &str, revision: u64) -> DocumentIntelligence
                     decl.type_ann.is_some(),
                 );
                 push_token(&mut tokens, SemanticTokenKind::Const, source, decl.name_span);
-                if let Some(type_span) = decl.type_span {
+                if let Some(type_span) = decl.type_ann.as_ref().map(TypeExpr::span) {
                     push_token(&mut tokens, SemanticTokenKind::Type, source, type_span);
                 }
                 collect_tokens_expr(&decl.value, &table, source, &mut tokens);
@@ -232,7 +233,7 @@ pub fn analyze_intelligence(source: &str, revision: u64) -> DocumentIntelligence
                     detail: Some(format!("fn {}({} params)", decl.name, decl.params.len())),
                 });
                 push_token(&mut tokens, SemanticTokenKind::Function, source, decl.name_span);
-                if let Some(type_span) = decl.return_type_span {
+                if let Some(type_span) = decl.return_type.as_ref().map(TypeExpr::span) {
                     push_token(&mut tokens, SemanticTokenKind::Type, source, type_span);
                 }
             }
@@ -243,30 +244,37 @@ pub fn analyze_intelligence(source: &str, revision: u64) -> DocumentIntelligence
         }
     }
 
+    let processes: HashSet<String> = program
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Process(process) => Some(process.name.clone()),
+            _ => None,
+        })
+        .collect();
+
     // Function bodies: check for diagnostics + collect expression/binding types.
-    let mut checker = TypeChecker::new(&mut table);
+    let mut checker = TypeChecker::new(&mut table).with_processes(&processes);
     for (spanned_item, item) in spanned.items.iter().zip(program.items.iter()) {
         let (SpannedItem::Function(spanned_fn), Item::Function(fn_decl)) = (spanned_item, item)
         else {
             continue;
         };
 
-        let expected_ret = fn_decl
-            .return_type
-            .as_deref()
-            .and_then(Type::from_name)
-            .unwrap_or(Type::Unit);
+        let expected_ret = match fn_decl.return_type.as_ref() {
+            Some(annotation) => resolve_type(annotation).unwrap_or(Type::Error),
+            None => Type::Unit,
+        };
 
         checker.current_fn_name = Some(fn_decl.name.clone());
         checker.current_fn_return_type = Some(expected_ret.clone());
         checker.symbol_table.push_scope(ScopeKind::Function);
 
         for (spanned_param, param) in spanned_fn.params.iter().zip(fn_decl.params.iter()) {
-            let param_ty = param
-                .type_ann
-                .as_deref()
-                .and_then(Type::from_name)
-                .unwrap_or(Type::Position);
+            let param_ty = match param.type_ann.as_ref() {
+                Some(annotation) => resolve_type(annotation).unwrap_or(Type::Error),
+                None => Type::Unknown,
+            };
             let _ = checker.symbol_table.declare(Symbol::new(
                 param.name.clone(),
                 InternalSymbolKind::Parameter,
@@ -290,7 +298,7 @@ pub fn analyze_intelligence(source: &str, revision: u64) -> DocumentIntelligence
                 source,
                 spanned_param.name_span,
             );
-            if let Some(type_span) = spanned_param.type_span {
+            if let Some(type_span) = param.type_ann.as_ref().map(TypeExpr::span) {
                 push_token(&mut tokens, SemanticTokenKind::Type, source, type_span);
             }
         }
@@ -336,6 +344,29 @@ pub fn analyze_intelligence(source: &str, revision: u64) -> DocumentIntelligence
             .into_iter()
             .map(|diag| semantic_diagnostic(source, diag.message, diag.span)),
     );
+    collect_deprecations(&spanned, source, &mut diagnostics);
+
+    // `Error` is an internal analysis state: never expose it on the wire.
+    for symbol in &mut symbols {
+        symbol.ty = public_type(std::mem::replace(&mut symbol.ty, Type::Unknown));
+    }
+    for hint in &mut hints {
+        hint.ty = public_type(std::mem::replace(&mut hint.ty, Type::Unknown));
+    }
+    for expr in &mut expressions {
+        expr.ty = public_type(std::mem::replace(&mut expr.ty, Type::Unknown));
+    }
+    for signature in &mut signatures {
+        for overload in &mut signature.overloads {
+            overload.params = overload
+                .params
+                .drain(..)
+                .map(public_type)
+                .collect::<Vec<_>>();
+            *overload.return_type =
+                public_type(std::mem::replace(&mut *overload.return_type, Type::Unknown));
+        }
+    }
 
     DocumentIntelligence {
         revision,
@@ -345,6 +376,150 @@ pub fn analyze_intelligence(source: &str, revision: u64) -> DocumentIntelligence
         signatures,
         diagnostics,
         tokens,
+    }
+}
+
+/// Map the internal poison type to the public `Unknown` state.
+fn public_type(ty: Type) -> Type {
+    match ty {
+        Type::Error => Type::Unknown,
+        Type::Function(signature) => Type::Function(FunctionType {
+            params: signature.params.into_iter().map(public_type).collect(),
+            param_names: signature.param_names,
+            return_type: Box::new(public_type(*signature.return_type)),
+        }),
+        other => other,
+    }
+}
+
+/// Emit `THL_LEGACY_CONSTRUCTOR` warnings for lowercase constructor aliases.
+fn collect_deprecations(spanned: &SpannedProgram, source: &str, diagnostics: &mut Vec<Diagnostic>) {
+    for item in &spanned.items {
+        match item {
+            SpannedItem::Const(decl) => {
+                collect_deprecations_expr(&decl.value, source, diagnostics);
+            }
+            SpannedItem::Target(decl) => {
+                collect_deprecations_expr(&decl.pose, source, diagnostics);
+            }
+            SpannedItem::Function(decl) => {
+                for statement in &decl.body {
+                    collect_deprecations_statement(statement, source, diagnostics);
+                }
+                if let Some(tail) = &decl.tail_expr {
+                    collect_deprecations_expr(tail, source, diagnostics);
+                }
+            }
+            SpannedItem::Use { .. }
+            | SpannedItem::Process { .. }
+            | SpannedItem::Work { .. }
+            | SpannedItem::Expect { .. } => {}
+        }
+    }
+}
+
+fn collect_deprecations_statement(
+    statement: &SpannedStatement,
+    source: &str,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    match &statement.kind {
+        SpannedStatementKind::Let { value, .. } => {
+            collect_deprecations_expr(value, source, diagnostics);
+        }
+        SpannedStatementKind::MoveJ { target } | SpannedStatementKind::MoveL { target } => {
+            collect_deprecations_expr(target, source, diagnostics);
+        }
+        SpannedStatementKind::MoveC { via, target } => {
+            collect_deprecations_expr(via, source, diagnostics);
+            collect_deprecations_expr(target, source, diagnostics);
+        }
+        SpannedStatementKind::Wait(expr) => collect_deprecations_expr(expr, source, diagnostics),
+        SpannedStatementKind::SetOutput { value, .. } => {
+            collect_deprecations_expr(value, source, diagnostics);
+        }
+        SpannedStatementKind::If {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            collect_deprecations_expr(condition, source, diagnostics);
+            for statement in then_branch {
+                collect_deprecations_statement(statement, source, diagnostics);
+            }
+            if let Some(branch) = else_branch {
+                for statement in branch {
+                    collect_deprecations_statement(statement, source, diagnostics);
+                }
+            }
+        }
+        SpannedStatementKind::Request { args, .. } => {
+            for arg in args {
+                collect_deprecations_expr(&arg.value, source, diagnostics);
+            }
+        }
+        SpannedStatementKind::Assign { value, .. } => {
+            collect_deprecations_expr(value, source, diagnostics);
+        }
+        SpannedStatementKind::Start { .. } => {}
+        SpannedStatementKind::Expr(expr) => collect_deprecations_expr(expr, source, diagnostics),
+    }
+}
+
+fn collect_deprecations_expr(
+    expr: &SpannedExpr,
+    source: &str,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    match &expr.kind {
+        SpannedExprKind::Call {
+            callee,
+            callee_span,
+            args,
+        } => {
+            if let Some(replacement) = crate::registry::registry().legacy_replacement(callee) {
+                diagnostics.push(Diagnostic {
+                    severity: DiagnosticSeverity::Warning,
+                    code: Some("THL_LEGACY_CONSTRUCTOR".to_string()),
+                    message: format!(
+                        "Constructor '{}' is deprecated; use '{}' instead",
+                        callee, replacement
+                    ),
+                    span: byte_span(source, *callee_span),
+                });
+            }
+            for arg in args {
+                collect_deprecations_expr(&arg.value, source, diagnostics);
+            }
+        }
+        SpannedExprKind::MemberCall { object, args, .. } => {
+            collect_deprecations_expr(object, source, diagnostics);
+            for arg in args {
+                collect_deprecations_expr(&arg.value, source, diagnostics);
+            }
+        }
+        SpannedExprKind::MemberAccess { object, .. } => {
+            collect_deprecations_expr(object, source, diagnostics);
+        }
+        SpannedExprKind::Vector3(elements) => {
+            for element in elements {
+                collect_deprecations_expr(element, source, diagnostics);
+            }
+        }
+        SpannedExprKind::Binary { left, right, .. } => {
+            collect_deprecations_expr(left, source, diagnostics);
+            collect_deprecations_expr(right, source, diagnostics);
+        }
+        SpannedExprKind::Unary { operand, .. } => {
+            collect_deprecations_expr(operand, source, diagnostics);
+        }
+        SpannedExprKind::Identifier(_)
+        | SpannedExprKind::Number(_)
+        | SpannedExprKind::StringLiteral(_)
+        | SpannedExprKind::Boolean(_)
+        | SpannedExprKind::Length(_)
+        | SpannedExprKind::Angle(_)
+        | SpannedExprKind::Duration(_) => {}
     }
 }
 
@@ -426,6 +601,8 @@ fn collect_statement(
             },
             Statement::Let { type_ann, value, .. },
         ) => {
+            // Keep the inferred type: an annotation is a checked assertion, not
+            // a coercion (see `let n: Float = 1`).
             let ty = checker.infer_expr_silent(value).ty;
             symbols.push(TypedSymbol {
                 name: name.clone(),
@@ -518,19 +695,6 @@ fn collect_expr(
                 collect_expr(sx, sy, checker, source, expressions);
             }
         }
-        (
-            SpannedExprKind::Pose {
-                position: sp,
-                orientation: so,
-            },
-            Expr::Pose {
-                position: p,
-                orientation: o,
-            },
-        ) => {
-            collect_expr(sp, p, checker, source, expressions);
-            collect_expr(so, o, checker, source, expressions);
-        }
         // NOTE: the semantic side is the *normalized* program, so a named call
         // may have more (defaulted) positional args than the spanned source.
         // `zip` truncates to the source args; for `joints` every member is an
@@ -540,10 +704,28 @@ fn collect_expr(
                 collect_expr(&s.value, &d.value, checker, source, expressions);
             }
         }
-        (SpannedExprKind::MemberCall { args: sa, .. }, Expr::MemberCall { args, .. }) => {
+        (
+            SpannedExprKind::MemberCall {
+                object: so,
+                args: sa,
+                ..
+            },
+            Expr::MemberCall {
+                object: o,
+                args,
+                ..
+            },
+        ) => {
+            collect_expr(so, o, checker, source, expressions);
             for (s, d) in sa.iter().zip(args.iter()) {
                 collect_expr(&s.value, &d.value, checker, source, expressions);
             }
+        }
+        (
+            SpannedExprKind::MemberAccess { object: so, .. },
+            Expr::MemberAccess { object: o, .. },
+        ) => {
+            collect_expr(so, o, checker, source, expressions);
         }
         (
             SpannedExprKind::Binary {
@@ -607,13 +789,13 @@ fn collect_tokens_statement(
     match &spanned.kind {
         SpannedStatementKind::Let {
             name_span,
-            type_span,
+            type_ann,
             value,
             ..
         } => {
             push_token(tokens, SemanticTokenKind::Variable, source, *name_span);
-            if let Some(type_span) = type_span {
-                push_token(tokens, SemanticTokenKind::Type, source, *type_span);
+            if let Some(type_span) = type_ann.as_ref().map(TypeExpr::span) {
+                push_token(tokens, SemanticTokenKind::Type, source, type_span);
             }
             collect_tokens_expr(value, symbols, source, tokens);
         }
@@ -682,41 +864,28 @@ fn collect_tokens_expr(
         }
         SpannedExprKind::MemberCall {
             object,
-            object_span,
             method_span,
             args,
             ..
         } => {
             push_token(tokens, SemanticTokenKind::Method, source, *method_span);
-            if let Some(kind) = classify_identifier(object, symbols) {
-                push_token(tokens, kind, source, *object_span);
-            }
+            collect_tokens_expr(object, symbols, source, tokens);
             for arg in args {
                 collect_tokens_expr(&arg.value, symbols, source, tokens);
             }
         }
         SpannedExprKind::MemberAccess {
             object,
-            object_span,
             member_span,
             ..
         } => {
             push_token(tokens, SemanticTokenKind::Property, source, *member_span);
-            if let Some(kind) = classify_identifier(object, symbols) {
-                push_token(tokens, kind, source, *object_span);
-            }
+            collect_tokens_expr(object, symbols, source, tokens);
         }
         SpannedExprKind::Vector3(elements) => {
             for element in elements {
                 collect_tokens_expr(element, symbols, source, tokens);
             }
-        }
-        SpannedExprKind::Pose {
-            position,
-            orientation,
-        } => {
-            collect_tokens_expr(position, symbols, source, tokens);
-            collect_tokens_expr(orientation, symbols, source, tokens);
         }
         SpannedExprKind::Binary { left, right, .. } => {
             collect_tokens_expr(left, symbols, source, tokens);

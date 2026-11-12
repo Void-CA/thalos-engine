@@ -2,17 +2,18 @@ use serde::{Deserialize, Serialize};
 use crate::ast::expression::Expr;
 use crate::ast::statement::Statement;
 use crate::ast::target::TargetDecl;
+use crate::ast::type_expr::TypeExpr;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Param {
     pub name: String,
-    pub type_ann: Option<String>,
+    pub type_ann: Option<TypeExpr>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConstDecl {
     pub name: String,
-    pub type_ann: Option<String>,
+    pub type_ann: Option<TypeExpr>,
     pub value: Expr,
 }
 
@@ -20,7 +21,7 @@ pub struct ConstDecl {
 pub struct FnDecl {
     pub name: String,
     pub params: Vec<Param>,
-    pub return_type: Option<String>,
+    pub return_type: Option<TypeExpr>,
     pub body: Vec<Statement>,
     pub tail_expr: Option<Box<Expr>>,
 }
@@ -70,7 +71,7 @@ pub struct UseDecl {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StateDecl {
     pub name: String,
-    pub type_ann: Option<String>,
+    pub type_ann: Option<TypeExpr>,
     pub value: Expr,
 }
 

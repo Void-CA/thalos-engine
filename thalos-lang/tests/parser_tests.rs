@@ -7,6 +7,13 @@ fn char_slice(source: &str, span: thalos_lang::Span) -> String {
     source.chars().skip(span.start).take(span.end - span.start).collect()
 }
 
+fn spanned_ident(expr: &SpannedExpr) -> &str {
+    match &expr.kind {
+        SpannedExprKind::Identifier(name) => name,
+        other => panic!("expected an identifier, got {other:?}"),
+    }
+}
+
 #[test]
 fn test_parse_simple_program() {
     let source = r#"
@@ -271,7 +278,7 @@ fn main() {
             args,
             ..
         } => {
-            assert_eq!(object, "P");
+            assert_eq!(spanned_ident(object), "P");
             assert_eq!(method, "offset");
             assert_eq!(args.len(), 1);
             assert_eq!(args[0].name.as_deref(), Some("x"));
@@ -300,7 +307,7 @@ fn main() {
 
     match &target.kind {
         SpannedExprKind::MemberAccess { object, member, .. } => {
-            assert_eq!(object, "P");
+            assert_eq!(spanned_ident(object), "P");
             assert_eq!(member, "x");
         }
         other => panic!("expected member access, got {other:?}"),
@@ -319,11 +326,11 @@ fn test_parse_captures_type_and_member_spans() {
     };
     let param = &f.params[0];
     assert_eq!(char_slice(source, param.name_span), "p");
-    assert_eq!(char_slice(source, param.type_span.expect("param type span")), "Position");
+    assert_eq!(char_slice(source, param.type_ann.as_ref().expect("param type annotation").span()), "Position");
 
     let SpannedStatementKind::Let {
         name_span,
-        type_span,
+        type_ann,
         value,
         ..
     } = &f.body[0].kind
@@ -331,17 +338,17 @@ fn test_parse_captures_type_and_member_spans() {
         panic!("expected let");
     };
     assert_eq!(char_slice(source, *name_span), "q");
-    assert_eq!(char_slice(source, type_span.expect("let type span")), "Length");
+    assert_eq!(char_slice(source, type_ann.as_ref().expect("let type annotation").span()), "Length");
 
     let SpannedExprKind::MemberCall {
-        object_span,
+        object,
         method_span,
         ..
     } = &value.kind
     else {
         panic!("expected member call, got {:?}", value.kind);
     };
-    assert_eq!(char_slice(source, *object_span), "p");
+    assert_eq!(char_slice(source, object.span), "p");
     assert_eq!(char_slice(source, *method_span), "offset");
 }
 
@@ -586,4 +593,83 @@ fn expectation_requires_a_comparison_operator() {
         parse_source("expect oven.temperature 75.0\nfn main() { }").is_err(),
         "a bare value is not an expectation"
     );
+}
+
+#[test]
+fn test_parse_type_expr_plain_and_applied() {
+    let source = r#"const NAMES: Joints = joints(0deg, 1deg)
+
+fn f(j: Joints<4>) -> Position {
+    let local: Joints<2> = j
+    j
+}
+"#;
+    let program = parse_source(source).expect("must parse");
+
+    let Item::Const(constant) = &program.items[0] else {
+        panic!("expected const");
+    };
+    let TypeExpr::Name { name, span } = constant.type_ann.as_ref().expect("const annotation")
+    else {
+        panic!("expected a plain type name");
+    };
+    assert_eq!(name, "Joints");
+    assert_eq!(char_slice(source, *span), "Joints");
+
+    let Item::Function(function) = &program.items[1] else {
+        panic!("expected function");
+    };
+    let TypeExpr::Applied { name, args, span } = function
+        .params
+        .first()
+        .and_then(|param| param.type_ann.as_ref())
+        .expect("param annotation")
+    else {
+        panic!("expected an applied type");
+    };
+    assert_eq!(name, "Joints");
+    assert_eq!(args, &vec![TypeArg::Integer(4)]);
+    assert_eq!(char_slice(source, *span), "Joints<4>");
+
+    let TypeExpr::Name { name, span } = function.return_type.as_ref().expect("return annotation")
+    else {
+        panic!("expected a plain return type");
+    };
+    assert_eq!(name, "Position");
+    assert_eq!(char_slice(source, *span), "Position");
+
+    let Statement::Let { type_ann, .. } = &function.body[0] else {
+        panic!("expected let");
+    };
+    let TypeExpr::Applied { name, args, .. } = type_ann.as_ref().expect("let annotation") else {
+        panic!("expected an applied let annotation");
+    };
+    assert_eq!(name, "Joints");
+    assert_eq!(args, &vec![TypeArg::Integer(2)]);
+}
+
+#[test]
+fn test_parse_type_expr_accepts_non_resolvable_arguments() {
+    // The parser preserves the written shape; resolution (not parsing) decides
+    // whether `Joints<0>` or a nested type argument are valid.
+    let source = "fn zero(j: Joints<0>) {}\nfn nested(j: Joints<Position>) {}\n";
+    let program = parse_source(source).expect("must parse");
+
+    let Item::Function(zero) = &program.items[0] else {
+        panic!("expected function");
+    };
+    let TypeExpr::Applied { args, .. } = zero.params[0].type_ann.as_ref().expect("annotation")
+    else {
+        panic!("expected an applied type");
+    };
+    assert_eq!(args, &vec![TypeArg::Integer(0)]);
+
+    let Item::Function(nested) = &program.items[1] else {
+        panic!("expected function");
+    };
+    let TypeExpr::Applied { args, .. } = nested.params[0].type_ann.as_ref().expect("annotation")
+    else {
+        panic!("expected an applied type");
+    };
+    assert!(matches!(args.as_slice(), [TypeArg::Type(_)]));
 }

@@ -21,6 +21,8 @@ use thalos_lang::ast::{
 };
 use thalos_lang::units::AngleRadians;
 
+use crate::registry::{registry, ConstructorBinding};
+
 /// Rewrite every named-argument call in `program` into canonical positional
 /// form, returning the rewritten program and any binding errors.
 pub fn normalize_program(program: &Program) -> (Program, Vec<String>) {
@@ -185,13 +187,6 @@ fn normalize_expr(expr: &Expr, errors: &mut Vec<String>) -> Expr {
             Box::new(normalize_expr(y, errors)),
             Box::new(normalize_expr(z, errors)),
         ]),
-        Expr::Pose {
-            position,
-            orientation,
-        } => Expr::Pose {
-            position: Box::new(normalize_expr(position, errors)),
-            orientation: Box::new(normalize_expr(orientation, errors)),
-        },
         Expr::Binary { left, op, right } => Expr::Binary {
             left: Box::new(normalize_expr(left, errors)),
             op: *op,
@@ -205,19 +200,31 @@ fn normalize_expr(expr: &Expr, errors: &mut Vec<String>) -> Expr {
             let normalized = normalize_args(args, errors);
             normalize_call(callee, normalized, errors)
         }
+        Expr::MemberAccess { object, member } => Expr::MemberAccess {
+            object: Box::new(normalize_expr(object, errors)),
+            member: member.clone(),
+        },
         Expr::MemberCall {
             object,
             method,
             args,
         } => {
+            let object = normalize_expr(object, errors);
             let normalized = normalize_args(args, errors);
+
+            // Associated constructor: `Quaternion.euler(...)` is a constructor
+            // named by the type, not a value member.
+            if let Expr::Identifier(name) = &object
+                && name == "Quaternion"
+                && method == "euler"
+            {
+                return normalize_call("Quaternion.euler", normalized, errors);
+            }
+
             if !crate::member_schema::is_member_operation(method) {
-                errors.push(format!(
-                    "Unknown member operation '{}' on '{}'",
-                    method, object
-                ));
+                errors.push(format!("Unknown member operation '{}'", method));
                 return Expr::MemberCall {
-                    object: object.clone(),
+                    object: Box::new(object),
                     method: method.clone(),
                     args: normalized,
                 };
@@ -225,7 +232,7 @@ fn normalize_expr(expr: &Expr, errors: &mut Vec<String>) -> Expr {
             // `receiver.op(args)` desugars to `op(receiver, args)`; the operation
             // itself (e.g. `offset`) owns all its semantics.
             let mut call_args = Vec::with_capacity(normalized.len() + 1);
-            call_args.push(Arg::positional(Expr::Identifier(object.clone())));
+            call_args.push(Arg::positional(object));
             call_args.extend(normalized);
             normalize_call(method, call_args, errors)
         }
@@ -243,25 +250,109 @@ fn normalize_args(args: &[Arg], errors: &mut Vec<String>) -> Vec<Arg> {
 }
 
 fn normalize_call(callee: &str, args: Vec<Arg>, errors: &mut Vec<String>) -> Expr {
-    if callee == "joints" {
-        return normalize_joints(callee, args, errors);
+    // Constructor binding is declared in the registry; the binder only applies
+    // it. This keeps `joints`/`offset` from being string special-cases here.
+    match registry().binding_of(callee) {
+        Some(ConstructorBinding::JointIndex) => normalize_joints(callee, args, errors),
+        Some(ConstructorBinding::ReceiverDirected) => {
+            // `offset` binding is receiver-type-directed, so it cannot be
+            // resolved here (types are not known yet). Named delta arguments
+            // are preserved and canonicalized later by `crate::offset`.
+            Expr::Call {
+                callee: callee.to_string(),
+                args,
+            }
+        }
+        Some(ConstructorBinding::Positional) => {
+            normalize_positional(callee, args, errors)
+        }
+        None => {
+            if args.iter().any(Arg::is_named) {
+                errors.push(format!("Named arguments are not supported for '{}'", callee));
+            }
+            Expr::Call {
+                callee: callee.to_string(),
+                args: drop_names(args),
+            }
+        }
     }
-    if callee == "offset" {
-        // `offset` binding is receiver-type-directed, so it cannot be resolved
-        // here (types are not known yet). Named delta arguments are preserved
-        // and canonicalized later by `crate::offset`, called from the checker
-        // and the evaluator.
+}
+
+/// Canonicalize a constructor with named arguments into positional order.
+///
+/// The registry declares the parameter names; the binder only selects the
+/// overload whose names match and reorders the arguments.
+fn normalize_positional(callee: &str, args: Vec<Arg>, errors: &mut Vec<String>) -> Expr {
+    if !args.iter().any(Arg::is_named) {
         return Expr::Call {
             callee: callee.to_string(),
-            args,
+            args: drop_names(args),
         };
     }
-    if args.iter().any(Arg::is_named) {
-        errors.push(format!("Named arguments are not supported for '{}'", callee));
+    if args.iter().any(|arg| !arg.is_named()) {
+        errors.push(format!(
+            "{} cannot mix named and positional arguments",
+            callee
+        ));
+        return Expr::Call {
+            callee: callee.to_string(),
+            args: drop_names(args),
+        };
+    }
+
+    let names: Vec<&str> = args
+        .iter()
+        .map(|arg| arg.name.as_deref().unwrap_or_default())
+        .collect();
+    let overloads = registry()
+        .constructor_overloads(callee)
+        .unwrap_or_default();
+    let Some(spec) = overloads.iter().find(|spec| {
+        spec.param_names.len() >= args.len()
+            && names
+                .iter()
+                .all(|name| spec.param_names.iter().any(|param| param == name))
+    }) else {
+        errors.push(format!(
+            "Unknown named arguments for '{}': {}",
+            callee,
+            names.join(", ")
+        ));
+        return Expr::Call {
+            callee: callee.to_string(),
+            args: drop_names(args),
+        };
+    };
+
+    let mut slots: Vec<Option<Expr>> = vec![None; spec.params.len()];
+    for arg in args {
+        let name = arg.name.as_deref().unwrap_or_default();
+        let Some(index) = spec.param_names.iter().position(|param| param == name) else {
+            errors.push(format!("Unknown argument '{name}' for '{callee}'"));
+            continue;
+        };
+        if slots[index].is_some() {
+            errors.push(format!("Duplicate argument '{name}' for '{callee}'"));
+            continue;
+        }
+        slots[index] = Some(arg.value);
+    }
+    if let Some(missing) = slots.iter().position(Option::is_none) {
+        errors.push(format!(
+            "Missing argument '{}' for '{}'",
+            spec.param_names
+                .get(missing)
+                .map(String::as_str)
+                .unwrap_or("?"),
+            callee
+        ));
     }
     Expr::Call {
         callee: callee.to_string(),
-        args: drop_names(args),
+        args: slots
+            .into_iter()
+            .filter_map(|value| value.map(Arg::positional))
+            .collect(),
     }
 }
 
@@ -421,13 +512,13 @@ mod tests {
     #[test]
     fn named_args_on_other_callees_are_rejected() {
         let call = Expr::Call {
-            callee: "position".to_string(),
+            callee: "custom_function".to_string(),
             args: vec![Arg::named("x", angle(10.0))],
         };
         let (_, errors) = normalize_single(call);
         assert_eq!(
             errors,
-            vec!["Named arguments are not supported for 'position'".to_string()]
+            vec!["Named arguments are not supported for 'custom_function'".to_string()]
         );
     }
 }

@@ -1,11 +1,12 @@
 use serde::{Deserialize, Serialize};
 use crate::ast::expression::{Arg, Expr};
+use crate::ast::type_expr::TypeExpr;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Statement {
     Let {
         name: String,
-        type_ann: Option<String>,
+        type_ann: Option<TypeExpr>,
         value: Expr,
     },
     MoveJ {

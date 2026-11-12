@@ -172,7 +172,7 @@ impl ReactiveExpr {
         match self {
             ReactiveExpr::Constant(v) => v.get_type(),
             ReactiveExpr::Signal { ty, .. } => ty.as_type(),
-            ReactiveExpr::Local { .. } | ReactiveExpr::Parameter { .. } => Type::Error,
+            ReactiveExpr::Local { .. } | ReactiveExpr::Parameter { .. } => Type::Unknown,
             ReactiveExpr::Unary { operand, .. } => operand.ty(),
             ReactiveExpr::Binary { left, op, .. } => match op {
                 BinaryOp::Gt | BinaryOp::Lt | BinaryOp::Gte | BinaryOp::Lte | BinaryOp::Eq
@@ -374,7 +374,7 @@ impl<'a> LowerCtx<'a> {
                     }
                     Some(other) => self
                         .errors
-                        .push(format!("wait expected Duration, got {:?}", other.get_type())),
+                        .push(format!("wait expected Duration, got {}", other.get_type())),
                     None => self
                         .errors
                         .push("wait duration is not resolvable at compile time".to_string()),

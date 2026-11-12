@@ -26,9 +26,11 @@ use thalos_lang::ast::{
 };
 
 use crate::compiler::prepare_symbols;
+use crate::effects::{analyze_function_effects, EffectSet};
 use crate::evaluator::{CompileTimeValue, EvalResult, Evaluator};
 use crate::reactive::{SignalRef, SignalSchema, SignalType};
 use crate::reactive_eval::RuntimeValue;
+use crate::types::{resolve_type, Type};
 
 // ───────────────────────────────────────────────────────────────────────────
 // IR
@@ -113,6 +115,9 @@ pub enum TokenEvent {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PState {
     pub name: String,
+    /// Declared or inferred type of the state. `Unknown` when the initializer
+    /// was not constant; `Error` poisons the compile.
+    pub ty: Type,
     pub init: PExpr,
 }
 
@@ -158,6 +163,8 @@ struct Ctx<'a> {
     aliases: &'a BTreeMap<String, String>,
     schema: &'a SignalSchema,
     states: &'a HashSet<String>,
+    state_types: &'a HashMap<String, Type>,
+    function_effects: &'a HashMap<String, EffectSet>,
     tokens: &'a HashSet<String>,
     locals: &'a HashSet<String>,
     functions: &'a HashMap<String, &'a FnDecl>,
@@ -176,7 +183,10 @@ impl Ctx<'_> {
                     Err(format!("unknown identifier '{id}'"))
                 }
             }
-            AstExpr::MemberAccess { object, member } => self.signal(object, member),
+            AstExpr::MemberAccess { object, member } => match object.as_ref() {
+                AstExpr::Identifier(module) => self.signal(module, member),
+                _ => Err("signal access requires a module name".to_string()),
+            },
             AstExpr::Binary { left, op, right } => Ok(PExpr::Binary {
                 left: Box::new(self.expr(left)?),
                 op: *op,
@@ -210,12 +220,23 @@ impl Ctx<'_> {
         for stmt in stmts {
             match stmt {
                 AstStatement::Assign { name, value } => {
-                    if !self.states.contains(name) {
+                    let Some(state_ty) = self.state_types.get(name).cloned() else {
                         return Err(format!("unknown state '{name}'"));
+                    };
+                    let value_expr = coerce_p_expr(self.expr(value)?, &state_ty);
+                    let value_ty = p_expr_type(&value_expr, self.state_types);
+                    if !state_ty.is_error()
+                        && !value_ty.is_error()
+                        && !state_ty.accepts(&value_ty)
+                    {
+                        return Err(format!(
+                            "state '{name}' expected {}, got {}",
+                            state_ty, value_ty
+                        ));
                     }
                     out.push(PStmt::SetState {
                         name: name.clone(),
-                        value: self.expr(value)?,
+                        value: value_expr,
                     });
                 }
                 AstStatement::Request { name, args, token } => {
@@ -288,7 +309,12 @@ impl Ctx<'_> {
                         }
                         // Any call is rejected; the message distinguishes physical
                         // from pure, but neither is accepted as a statement.
-                        if self.fn_has_physical_effects(callee, &mut HashSet::new())? {
+                        if self
+                            .function_effects
+                            .get(callee)
+                            .map(EffectSet::has_physical)
+                            .unwrap_or(false)
+                        {
                             return Err(format!(
                                 "physical operation '{callee}' is not allowed in {}",
                                 scope_name(scope)
@@ -321,75 +347,6 @@ impl Ctx<'_> {
         Ok(out)
     }
 
-    /// Whether a function produces physical/IO effects, directly or transitively.
-    ///
-    /// `visited` guards against call cycles. `set_output` is recognized in both AST
-    /// forms: the dedicated [`AstStatement::SetOutput`] and the
-    /// `Expr::Call { callee: "set_output" }` form used when the output name is a
-    /// string literal.
-    fn fn_has_physical_effects(
-        &self,
-        name: &str,
-        visited: &mut HashSet<String>,
-    ) -> Result<bool, String> {
-        if !visited.insert(name.to_string()) {
-            return Ok(false);
-        }
-        let Some(function) = self.functions.get(name) else {
-            return Err(format!("unknown function '{name}'"));
-        };
-        for stmt in &function.body {
-            if self.stmt_has_physical(stmt, visited)? {
-                return Ok(true);
-            }
-        }
-        Ok(false)
-    }
-
-    fn stmt_has_physical(
-        &self,
-        stmt: &AstStatement,
-        visited: &mut HashSet<String>,
-    ) -> Result<bool, String> {
-        Ok(match stmt {
-            AstStatement::MoveJ { .. }
-            | AstStatement::MoveL { .. }
-            | AstStatement::MoveC { .. }
-            | AstStatement::Wait(_)
-            | AstStatement::SetOutput { .. }
-            | AstStatement::Start { .. } => true,
-            AstStatement::If {
-                then_branch,
-                else_branch,
-                ..
-            } => {
-                for s in then_branch {
-                    if self.stmt_has_physical(s, visited)? {
-                        return Ok(true);
-                    }
-                }
-                if let Some(branch) = else_branch {
-                    for s in branch {
-                        if self.stmt_has_physical(s, visited)? {
-                            return Ok(true);
-                        }
-                    }
-                }
-                false
-            }
-            AstStatement::Expr(AstExpr::Call { callee, .. }) => {
-                if callee == "set_output" {
-                    true
-                } else if self.functions.contains_key(callee) {
-                    self.fn_has_physical_effects(callee, visited)?
-                } else {
-                    return Err(format!("unknown function '{callee}'"));
-                }
-            }
-            _ => false,
-        })
-    }
-
     fn event(&self, event: &thalos_lang::ast::Event) -> Result<PEvent, String> {
         use thalos_lang::ast::Event as AstEvent;
         match event {
@@ -405,10 +362,13 @@ impl Ctx<'_> {
     fn edge_signal(&self, expr: &AstExpr) -> Result<SignalRef, String> {
         match expr {
             AstExpr::MemberAccess { object, member } => {
+                let AstExpr::Identifier(module) = object.as_ref() else {
+                    return Err(format!("event expects a signal, got {object:?}"));
+                };
                 let node = self
                     .aliases
-                    .get(object)
-                    .ok_or_else(|| format!("'{object}' is not imported (missing `use`)"))?;
+                    .get(module)
+                    .ok_or_else(|| format!("'{module}' is not imported (missing `use`)"))?;
                 match self.schema.type_of(node, member) {
                     Some(SignalType::Bool) => Ok(SignalRef {
                         module: node.clone(),
@@ -422,6 +382,39 @@ impl Ctx<'_> {
             }
             other => Err(format!("event expects a signal, got {other:?}")),
         }
+    }
+}
+
+/// Best-effort type of a process expression. References to states resolve
+/// through the state table; work parameters stay `Unknown` (their types are not
+/// part of the process IR).
+fn p_expr_type(expr: &PExpr, state_types: &HashMap<String, Type>) -> Type {
+    match expr {
+        PExpr::Constant(value) => value.get_type(),
+        PExpr::Signal { ty, .. } => ty.as_type(),
+        PExpr::Ref(name) => state_types.get(name).cloned().unwrap_or(Type::Unknown),
+        PExpr::Unary { operand, .. } => p_expr_type(operand, state_types),
+        PExpr::Binary { left, op, .. } => match op {
+            BinaryOp::Gt
+            | BinaryOp::Lt
+            | BinaryOp::Gte
+            | BinaryOp::Lte
+            | BinaryOp::Eq
+            | BinaryOp::Neq => Type::Bool,
+            _ => p_expr_type(left, state_types),
+        },
+    }
+}
+
+/// Numeric widening is a representation promotion: when a state is declared
+/// `Float` and its constant value is an `Int`, store the `Float` value so the
+/// state's type and value agree.
+fn coerce_p_expr(expr: PExpr, expected: &Type) -> PExpr {
+    match (expected, expr) {
+        (Type::Float, PExpr::Constant(CompileTimeValue::Int(value))) => {
+            PExpr::Constant(CompileTimeValue::Float(value as f64))
+        }
+        (_, other) => other,
     }
 }
 
@@ -535,6 +528,9 @@ fn token_event(
     let AstExpr::MemberAccess { object, member } = expr else {
         return Ok(None);
     };
+    let AstExpr::Identifier(object) = object.as_ref() else {
+        return Ok(None);
+    };
     if !tokens.contains(object) {
         return Ok(None);
     }
@@ -593,14 +589,54 @@ pub fn compile_process(ast: &Program, schema: &SignalSchema) -> Result<ProcessPr
         return Err(errors);
     };
 
-    let states: HashSet<String> = process
-        .items
-        .iter()
-        .filter_map(|item| match item {
-            thalos_lang::ast::ProcessItem::State(s) => Some(s.name.clone()),
-            _ => None,
-        })
-        .collect();
+    // Resolve every state's type before compiling bodies: annotations are
+    // validated, initializers must be constant, and an unannotated state takes
+    // the initializer's type.
+    let evaluator = Evaluator::with_target_values(&prep.table, &prep.target_values);
+    let function_effects = analyze_function_effects(&ast, schema);
+    let mut state_types: HashMap<String, Type> = HashMap::new();
+    for item in &process.items {
+        let thalos_lang::ast::ProcessItem::State(state) = item else {
+            continue;
+        };
+        let declared = match state.type_ann.as_ref() {
+            Some(annotation) => match resolve_type(annotation) {
+                Ok(ty) => Some(ty),
+                Err(error) => {
+                    errors.push(format!("state '{}': {}", state.name, error.message));
+                    Some(Type::Error)
+                }
+            },
+            None => None,
+        };
+        let init_ty = match evaluator.eval_expr(&state.value) {
+            EvalResult::Value(value) => value.get_type(),
+            // A state initializer must be a compile-time constant. Any
+            // non-constant expression (including a signal read) is reported
+            // with the same, normative diagnostic.
+            EvalResult::Error(_) | EvalResult::NotConstant => {
+                errors.push(format!(
+                    "state '{}' initializer must be a compile-time constant",
+                    state.name
+                ));
+                Type::Error
+            }
+        };
+        let ty = match declared {
+            Some(expected) => {
+                if !expected.is_error() && !expected.accepts(&init_ty) {
+                    errors.push(format!(
+                        "state '{}': expected {}, got {}",
+                        state.name, expected, init_ty
+                    ));
+                }
+                expected
+            }
+            None => init_ty,
+        };
+        state_types.insert(state.name.clone(), ty);
+    }
+    let states: HashSet<String> = state_types.keys().cloned().collect();
     // Request occurrence tokens: declared at `request ... as token` sites in
     // on/cycle, unique per process, and never colliding with state/aliases.
     let mut tokens = HashSet::new();
@@ -625,12 +661,13 @@ pub fn compile_process(ast: &Program, schema: &SignalSchema) -> Result<ProcessPr
         })
         .collect();
 
-    let evaluator = Evaluator::with_target_values(&prep.table, &prep.target_values);
     let ctx = Ctx {
         evaluator: &evaluator,
         aliases: &aliases,
         schema,
         states: &states,
+        state_types: &state_types,
+        function_effects: &function_effects,
         tokens: &tokens,
         locals: &no_locals,
         functions: &functions,
@@ -642,10 +679,17 @@ pub fn compile_process(ast: &Program, schema: &SignalSchema) -> Result<ProcessPr
     for item in &process.items {
         match item {
             thalos_lang::ast::ProcessItem::State(s) => match ctx.expr(&s.value) {
-                Ok(init) => compiled_states.push(PState {
-                    name: s.name.clone(),
-                    init,
-                }),
+                Ok(init) => {
+                    let state_ty = state_types
+                        .get(&s.name)
+                        .cloned()
+                        .unwrap_or(Type::Unknown);
+                    compiled_states.push(PState {
+                        name: s.name.clone(),
+                        ty: state_ty.clone(),
+                        init: coerce_p_expr(init, &state_ty),
+                    });
+                }
                 Err(e) => errors.push(format!("state '{}': {e}", s.name)),
             },
             thalos_lang::ast::ProcessItem::On(on) => match ctx.event(&on.event) {
@@ -671,6 +715,8 @@ pub fn compile_process(ast: &Program, schema: &SignalSchema) -> Result<ProcessPr
                 aliases: &aliases,
                 schema,
                 states: &states,
+                state_types: &state_types,
+                function_effects: &function_effects,
                 tokens: &tokens,
                 locals: &params,
                 functions: &functions,
@@ -886,13 +932,6 @@ fn substitute_expr(
             Box::new(substitute_expr(y, bindings)?),
             Box::new(substitute_expr(z, bindings)?),
         ]),
-        AstExpr::Pose {
-            position,
-            orientation,
-        } => AstExpr::Pose {
-            position: Box::new(substitute_expr(position, bindings)?),
-            orientation: Box::new(substitute_expr(orientation, bindings)?),
-        },
         AstExpr::Call { callee, args } => AstExpr::Call {
             callee: callee.clone(),
             args: args
@@ -905,7 +944,7 @@ fn substitute_expr(
             method,
             args,
         } => AstExpr::MemberCall {
-            object: object.clone(),
+            object: Box::new(substitute_expr(object, bindings)?),
             method: method.clone(),
             args: args
                 .iter()
@@ -913,7 +952,7 @@ fn substitute_expr(
                 .collect::<Result<_, _>>()?,
         },
         AstExpr::MemberAccess { object, member } => AstExpr::MemberAccess {
-            object: object.clone(),
+            object: Box::new(substitute_expr(object, bindings)?),
             member: member.clone(),
         },
         AstExpr::Binary { left, op, right } => AstExpr::Binary {

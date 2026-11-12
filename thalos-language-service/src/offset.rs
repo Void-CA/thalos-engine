@@ -24,7 +24,7 @@ use thalos_lang::units::{AngleRadians, LengthMeters};
 use thalos_math::Vector3;
 
 use crate::evaluator::{CompileTimeValue, Position};
-use crate::types::Type;
+use crate::types::{Dimension, Type};
 
 /// The shape of an `offset` delta after canonicalization.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,13 +47,12 @@ pub struct CanonicalDelta {
 pub fn canonicalize_delta(receiver: &Type, delta_args: &[Arg]) -> Result<CanonicalDelta, String> {
     match receiver {
         Type::Position | Type::Vector3 => canonicalize_xyz(delta_args),
-        Type::Joints { dimension: Some(n) } => canonicalize_joints(*n, delta_args),
-        Type::Joints { dimension: None } => {
+        Type::Joints { dimension: Dimension::Known(n) } => canonicalize_joints(*n, delta_args),
+        Type::Joints { dimension: Dimension::Unknown } => {
             Err("offset requires a Joints receiver with a known dimension".to_string())
         }
         other => Err(format!(
-            "offset expected a Position, Vector3, or Joints receiver, got {:?}",
-            other
+            "offset expected a Position, Vector3, or Joints receiver, got {other}"
         )),
     }
 }
@@ -113,7 +112,7 @@ fn canonicalize_xyz(delta_args: &[Arg]) -> Result<CanonicalDelta, String> {
 
 fn canonicalize_joints(dimension: usize, delta_args: &[Arg]) -> Result<CanonicalDelta, String> {
     let schema = Type::Joints {
-        dimension: Some(dimension),
+        dimension: Dimension::Known(dimension),
     }
     .member_schema()
     .expect("Joints has a member schema");
@@ -233,7 +232,7 @@ pub fn apply_resolved_delta(
                     CompileTimeValue::Vector3(v) => *v,
                     other => {
                         return Err(format!(
-                            "offset delta expected Vector3, got {:?}",
+                            "offset delta expected Vector3, got {}",
                             other.get_type()
                         ));
                     }
@@ -254,7 +253,7 @@ pub fn apply_resolved_delta(
         CompileTimeValue::Joints(values) => {
             let dimension = values.len();
             let schema = Type::Joints {
-                dimension: Some(dimension),
+                dimension: Dimension::Known(dimension),
             }
             .member_schema()
             .expect("Joints has a member schema");
@@ -280,7 +279,7 @@ pub fn apply_resolved_delta(
             apply(receiver, &canonical)
         }
         other => Err(format!(
-            "offset expected a Position, Vector3, or Joints receiver, got {:?}",
+            "offset expected a Position, Vector3, or Joints receiver, got {}",
             other.get_type()
         )),
     }
@@ -292,7 +291,7 @@ fn numeric_component(name: &str, value: &CompileTimeValue) -> Result<f64, String
         CompileTimeValue::Float(f) => Ok(*f),
         CompileTimeValue::Int(i) => Ok(*i as f64),
         other => Err(format!(
-            "offset component '{name}' expected a Length or number, got {:?}",
+            "offset component '{name}' expected a Length or number, got {}",
             other.get_type()
         )),
     }
@@ -361,7 +360,7 @@ mod tests {
     #[test]
     fn named_joint_delta_preserves_dimension() {
         let delta = vec![Arg::named("j2", angle(5.0))];
-        let canonical = canonicalize_delta(&Type::Joints { dimension: Some(3) }, &delta).unwrap();
+        let canonical = canonicalize_delta(&Type::Joints { dimension: Dimension::Known(3) }, &delta).unwrap();
         assert_eq!(canonical.shape, DeltaShape::Scalars);
         assert_eq!(
             canonical.args,
@@ -376,7 +375,7 @@ mod tests {
     #[test]
     fn positional_joint_delta_requires_full_arity() {
         let delta = vec![Arg::positional(angle(1.0))];
-        let error = canonicalize_delta(&Type::Joints { dimension: Some(3) }, &delta).unwrap_err();
+        let error = canonicalize_delta(&Type::Joints { dimension: Dimension::Known(3) }, &delta).unwrap_err();
         assert!(error.contains("expected 3 joint deltas, got 1"));
     }
 

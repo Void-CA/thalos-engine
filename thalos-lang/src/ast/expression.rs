@@ -39,21 +39,17 @@ pub enum Expr {
     Angle(AngleRadians),
     Duration(DurationSeconds),
     Vector3([Box<Expr>; 3]),
-    Pose {
-        position: Box<Expr>,
-        orientation: Box<Expr>,
-    },
     Call {
         callee: String,
         args: Vec<Arg>,
     },
     MemberCall {
-        object: String,
+        object: Box<Expr>,
         method: String,
         args: Vec<Arg>,
     },
     MemberAccess {
-        object: String,
+        object: Box<Expr>,
         member: String,
     },
     Binary {

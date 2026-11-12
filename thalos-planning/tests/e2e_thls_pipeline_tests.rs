@@ -255,8 +255,8 @@ fn test_effect_purity_rejection_builtin_motion_in_pure_fn() {
     assert!(compile_res.is_err(), "Pure function with movej MUST be rejected");
     let errors = compile_res.unwrap_err();
     assert!(
-        errors.iter().any(|e| e.contains("cannot produce robotic/IO effects")),
-        "Error message should mention robotic/IO effects prohibition, got {:?}",
+        errors.iter().any(|e| e.contains("cannot have effects")),
+        "Error message should mention the effect prohibition, got {:?}",
         errors
     );
 }
@@ -279,8 +279,8 @@ fn test_effect_purity_rejection_routine_call_in_pure_fn() {
     assert!(compile_res.is_err(), "Pure function with routine call MUST be rejected");
     let errors = compile_res.unwrap_err();
     assert!(
-        errors.iter().any(|e| e.contains("cannot produce robotic/IO effects")),
-        "Error message should mention robotic/IO effects prohibition, got {:?}",
+        errors.iter().any(|e| e.contains("cannot have effects")),
+        "Error message should mention the effect prohibition, got {:?}",
         errors
     );
 }

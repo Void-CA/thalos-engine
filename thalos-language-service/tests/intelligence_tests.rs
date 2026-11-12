@@ -6,8 +6,8 @@ fn slice<'a>(source: &'a str, span: &thalos_language_service::SourceSpan) -> &'a
     &source[span.start as usize..span.end as usize]
 }
 
-const PROGRAM: &str = r#"target jtt = joints(20deg, 30deg, 0deg, 0deg, 0deg, 0deg)
-target ptt = position([2.152m, 0.783m, 1.882m])
+const PROGRAM: &str = r#"target jtt = Joints(20deg, 30deg, 0deg, 0deg, 0deg, 0deg)
+target ptt = Position([2.152m, 0.783m, 1.882m])
 
 fn main() {
     movej(jtt)
@@ -36,7 +36,7 @@ fn infers_declaration_types_as_inlay_hints() {
             .unwrap_or_else(|| panic!("missing hint for {name}"))
     };
 
-    assert_eq!(hint("jtt").ty, Type::Joints { dimension: Some(6) });
+    assert_eq!(hint("jtt").ty, Type::Joints { dimension: thalos_language_service::types::Dimension::Known(6) });
     assert_eq!(hint("ptt").ty, Type::Position);
     assert_eq!(hint("offset1").ty, Type::Vector3);
     assert_eq!(slice(PROGRAM, &hint("jtt").span), "jtt");
@@ -46,7 +46,7 @@ fn infers_declaration_types_as_inlay_hints() {
 fn inlay_hints_distinguish_declared_from_inferred_types() {
     let source = r#"const D : Length = 5mm
 const I = 5mm
-target t = position([1mm, 2mm, 3mm])
+target t = Position([1mm, 2mm, 3mm])
 
 fn f(p : Position, q, side : Length) {
     let a : Length = side
@@ -88,8 +88,8 @@ fn main() {}
 
 #[test]
 fn classifies_semantic_tokens_by_role() {
-    let source = r#"target jtt = joints(20deg, 30deg, 0deg, 0deg, 0deg, 0deg)
-target ptt = position([1mm, 2mm, 3mm])
+    let source = r#"target jtt = Joints(20deg, 30deg, 0deg, 0deg, 0deg, 0deg)
+target ptt = Position([1mm, 2mm, 3mm])
 const LIMIT : Length = 5mm
 
 fn draw_square(start_point : Position, side : Length) {
@@ -117,8 +117,8 @@ fn main() {
     assert!(has(SemanticTokenKind::Type, "Length"));
     // Function declarations and calls (builtins included).
     assert!(has(SemanticTokenKind::Function, "draw_square"));
-    assert!(has(SemanticTokenKind::Function, "joints"));
-    assert!(has(SemanticTokenKind::Function, "position"));
+    assert!(has(SemanticTokenKind::Function, "Joints"));
+    assert!(has(SemanticTokenKind::Function, "Position"));
     // Member call vs member access.
     assert!(has(SemanticTokenKind::Method, "offset"));
     assert!(has(SemanticTokenKind::Property, "x"));
@@ -156,7 +156,7 @@ fn exposes_expression_types_with_precise_spans() {
 
 #[test]
 fn reports_semantic_diagnostics_with_real_source_spans() {
-    let source = r#"target ptt = position([2.152m, 0.783m, 1.882m])
+    let source = r#"target ptt = Position([2.152m, 0.783m, 1.882m])
 
 fn main() {
     movel(ptt2 - ptt)
@@ -173,7 +173,7 @@ fn main() {
 
 #[test]
 fn motion_type_error_points_at_the_target_node() {
-    let source = r#"target jtt = joints(20deg, 30deg, 0deg, 0deg, 0deg, 0deg)
+    let source = r#"target jtt = Joints(20deg, 30deg, 0deg, 0deg, 0deg, 0deg)
 
 fn main() {
     movel(jtt)
@@ -192,7 +192,7 @@ fn main() {
 
 #[test]
 fn joints_constructor_is_known_inside_function_bodies() {
-    let source = "fn main() {\n    movel(joints(0deg, 0deg, 0deg))\n}";
+    let source = "fn main() {\n    movel(Joints(0deg, 0deg, 0deg))\n}";
     let intelligence = analyze_intelligence(source, 1);
 
     // `joints` must resolve to Joints, so movel is rejected on the spatial

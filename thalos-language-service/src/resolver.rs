@@ -127,7 +127,7 @@ impl SemanticResolver {
                         });
                     }
                     Ok(other) => errors.push(format!(
-                        "wait expected Duration, got {:?}",
+                        "wait expected Duration, got {}",
                         other.get_type()
                     )),
                     Err(e) => errors.push(e),
@@ -251,7 +251,7 @@ impl SemanticResolver {
             } => {
                 let value = Self::eval_value(operand, env, targets, functions)?;
                 crate::evaluator::negate_value(&value)
-                    .ok_or_else(|| format!("Cannot negate value of type {:?}", value.get_type()))
+                    .ok_or_else(|| format!("Cannot negate value of type {}", value.get_type()))
             }
             // Receiver-type-directed `offset`: the receiver's value type decides
             // how the named delta components bind. Shares `apply_resolved_delta`

@@ -28,6 +28,7 @@ use crate::ast::item::{ConstDecl, ExpectDecl, FnDecl, Item, Param, ProcessDecl, 
 use crate::ast::program::Program;
 use crate::ast::statement::Statement;
 use crate::ast::target::TargetDecl;
+use crate::ast::type_expr::TypeExpr;
 use crate::ast::Expr;
 use crate::span::Span;
 use crate::units::{AngleRadians, DurationSeconds, LengthMeters};
@@ -61,9 +62,7 @@ pub enum SpannedItem {
 pub struct SpannedConstDecl {
     pub name: String,
     pub name_span: Span,
-    pub type_ann: Option<String>,
-    /// Source span of the explicit type annotation, when present.
-    pub type_span: Option<Span>,
+    pub type_ann: Option<TypeExpr>,
     pub value: SpannedExpr,
     pub span: Span,
 }
@@ -82,8 +81,7 @@ pub struct SpannedTargetDecl {
 pub struct SpannedParam {
     pub name: String,
     pub name_span: Span,
-    pub type_ann: Option<String>,
-    pub type_span: Option<Span>,
+    pub type_ann: Option<TypeExpr>,
     pub span: Span,
 }
 
@@ -92,8 +90,7 @@ pub struct SpannedFnDecl {
     pub name: String,
     pub name_span: Span,
     pub params: Vec<SpannedParam>,
-    pub return_type: Option<String>,
-    pub return_type_span: Option<Span>,
+    pub return_type: Option<TypeExpr>,
     pub body: Vec<SpannedStatement>,
     pub tail_expr: Option<SpannedExpr>,
     pub span: Span,
@@ -111,9 +108,7 @@ pub enum SpannedStatementKind {
     Let {
         name: String,
         name_span: Span,
-        type_ann: Option<String>,
-        /// Source span of the explicit type annotation, when present.
-        type_span: Option<Span>,
+        type_ann: Option<TypeExpr>,
         value: SpannedExpr,
     },
     MoveJ {
@@ -190,25 +185,19 @@ pub enum SpannedExprKind {
     Angle(AngleRadians),
     Duration(DurationSeconds),
     Vector3([Box<SpannedExpr>; 3]),
-    Pose {
-        position: Box<SpannedExpr>,
-        orientation: Box<SpannedExpr>,
-    },
     Call {
         callee: String,
         callee_span: Span,
         args: Vec<SpannedArg>,
     },
     MemberCall {
-        object: String,
-        object_span: Span,
+        object: Box<SpannedExpr>,
         method: String,
         method_span: Span,
         args: Vec<SpannedArg>,
     },
     MemberAccess {
-        object: String,
-        object_span: Span,
+        object: Box<SpannedExpr>,
         member: String,
         member_span: Span,
     },
@@ -337,13 +326,6 @@ impl SpannedExpr {
                 Box::new(y.unspan()),
                 Box::new(z.unspan()),
             ]),
-            SpannedExprKind::Pose {
-                position,
-                orientation,
-            } => Expr::Pose {
-                position: Box::new(position.unspan()),
-                orientation: Box::new(orientation.unspan()),
-            },
             SpannedExprKind::Call { callee, args, .. } => Expr::Call {
                 callee,
                 args: args.into_iter().map(SpannedArg::unspan).collect(),
@@ -354,13 +336,16 @@ impl SpannedExpr {
                 args,
                 ..
             } => Expr::MemberCall {
-                object,
+                object: Box::new(object.unspan()),
                 method,
                 args: args.into_iter().map(SpannedArg::unspan).collect(),
             },
             SpannedExprKind::MemberAccess {
                 object, member, ..
-            } => Expr::MemberAccess { object, member },
+            } => Expr::MemberAccess {
+                object: Box::new(object.unspan()),
+                member,
+            },
             SpannedExprKind::Binary { left, op, right } => Expr::Binary {
                 left: Box::new(left.unspan()),
                 op,
